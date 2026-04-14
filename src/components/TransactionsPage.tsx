@@ -1,0 +1,601 @@
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Search, Filter, Sparkles, Check, Edit2, Trash2, X, Save, Loader2, Calendar, ChevronUp, ChevronDown, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { cn } from '../lib/utils';
+import { useFinance } from '../context/FinanceContext';
+import { Transaction } from '../types';
+
+export const TransactionsPage: React.FC = () => {
+  const { 
+    transactions, 
+    deleteTransaction, 
+    updateTransaction, 
+    categorizeTransactions, 
+    confirmCategory, 
+    suggestions, 
+    isCategorizing,
+    accounts
+  } = useFinance();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<Partial<Transaction>>({});
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [filter, setFilter] = useState('All Time');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [sortField, setSortField] = useState<'date' | 'merchant' | 'amount'>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  const handleSort = (field: 'date' | 'merchant' | 'amount') => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('desc');
+    }
+  };
+
+  const handleEdit = (tx: Transaction) => {
+    setEditingId(tx.id);
+    setEditForm(tx);
+  };
+
+  const handleSave = () => {
+    if (editingId) {
+      updateTransaction(editingId, editForm);
+      setEditingId(null);
+    }
+  };
+
+  const handleDelete = (id: string) => {
+    deleteTransaction(id);
+    setDeleteConfirmId(null);
+  };
+
+  const filteredTransactions = transactions.filter(tx => {
+    const matchesSearch = tx.merchant.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                         tx.category.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    if (filter === 'All Time') return matchesSearch;
+    if (filter === 'Food') return matchesSearch && tx.category === 'Food & Drink';
+    if (filter === 'Transport') return matchesSearch && tx.category === 'Transport';
+    if (filter === 'Entertainment') return matchesSearch && tx.category === 'Entertainment';
+    
+    if (filter === 'Custom Range') {
+      if (!startDate || !endDate) return matchesSearch;
+      const txDate = new Date(tx.date);
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999); // Include the end day
+      return matchesSearch && txDate >= start && txDate <= end;
+    }
+
+    // Simple date filtering for demo
+    const txDate = new Date(tx.date);
+    const now = new Date();
+    if (filter === 'This Month') {
+      return matchesSearch && txDate.getMonth() === now.getMonth() && txDate.getFullYear() === now.getFullYear();
+    }
+    if (filter === 'Last Month') {
+      const lastMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+      const year = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+      return matchesSearch && txDate.getMonth() === lastMonth && txDate.getFullYear() === year;
+    }
+    
+    return matchesSearch;
+  });
+
+  const sortedTransactions = [...filteredTransactions].sort((a, b) => {
+    let comparison = 0;
+    if (sortField === 'date') {
+      comparison = new Date(a.date).getTime() - new Date(b.date).getTime();
+    } else if (sortField === 'merchant') {
+      comparison = a.merchant.localeCompare(b.merchant);
+    } else if (sortField === 'amount') {
+      comparison = a.amount - b.amount;
+    }
+    return sortOrder === 'asc' ? comparison : -comparison;
+  });
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="max-w-7xl mx-auto relative min-h-[calc(100vh-100px)]"
+    >
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 gap-6">
+        <div>
+          <h1 className="text-5xl font-bold tracking-tighter mb-3 font-display">Transactions</h1>
+          <p className="text-white/40 font-medium">Manage and categorize your financial activity with AI precision</p>
+        </div>
+        
+        <div className="flex gap-3">
+          <button 
+            onClick={categorizeTransactions}
+            disabled={isCategorizing || transactions.filter(t => t.category === 'Uncategorized' || (t.confidence && t.confidence < 0.8)).length === 0}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-sm font-bold text-accent hover:bg-accent/20 transition-all disabled:opacity-50"
+          >
+            {isCategorizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            <span>Auto-Categorize</span>
+          </button>
+          <button 
+            onClick={() => setFilter('All Time')}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm font-bold text-white/60 hover:text-white hover:bg-white/10 transition-all"
+          >
+            <Filter className="w-4 h-4" />
+            <span>Reset Filters</span>
+          </button>
+          <div className="relative">
+            <button 
+              onClick={() => setShowSearch(!showSearch)}
+              className={cn(
+                "flex items-center gap-2 px-5 py-2.5 rounded-xl border text-sm font-bold transition-all",
+                showSearch ? "bg-accent/10 border-accent/30 text-accent" : "bg-white/5 border-white/10 text-white/60 hover:text-white hover:bg-white/10"
+              )}
+            >
+              <Search className="w-4 h-4" />
+              <span>Search</span>
+            </button>
+            <AnimatePresence>
+              {showSearch && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  className="absolute top-full right-0 mt-2 w-64 z-50"
+                >
+                  <input 
+                    autoFocus
+                    type="text"
+                    placeholder="Search merchant or category..."
+                    className="w-full bg-card border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent shadow-2xl"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 mb-10">
+        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar items-center flex-1">
+          {['All Time', 'This Month', 'Last Month', 'Food', 'Transport', 'Entertainment'].map((chip) => (
+            <button 
+              key={chip} 
+              onClick={() => {
+                setFilter(chip);
+                setShowDatePicker(false);
+              }}
+              className={cn(
+                "px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all border",
+                filter === chip ? "bg-accent/10 border-accent/30 text-accent" : "bg-white/5 border-white/5 text-white/40 hover:bg-white/10 hover:text-white"
+              )}
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
+        
+        <div className="relative shrink-0">
+          <button 
+            onClick={() => setShowDatePicker(!showDatePicker)}
+            className={cn(
+              "px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all border flex items-center gap-2",
+              filter === 'Custom Range' 
+                ? "bg-accent text-white border-accent shadow-[0_0_20px_rgba(124,110,250,0.3)]" 
+                : "bg-white/5 border-white/5 text-white/40 hover:bg-white/10 hover:text-white"
+            )}
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            <span>Custom Range</span>
+            {filter === 'Custom Range' && startDate && endDate && (
+              <span className="text-[10px] opacity-80 font-mono">({startDate} - {endDate})</span>
+            )}
+          </button>
+          
+          <AnimatePresence>
+            {showDatePicker && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                className="absolute top-full right-0 mt-3 p-6 glass-card z-[100] w-80 border-accent/30 shadow-2xl bg-card/95 backdrop-blur-xl"
+              >
+                <div className="flex justify-between items-center mb-6">
+                  <h4 className="text-xs font-bold uppercase tracking-widest text-accent">Select Range</h4>
+                  <button 
+                    onClick={() => setShowDatePicker(false)}
+                    className="p-1 hover:bg-white/5 rounded-lg transition-colors"
+                  >
+                    <X className="w-4 h-4 text-white/20" />
+                  </button>
+                </div>
+
+                <div className="space-y-5">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Start Date</label>
+                    <div className="relative">
+                      <input 
+                        type="date" 
+                        required
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-all text-white"
+                        value={startDate}
+                        onChange={e => setStartDate(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">End Date</label>
+                    <div className="relative">
+                      <input 
+                        type="date" 
+                        required
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-all text-white"
+                        value={endDate}
+                        onChange={e => setEndDate(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-3 pt-2">
+                    <button 
+                      onClick={() => {
+                        setStartDate('');
+                        setEndDate('');
+                        setFilter('All Time');
+                        setShowDatePicker(false);
+                      }}
+                      className="flex-1 py-3 rounded-xl bg-white/5 text-[10px] font-bold uppercase tracking-widest text-white/40 hover:bg-white/10 hover:text-white transition-all"
+                    >
+                      Clear
+                    </button>
+                    <button 
+                      onClick={() => {
+                        if (startDate && endDate) {
+                          setFilter('Custom Range');
+                          setShowDatePicker(false);
+                        }
+                      }}
+                      disabled={!startDate || !endDate}
+                      className="flex-[2] py-3 bg-accent text-white rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-accent/80 transition-all disabled:opacity-50 shadow-lg violet-glow"
+                    >
+                      Apply Range
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      <div className="glass-card overflow-hidden border-white/5">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-white/5 bg-white/[0.02]">
+                <th 
+                  className="px-8 py-5 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] cursor-pointer hover:text-white transition-colors"
+                  onClick={() => handleSort('date')}
+                >
+                  <div className="flex items-center gap-2">
+                    Date
+                    {sortField === 'date' && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+                  </div>
+                </th>
+                <th 
+                  className="px-8 py-5 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] cursor-pointer hover:text-white transition-colors"
+                  onClick={() => handleSort('merchant')}
+                >
+                  <div className="flex items-center gap-2">
+                    Merchant
+                    {sortField === 'merchant' && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+                  </div>
+                </th>
+                <th className="px-8 py-5 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Category</th>
+                <th className="px-8 py-5 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Account</th>
+                <th 
+                  className="px-8 py-5 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] text-right cursor-pointer hover:text-white transition-colors"
+                  onClick={() => handleSort('amount')}
+                >
+                  <div className="flex items-center justify-end gap-2">
+                    Amount
+                    {sortField === 'amount' && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+                  </div>
+                </th>
+                <th className="px-8 py-5 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">AI Intelligence</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {sortedTransactions.map((tx, i) => (
+                <React.Fragment key={tx.id}>
+                <motion.tr 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.03 }}
+                  onClick={() => {
+                    if (editingId !== tx.id) {
+                      setExpandedId(expandedId === tx.id ? null : tx.id);
+                    }
+                  }}
+                  className={cn(
+                    "group hover:bg-white/[0.03] transition-all cursor-pointer",
+                    editingId === tx.id && "bg-accent/5",
+                    expandedId === tx.id && "bg-white/[0.02]"
+                  )}
+                >
+                  <td className="px-8 py-5 text-sm text-white/40 font-mono font-medium">
+                    {editingId === tx.id ? (
+                      <input 
+                        type="date" 
+                        onClick={e => e.stopPropagation()}
+                        className="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs outline-none focus:border-accent"
+                        value={editForm.date}
+                        onChange={e => setEditForm({...editForm, date: e.target.value})}
+                      />
+                    ) : tx.date}
+                  </td>
+                  <td className="px-8 py-5">
+                    <div className="flex items-center gap-4">
+                      <div className="relative">
+                        <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-sm font-bold border border-white/5 group-hover:border-accent/30 transition-all group-hover:scale-105">
+                          {tx.merchant.charAt(0)}
+                        </div>
+                        <div className={cn(
+                          "absolute -bottom-1 -right-1 w-4 h-4 rounded-md flex items-center justify-center border border-background",
+                          tx.amount > 0 ? "bg-positive text-background" : "bg-negative text-white"
+                        )}>
+                          {tx.amount > 0 ? <ArrowUpRight className="w-2.5 h-2.5" /> : <ArrowDownRight className="w-2.5 h-2.5" />}
+                        </div>
+                      </div>
+                      {editingId === tx.id ? (
+                        <input 
+                          type="text" 
+                          onClick={e => e.stopPropagation()}
+                          className="bg-white/5 border border-white/10 rounded px-2 py-1 text-sm outline-none focus:border-accent font-bold"
+                          value={editForm.merchant}
+                          onChange={e => setEditForm({...editForm, merchant: e.target.value})}
+                        />
+                      ) : (
+                        <span className="font-bold text-white group-hover:text-accent transition-colors">{tx.merchant}</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-8 py-5">
+                    {editingId === tx.id ? (
+                      <select 
+                        onClick={e => e.stopPropagation()}
+                        className="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs outline-none focus:border-accent"
+                        value={editForm.category}
+                        onChange={e => setEditForm({...editForm, category: e.target.value})}
+                      >
+                        {['Housing', 'Food & Drink', 'Transport', 'Entertainment', 'Shopping', 'Electronics', 'Utilities', 'Health', 'Education', 'Others', 'Uncategorized'].map(c => (
+                          <option key={c} value={c} className="bg-background text-white">{c}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
+                            "px-3 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-widest transition-all",
+                            tx.category === 'Uncategorized' ? "bg-white/5 border-white/5 text-white/20" : 
+                            (tx.confidence && tx.confidence < 0.8) ? "bg-negative/10 border-negative/30 text-negative" :
+                            "bg-accent/10 border-accent/20 text-accent"
+                          )}>
+                            {tx.category}
+                          </span>
+                          {tx.confidence && (
+                            <span className={cn(
+                              "text-[9px] font-mono font-bold",
+                              tx.confidence < 0.8 ? "text-negative" : "text-white/20"
+                            )}>
+                              {Math.round(tx.confidence * 100)}%
+                            </span>
+                          )}
+                        </div>
+
+                        {suggestions[tx.id] && (
+                          <div className="flex flex-col gap-2">
+                            {suggestions[tx.id].map((suggestion, idx) => (
+                              <motion.div 
+                                key={idx}
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: idx * 0.1 }}
+                                className={cn(
+                                  "flex items-center gap-2 border px-2 py-1.5 rounded-lg",
+                                  suggestion.confidence < 0.8 ? "bg-negative/10 border-negative/20" : "bg-accent/10 border-accent/20"
+                                )}
+                              >
+                                <div className="flex flex-col">
+                                  <span className={cn(
+                                    "text-[9px] font-bold uppercase tracking-widest",
+                                    suggestion.confidence < 0.8 ? "text-negative" : "text-accent"
+                                  )}>
+                                    {suggestion.category}
+                                  </span>
+                                  <span className="text-[8px] font-mono opacity-60">
+                                    {Math.round(suggestion.confidence * 100)}%
+                                  </span>
+                                </div>
+                                <div className="flex gap-1 ml-auto">
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      confirmCategory(tx.id, suggestion.category);
+                                    }}
+                                    className="p-1 hover:bg-white/10 rounded transition-colors"
+                                    title="Confirm"
+                                  >
+                                    <Check className="w-3 h-3 text-positive" />
+                                  </button>
+                                </div>
+                              </motion.div>
+                            ))}
+                            <div className="flex items-center gap-2 ml-1">
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEdit(tx);
+                                }}
+                                className="flex items-center gap-1.5 text-[8px] font-bold uppercase tracking-widest text-white/40 hover:text-white transition-all"
+                              >
+                                <Edit2 className="w-2.5 h-2.5" />
+                                <span>Edit Manually</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-8 py-5">
+                    {editingId === tx.id ? (
+                      <select 
+                        onClick={e => e.stopPropagation()}
+                        className="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs outline-none focus:border-accent"
+                        value={editForm.account || ''}
+                        onChange={e => setEditForm({...editForm, account: e.target.value})}
+                      >
+                        <option value="" className="bg-background text-white">Select Account</option>
+                        {accounts.map(a => (
+                          <option key={a.id} value={a.name} className="bg-background text-white">{a.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-sm font-medium text-white/60">{tx.account || 'Unknown'}</span>
+                    )}
+                  </td>
+                  <td className={cn(
+                    "px-8 py-5 font-mono font-bold text-right text-lg tracking-tighter",
+                    tx.amount > 0 ? "text-positive" : "text-white"
+                  )}>
+                    {editingId === tx.id ? (
+                      <input 
+                        type="number" 
+                        onClick={e => e.stopPropagation()}
+                        className="bg-white/5 border border-white/10 rounded px-2 py-1 text-right text-sm outline-none focus:border-accent font-bold w-24"
+                        value={editForm.amount}
+                        onChange={e => setEditForm({...editForm, amount: parseFloat(e.target.value)})}
+                      />
+                    ) : (
+                      <>{tx.amount > 0 ? '+' : ''}{tx.amount.toLocaleString('en-US', { style: 'currency', currency: tx.currency || 'USD' })}</>
+                    )}
+                  </td>
+                  <td className="px-8 py-5">
+                    <div className="flex items-center gap-3">
+                      {tx.aiTag && (
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-accent/5 border border-accent/20 text-accent text-[10px] font-bold uppercase tracking-widest violet-glow">
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>{tx.aiTag}</span>
+                        </div>
+                      )}
+                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
+                        {editingId === tx.id ? (
+                          <>
+                            <button onClick={(e) => { e.stopPropagation(); handleSave(); }} className="p-1.5 rounded-lg bg-positive/20 text-positive hover:bg-positive/30 transition-all"><Save className="w-4 h-4" /></button>
+                            <button onClick={(e) => { e.stopPropagation(); setEditingId(null); }} className="p-1.5 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 transition-all"><X className="w-4 h-4" /></button>
+                          </>
+                        ) : (
+                          <>
+                            <button onClick={(e) => { e.stopPropagation(); handleEdit(tx); }} className="p-1.5 rounded-lg hover:bg-accent/10 hover:text-accent transition-all"><Edit2 className="w-4 h-4" /></button>
+                            <button onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(tx.id); }} className="p-1.5 rounded-lg hover:bg-negative/10 hover:text-negative transition-all"><Trash2 className="w-4 h-4" /></button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                </motion.tr>
+                <AnimatePresence>
+                  {expandedId === tx.id && (
+                    <motion.tr 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="bg-white/[0.01] border-b border-white/5"
+                    >
+                      <td colSpan={6} className="p-0">
+                        <motion.div
+                          initial={{ height: 0 }}
+                          animate={{ height: 'auto' }}
+                          exit={{ height: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="px-8 py-6 flex flex-wrap gap-8 text-sm border-t border-white/5">
+                            <div className="flex flex-col gap-1.5">
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Account</span>
+                              <span className="text-white/80 font-medium">{tx.account || 'Not specified'}</span>
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">AI Tag</span>
+                              <span className="text-white/80 font-medium">{tx.aiTag || 'None'}</span>
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Confidence</span>
+                              <span className="text-white/80 font-medium">{tx.confidence ? `${Math.round(tx.confidence * 100)}%` : 'N/A'}</span>
+                            </div>
+                            {tx.savingsGoalId && (
+                              <div className="flex flex-col gap-1.5">
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Savings Goal ID</span>
+                                <span className="text-white/80 font-medium font-mono text-xs">{tx.savingsGoalId}</span>
+                              </div>
+                            )}
+                          </div>
+                        </motion.div>
+                      </td>
+                    </motion.tr>
+                  )}
+                </AnimatePresence>
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {deleteConfirmId && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setDeleteConfirmId(null)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative glass-card p-8 max-w-md w-full border-negative/30"
+            >
+              <h3 className="text-2xl font-bold mb-4">Delete Transaction?</h3>
+              <p className="text-white/60 mb-8">This action cannot be undone. Are you sure you want to remove this transaction from your history?</p>
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setDeleteConfirmId(null)}
+                  className="flex-1 py-3 rounded-xl bg-white/5 font-bold hover:bg-white/10 transition-all"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={() => deleteConfirmId && handleDelete(deleteConfirmId)}
+                  className="flex-1 py-3 rounded-xl bg-negative text-white font-bold hover:bg-negative/80 transition-all shadow-lg"
+                >
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+};
