@@ -21,7 +21,10 @@ import { SignupPage } from './components/SignupPage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
 import { FinanceProvider } from './context/FinanceContext';
 import { AnimatePresence, motion } from 'motion/react';
-import { Sparkles, X } from 'lucide-react';
+import { Sparkles, X, Bell, Command, Search } from 'lucide-react';
+import { CommandPalette } from './components/CommandPalette';
+import { NotificationCenter, Notification } from './components/NotificationCenter';
+import { AlertCircle, TrendingUp, Wallet, Calendar } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -29,6 +32,49 @@ export default function App() {
   const [authView, setAuthView] = useState<'landing' | 'login' | 'signup' | 'forgot-password'>('landing');
   const [showDemo, setShowDemo] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([
+    {
+      id: '1',
+      title: 'AI Insight: Budget Alert',
+      message: 'Your "Dining Out" budget is at 85%. Consider cooking at home this weekend.',
+      type: 'warning',
+      time: '2m ago',
+      read: false,
+      icon: AlertCircle
+    },
+    {
+      id: '2',
+      title: 'Net Worth Milestone',
+      message: 'Congratulations! Your net worth has increased by 5.2% this month.',
+      type: 'success',
+      time: '1h ago',
+      read: false,
+      icon: TrendingUp
+    },
+    {
+      id: '3',
+      title: 'Upcoming Bill',
+      message: 'Your Netflix subscription ($15.99) is due in 3 days.',
+      type: 'info',
+      time: '5h ago',
+      read: true,
+      icon: Calendar
+    }
+  ]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Auto-logout logic (1 hour of inactivity)
   useEffect(() => {
@@ -124,12 +170,66 @@ export default function App() {
               <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
               
               <main className="pl-[80px] min-h-screen relative z-10 transition-all duration-500 ease-[0.22, 1, 0.36, 1]">
+                {/* Modern Header Bar */}
+                <header className="h-20 flex items-center justify-between px-10 border-b border-white/5 sticky top-0 bg-background/50 backdrop-blur-xl z-[90]">
+                  <div className="flex items-center gap-4">
+                    <button 
+                      onClick={() => setIsCommandPaletteOpen(true)}
+                      className="flex items-center gap-3 px-4 py-2 rounded-2xl bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 transition-all group"
+                    >
+                      <Search className="w-4 h-4" />
+                      <span className="text-xs font-bold uppercase tracking-widest">Search anything...</span>
+                      <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] opacity-40 group-hover:opacity-100">
+                        <Command className="w-2.5 h-2.5" />
+                        <span>K</span>
+                      </div>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-6">
+                    <button 
+                      onClick={() => setIsNotificationsOpen(true)}
+                      className="relative p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group"
+                    >
+                      <Bell className="w-5 h-5 text-white/40 group-hover:text-white transition-colors" />
+                      {notifications.some(n => !n.read) && (
+                        <span className="absolute top-3 right-3 w-2.5 h-2.5 bg-accent rounded-full border-2 border-[#0F0F19] animate-pulse" />
+                      )}
+                    </button>
+                    <div className="flex items-center gap-3 pl-6 border-l border-white/5">
+                      <div className="text-right">
+                        <p className="text-xs font-bold">Yugandhar Reddy</p>
+                        <p className="text-[10px] font-bold text-accent uppercase tracking-widest">Pro Member</p>
+                      </div>
+                      <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-accent to-positive p-[1px]">
+                        <div className="w-full h-full rounded-[15px] bg-background flex items-center justify-center text-xs font-bold">
+                          YR
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </header>
+
                 <div className="p-6 md:p-10 lg:p-12">
                   <AnimatePresence mode="wait">
                     {renderContent()}
                   </AnimatePresence>
                 </div>
               </main>
+
+              <CommandPalette 
+                isOpen={isCommandPaletteOpen} 
+                onClose={() => setIsCommandPaletteOpen(false)} 
+                onNavigate={setActiveTab} 
+              />
+
+              <NotificationCenter 
+                isOpen={isNotificationsOpen} 
+                onClose={() => setIsNotificationsOpen(false)} 
+                notifications={notifications}
+                onMarkAsRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))}
+                onClearAll={() => setNotifications([])}
+              />
 
               <SmartAdd />
               

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { MOCK_FORECAST } from '../constants';
 import { TrendingUp, ArrowUpRight, ArrowDownRight, Plus, ChevronDown } from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
 
@@ -11,6 +10,18 @@ export const NetWorthPage: React.FC = () => {
   const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'USD');
   
   const netWorth = netWorthByCurrency[selectedCurrency] || { total: 0, assets: 0, liabilities: 0, change: 0 };
+  
+  const forecastData = React.useMemo(() => {
+    const data = [];
+    const monthlyChange = (netWorth.total * (netWorth.change / 100)) / 30; // daily change
+    for (let i = 0; i < 30; i++) {
+      data.push({
+        day: i,
+        balance: netWorth.total + (monthlyChange * i)
+      });
+    }
+    return data;
+  }, [netWorth]);
 
   const assetBreakdown = accounts
     .filter(a => a.type !== 'Credit' && (a.currency || 'USD') === selectedCurrency)
@@ -71,7 +82,7 @@ export const NetWorthPage: React.FC = () => {
 
           <div className="flex-1 w-full h-[200px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={MOCK_FORECAST}>
+              <AreaChart data={forecastData}>
                 <defs>
                   <linearGradient id="netWorthGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#7C6EFA" stopOpacity={0.3}/>

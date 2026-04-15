@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, ExternalLink, RefreshCw, Shield, Lock, Globe, X, ChevronRight, Landmark, CreditCard, Wallet as WalletIcon, Check, ChevronDown } from 'lucide-react';
-import { MOCK_ACCOUNTS } from '../constants';
 import { cn } from '../lib/utils';
 import { BankAccount } from '../types';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useFinance } from '../context/FinanceContext';
+import { WORLD_CURRENCIES } from '../constants/currencies';
 
 const sparklineData = Array.from({ length: 20 }, (_, i) => ({ value: Math.random() * 100 }));
 
@@ -500,12 +500,11 @@ export const BankAccountsPage: React.FC = () => {
                             onChange={(e) => setManualForm(prev => ({ ...prev, currency: e.target.value }))}
                             className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all"
                           >
-                            <option value="USD" className="bg-[#050508] text-white">USD ($)</option>
-                            <option value="EUR" className="bg-[#050508] text-white">EUR (€)</option>
-                            <option value="GBP" className="bg-[#050508] text-white">GBP (£)</option>
-                            <option value="JPY" className="bg-[#050508] text-white">JPY (¥)</option>
-                            <option value="AUD" className="bg-[#050508] text-white">AUD ($)</option>
-                            <option value="CAD" className="bg-[#050508] text-white">CAD ($)</option>
+                            {WORLD_CURRENCIES.map(curr => (
+                              <option key={curr.code} value={curr.code} className="bg-[#050508] text-white">
+                                {curr.code} ({curr.symbol}) - {curr.name}
+                              </option>
+                            ))}
                           </select>
                         </div>
                       </div>

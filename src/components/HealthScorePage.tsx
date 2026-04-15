@@ -1,17 +1,32 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { MOCK_HEALTH } from '../constants';
+import { useFinance } from '../context/FinanceContext';
 import { Activity, Shield, Wallet, PieChart, ArrowUp, Zap, Target } from 'lucide-react';
 import { cn } from '../lib/utils';
 
-const VITALS = [
-  { label: 'Savings Rate', value: MOCK_HEALTH.savingsRate, icon: Activity, color: '#7C6EFA', text: '18% of income saved' },
-  { label: 'Debt-to-Income', value: MOCK_HEALTH.debtRatio, icon: Shield, color: '#22D3A5', text: '12% ratio', inverse: true },
-  { label: 'Emergency Fund', value: MOCK_HEALTH.emergencyFund, icon: Wallet, color: '#F59E0B', text: '3.2 months covered' },
-  { label: 'Budget Adherence', value: MOCK_HEALTH.budgetAdherence, icon: PieChart, color: '#F43F5E', text: '92% on budget' },
-];
-
 export const HealthScorePage: React.FC = () => {
+  const { healthMetricsByCurrency } = useFinance();
+  const metrics = healthMetricsByCurrency['USD'] || Object.values(healthMetricsByCurrency)[0] || {
+    savingsRate: 0,
+    debtRatio: 0,
+    emergencyFund: 0,
+    budgetAdherence: 0,
+    overallScore: 0
+  };
+
+  const VITALS = [
+    { label: 'Savings Rate', value: metrics.savingsRate, icon: Activity, color: '#7C6EFA', text: `${Math.round(metrics.savingsRate * 100)}% of income saved` },
+    { label: 'Debt-to-Income', value: metrics.debtRatio, icon: Shield, color: '#22D3A5', text: `${Math.round(metrics.debtRatio * 100)}% ratio`, inverse: true },
+    { label: 'Emergency Fund', value: metrics.emergencyFund, icon: Wallet, color: '#F59E0B', text: `${Math.round(metrics.emergencyFund * 6)} months covered` },
+    { label: 'Budget Adherence', value: metrics.budgetAdherence, icon: PieChart, color: '#F43F5E', text: `${Math.round(metrics.budgetAdherence * 100)}% on budget` },
+  ];
+
+  const getScoreText = (score: number) => {
+    if (score >= 90) return "Excellent";
+    if (score >= 75) return "Good";
+    if (score >= 50) return "Fair";
+    return "Needs Attention";
+  };
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -47,7 +62,7 @@ export const HealthScorePage: React.FC = () => {
               strokeWidth="12"
               strokeDasharray={2 * Math.PI * 120}
               initial={{ strokeDashoffset: 2 * Math.PI * 120 }}
-              animate={{ strokeDashoffset: 2 * Math.PI * 120 * (1 - MOCK_HEALTH.score / 100) }}
+              animate={{ strokeDashoffset: 2 * Math.PI * 120 * (1 - metrics.overallScore / 100) }}
               transition={{ duration: 2, ease: "easeOut" }}
               strokeLinecap="round"
             />
@@ -65,14 +80,16 @@ export const HealthScorePage: React.FC = () => {
               animate={{ opacity: 1, scale: 1 }}
               className="text-8xl font-bold font-mono tracking-tighter"
             >
-              {MOCK_HEALTH.score}
+              {metrics.overallScore}
             </motion.span>
-            <span className="text-xl font-bold text-accent uppercase tracking-widest">Good</span>
+            <span className="text-xl font-bold text-accent uppercase tracking-widest">{getScoreText(metrics.overallScore)}</span>
           </div>
         </div>
         
         <p className="max-w-md text-white/60 leading-relaxed">
-          Your financial health is in the top 15% of users. Improving your debt-to-income ratio could push you into the "Excellent" range.
+          {metrics.overallScore >= 75 
+            ? "Your financial health is strong. Keep maintaining your savings rate to reach your long-term goals."
+            : "There are opportunities to improve your financial health. Focus on reducing debt and building an emergency fund."}
         </p>
       </div>
 

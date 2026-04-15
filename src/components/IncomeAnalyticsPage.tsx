@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { MOCK_INCOME } from '../constants';
+import { useFinance } from '../context/FinanceContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { TrendingUp, ArrowUpRight, Calendar, DollarSign, Briefcase, ChevronDown } from 'lucide-react';
 
@@ -17,10 +17,11 @@ const CustomTooltip = ({ active, payload, currency }: any) => {
 };
 
 export const IncomeAnalyticsPage: React.FC = () => {
-  const currencies = Array.from(new Set(MOCK_INCOME.map(i => i.currency || 'USD')));
+  const { incomeSources } = useFinance();
+  const currencies = Array.from(new Set(incomeSources.map(i => i.currency || 'USD')));
   const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'USD');
 
-  const filteredIncome = MOCK_INCOME.filter(i => (i.currency || 'USD') === selectedCurrency);
+  const filteredIncome = incomeSources.filter(i => (i.currency || 'USD') === selectedCurrency);
   const totalIncome = filteredIncome.reduce((acc, curr) => acc + curr.amount, 0);
 
   return (

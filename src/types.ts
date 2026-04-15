@@ -85,11 +85,18 @@ export interface Loan {
   remainingAmount: number;
   monthlyEMI: number;
   interestRate: number;
+  tenureYears: number;
   startDate: string;
   endDate: string;
   category: string;
   color: string;
   currency?: string;
+  payments?: {
+    date: string;
+    amount: number;
+    principal: number;
+    interest: number;
+  }[];
 }
 
 export interface Insight {

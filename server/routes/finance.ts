@@ -21,7 +21,88 @@ let savingsGoals = [...MOCK_SAVINGS_GOALS];
 let recurringPayments = [...MOCK_RECURRING];
 let incomeSources = [...MOCK_INCOME];
 
+// MCP State
+let mcpTransactions = [...transactions];
+let mcpClients: any[] = [];
+
 router.use(authMiddleware);
+
+// Sync transactions from frontend (for MCP tools)
+router.post("/sync-transactions", (req, res) => {
+  const { transactions: newTxs } = req.body;
+  if (Array.isArray(newTxs)) {
+    mcpTransactions = newTxs;
+  }
+  res.json({ success: true });
+});
+
+// MCP SSE Endpoint
+router.get("/mcp/sse", (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  const clientId = Date.now();
+  const messageEndpoint = `/api/finance/mcp/message?clientId=${clientId}`;
+  
+  res.write(`event: endpoint\ndata: ${messageEndpoint}\n\n`);
+
+  const client = { id: clientId, res };
+  mcpClients.push(client);
+
+  req.on('close', () => {
+    mcpClients = mcpClients.filter(c => c.id !== clientId);
+  });
+});
+
+// MCP Message Endpoint (JSON-RPC)
+router.post("/mcp/message", (req, res) => {
+  const { method, params, id } = req.body;
+  
+  let result: any = null;
+  let error: any = null;
+
+  try {
+    if (method === "tools/list") {
+      result = {
+        tools: [
+          {
+            name: "get_transactions",
+            description: "Get all financial transactions",
+            inputSchema: { type: "object", properties: {} }
+          },
+          {
+            name: "get_accounts",
+            description: "Get all bank accounts and balances",
+            inputSchema: { type: "object", properties: {} }
+          },
+          {
+            name: "get_budgets",
+            description: "Get all budget categories and limits",
+            inputSchema: { type: "object", properties: {} }
+          }
+        ]
+      };
+    } else if (method === "tools/call") {
+      const { name } = params;
+      if (name === "get_transactions") {
+        result = { content: [{ type: "text", text: JSON.stringify(mcpTransactions) }] };
+      } else if (name === "get_accounts") {
+        result = { content: [{ type: "text", text: JSON.stringify(accounts) }] };
+      } else if (name === "get_budgets") {
+        result = { content: [{ type: "text", text: JSON.stringify(budgets) }] };
+      } else {
+        error = { code: -32601, message: "Tool not found" };
+      }
+    } else {
+      error = { code: -32601, message: "Method not found" };
+    }
+  } catch (err: any) {
+    error = { code: -32603, message: err.message };
+  }
+
+  res.json({ jsonrpc: "2.0", id, result, error });
+});
 
 // Transactions
 router.get("/transactions", (req, res) => {

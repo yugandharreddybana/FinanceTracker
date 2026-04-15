@@ -16,7 +16,8 @@ import {
   Activity,
   Leaf,
   Tags,
-  BarChart3
+  BarChart3,
+  Cpu
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -140,6 +141,36 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLog
       </nav>
 
       <div className="px-3 pt-6 mt-6 border-t border-white/5 space-y-1.5">
+        <AnimatePresence>
+          {isExpanded && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              className="px-4 py-4 mb-4 rounded-2xl bg-accent/5 border border-accent/10 relative overflow-hidden group/neural"
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-accent/10 to-transparent opacity-0 group-hover/neural:opacity-100 transition-opacity" />
+              <div className="flex items-center gap-3 relative z-10">
+                <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center">
+                  <Cpu className="w-4 h-4 text-accent animate-pulse" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-accent uppercase tracking-widest">Neural Core</p>
+                  <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">Active • 98% Load</p>
+                </div>
+              </div>
+              <div className="mt-3 h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: '98%' }}
+                  transition={{ duration: 2, repeat: Infinity, repeatType: 'reverse' }}
+                  className="h-full bg-accent"
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <button className="w-full flex items-center gap-4 p-3.5 rounded-2xl text-white/40 hover:text-white hover:bg-white/5 transition-all group">
           <Settings className="w-5 h-5 shrink-0 group-hover:rotate-45 transition-transform duration-500" />
           <AnimatePresence>

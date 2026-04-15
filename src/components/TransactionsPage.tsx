@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Filter, Sparkles, Check, Edit2, Trash2, X, Save, Loader2, Calendar, ChevronUp, ChevronDown, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Search, Filter, Sparkles, Check, Edit2, Trash2, X, Save, Loader2, Calendar, ChevronUp, ChevronDown, ArrowUpRight, ArrowDownRight, Download } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useFinance } from '../context/FinanceContext';
 import { Transaction } from '../types';
@@ -89,6 +89,32 @@ export const TransactionsPage: React.FC = () => {
   const handleDelete = (id: string) => {
     deleteTransaction(id);
     setDeleteConfirmId(null);
+  };
+
+  const exportCSV = () => {
+    const headers = ['Date', 'Merchant', 'Category', 'Amount', 'Type', 'Account', 'Status'];
+    const csvContent = [
+      headers.join(','),
+      ...sortedTransactions.map(t => [
+        t.date,
+        `"${t.merchant.replace(/"/g, '""')}"`,
+        t.category,
+        t.amount,
+        t.type,
+        t.account,
+        t.status
+      ].join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `transactions_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const filteredTransactions = transactions.filter(tx => {
@@ -196,6 +222,13 @@ export const TransactionsPage: React.FC = () => {
               )}
             </AnimatePresence>
           </div>
+          <button 
+            onClick={exportCSV}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm font-bold text-white/60 hover:text-white hover:bg-white/10 transition-all"
+          >
+            <Download className="w-4 h-4" />
+            <span>Export</span>
+          </button>
         </div>
       </div>
 

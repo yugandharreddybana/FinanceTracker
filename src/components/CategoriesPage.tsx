@@ -1,11 +1,17 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Tags, Plus, ChevronRight, X, BarChart3, PieChart, Sparkles } from 'lucide-react';
-import { MOCK_SPENDING } from '../constants';
+import { Tags, Plus, ChevronRight, X, BarChart3, PieChart, Sparkles, ChevronDown } from 'lucide-react';
+import { useFinance } from '../context/FinanceContext';
 import { cn } from '../lib/utils';
 
 export const CategoriesPage: React.FC = () => {
+  const { spendingDataByCurrency, transactions } = useFinance();
+  const currencies = Object.keys(spendingDataByCurrency);
+  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'USD');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  const categories = spendingDataByCurrency[selectedCurrency] || [];
+  const totalSpending = categories.reduce((acc, c) => acc + c.value, 0);
 
   return (
     <motion.div
@@ -14,15 +20,29 @@ export const CategoriesPage: React.FC = () => {
       exit={{ opacity: 0, y: -20 }}
       className="max-w-7xl mx-auto relative"
     >
-      <div className="flex justify-between items-end mb-12">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-12 gap-6">
         <div>
           <h1 className="text-4xl font-bold tracking-tight mb-2">Categories</h1>
           <p className="text-white/40">Manage your spending taxonomy and rules</p>
         </div>
+        {currencies.length > 1 && (
+          <div className="relative">
+            <select
+              value={selectedCurrency}
+              onChange={(e) => setSelectedCurrency(e.target.value)}
+              className="appearance-none bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm font-bold text-white pr-10 focus:outline-none focus:ring-1 focus:ring-accent"
+            >
+              {currencies.map(c => (
+                <option key={c} value={c} className="bg-[#050508] text-white">{c}</option>
+              ))}
+            </select>
+            <ChevronDown className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        {MOCK_SPENDING.map((cat) => (
+        {categories.map((cat) => (
           <motion.div
             key={cat.name}
             whileHover={{ y: -5 }}
@@ -41,18 +61,18 @@ export const CategoriesPage: React.FC = () => {
                     cx="24" cy="24" r="20" className="fill-none" 
                     stroke={cat.color} strokeWidth="3" 
                     strokeDasharray={2 * Math.PI * 20}
-                    strokeDashoffset={2 * Math.PI * 20 * (1 - cat.value / 3000)}
+                    strokeDashoffset={2 * Math.PI * 20 * (1 - cat.value / (totalSpending || 1))}
                     strokeLinecap="round"
                   />
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center text-[10px] font-mono text-white/40">
-                  {Math.round((cat.value / 3000) * 100)}%
+                  {Math.round((cat.value / (totalSpending || 1)) * 100)}%
                 </div>
               </div>
             </div>
             
             <h3 className="text-lg font-bold mb-1">{cat.name}</h3>
-            <p className="text-2xl font-bold font-mono tracking-tighter">${cat.value.toLocaleString()}</p>
+            <p className="text-2xl font-bold font-mono tracking-tighter">{cat.value.toLocaleString('en-US', { style: 'currency', currency: selectedCurrency })}</p>
             
             <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
               <ChevronRight className="w-5 h-5 text-white/40" />

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Sparkles, Mail, Lock, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
+import { Sparkles, Mail, Lock, ArrowRight, Loader2, AlertCircle, Fingerprint } from 'lucide-react';
 
 interface LoginPageProps {
   onLogin: () => void;
@@ -13,7 +13,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isBiometricLoading, setIsBiometricLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const handleBiometricLogin = () => {
+    setIsBiometricLoading(true);
+    setTimeout(() => {
+      setIsBiometricLoading(false);
+      onLogin();
+    }, 2000);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,7 +120,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
 
             <button 
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || isBiometricLoading}
               className="w-full py-4 rounded-xl bg-accent text-white font-bold hover:bg-accent/80 transition-all violet-glow flex items-center justify-center gap-3 group disabled:opacity-50"
             >
               {isLoading ? (
@@ -120,6 +129,42 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
                 <>
                   <span>Login to Terminal</span>
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
+            </button>
+
+            <div className="relative py-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-white/5"></div>
+              </div>
+              <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-widest">
+                <span className="bg-[#050508] px-4 text-white/20">Or Secure Unlock</span>
+              </div>
+            </div>
+
+            <button 
+              type="button"
+              onClick={handleBiometricLogin}
+              disabled={isLoading || isBiometricLoading}
+              className="w-full py-4 rounded-xl bg-white/5 border border-white/10 text-white/60 font-bold hover:bg-white/10 transition-all flex items-center justify-center gap-3 group disabled:opacity-50"
+            >
+              {isBiometricLoading ? (
+                <div className="flex items-center gap-3">
+                  <div className="relative w-6 h-6">
+                    <Fingerprint className="w-6 h-6 text-accent animate-pulse" />
+                    <motion.div 
+                      initial={{ height: 0 }}
+                      animate={{ height: '100%' }}
+                      transition={{ duration: 2, ease: "linear" }}
+                      className="absolute top-0 left-0 w-full bg-accent/20 overflow-hidden"
+                    />
+                  </div>
+                  <span className="text-accent animate-pulse">Scanning Biometrics...</span>
+                </div>
+              ) : (
+                <>
+                  <Fingerprint className="w-5 h-5 group-hover:text-accent transition-colors" />
+                  <span>Biometric Unlock</span>
                 </>
               )}
             </button>

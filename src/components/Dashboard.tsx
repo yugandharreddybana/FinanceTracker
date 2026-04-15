@@ -9,6 +9,7 @@ import { RecentTransactions } from './RecentTransactions';
 import { SavingsGoals } from './SavingsGoals';
 import { HealthScoreVitals } from './HealthScoreVitals';
 import { motion } from 'motion/react';
+import { TiltCard } from './TiltCard';
 
 const container = {
   hidden: { opacity: 0 },
@@ -55,10 +56,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <motion.div variants={item} className="lg:col-span-6">
-            <HealthScoreVitals />
+            <TiltCard>
+              <HealthScoreVitals />
+            </TiltCard>
           </motion.div>
           <motion.div variants={item} className="lg:col-span-6">
-            <AIInsightCard setActiveTab={setActiveTab} />
+            <TiltCard>
+              <AIInsightCard setActiveTab={setActiveTab} />
+            </TiltCard>
           </motion.div>
         </div>
  
