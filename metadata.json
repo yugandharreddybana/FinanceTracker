@@ -3,5 +3,6 @@
   "description": "Premium AI-powered personal finance tracker with dark mode, glassmorphism, and proactive AI insights.",
   "requestFramePermissions": [
     "microphone"
-  ]
+  ],
+  "majorCapabilities": []
 }

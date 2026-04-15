@@ -231,7 +231,7 @@ export default function App() {
                 onClearAll={() => setNotifications([])}
               />
 
-              <SmartAdd />
+              <SmartAdd setActiveTab={setActiveTab} />
               
               {/* Floating AI Insights Button */}
               <motion.button

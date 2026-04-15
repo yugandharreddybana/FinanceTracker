@@ -48,10 +48,73 @@ export const MOCK_BUDGETS: Budget[] = [
 ];
 
 export const MOCK_RECURRING: RecurringPayment[] = [
-  { id: '1', name: 'Netflix', amount: 15.99, date: 17, category: 'Entertainment', frequency: 'Monthly', status: 'Active', currency: 'EUR' },
-  { id: '2', name: 'Rent', amount: 1500.00, date: 1, category: 'Housing', frequency: 'Monthly', status: 'Active', currency: 'USD' },
-  { id: '3', name: 'Gym', amount: 45.00, date: 5, category: 'Health', frequency: 'Monthly', status: 'Active', currency: 'USD' },
-  { id: '4', name: 'Spotify', amount: 9.99, date: 12, category: 'Entertainment', frequency: 'Monthly', status: 'Paused', currency: 'EUR' },
+  { 
+    id: '1', 
+    name: 'Netflix', 
+    amount: 15.99, 
+    date: 17, 
+    category: 'Entertainment', 
+    frequency: 'Monthly', 
+    status: 'Active', 
+    currency: 'EUR',
+    description: 'Premium Ultra HD Plan',
+    paymentMethod: 'Platinum Card (Amex)',
+    history: [
+      { date: '2024-03-17', amount: 15.99, status: 'Success' },
+      { date: '2024-02-17', amount: 15.99, status: 'Success' },
+      { date: '2024-01-17', amount: 15.99, status: 'Success' },
+    ]
+  },
+  { 
+    id: '2', 
+    name: 'Rent', 
+    amount: 1500.00, 
+    date: 1, 
+    category: 'Housing', 
+    frequency: 'Monthly', 
+    status: 'Active', 
+    currency: 'USD',
+    description: 'Monthly Apartment Rent',
+    paymentMethod: 'Main Current (Revolut)',
+    history: [
+      { date: '2024-04-01', amount: 1500.00, status: 'Success' },
+      { date: '2024-03-01', amount: 1500.00, status: 'Success' },
+      { date: '2024-02-01', amount: 1500.00, status: 'Success' },
+    ]
+  },
+  { 
+    id: '3', 
+    name: 'Gym', 
+    amount: 45.00, 
+    date: 5, 
+    category: 'Health', 
+    frequency: 'Monthly', 
+    status: 'Active', 
+    currency: 'USD',
+    description: 'All-access membership',
+    paymentMethod: 'Main Current (Revolut)',
+    history: [
+      { date: '2024-04-05', amount: 45.00, status: 'Success' },
+      { date: '2024-03-05', amount: 45.00, status: 'Success' },
+      { date: '2024-02-05', amount: 45.00, status: 'Success' },
+    ]
+  },
+  { 
+    id: '4', 
+    name: 'Spotify', 
+    amount: 9.99, 
+    date: 12, 
+    category: 'Entertainment', 
+    frequency: 'Monthly', 
+    status: 'Paused', 
+    currency: 'EUR',
+    description: 'Family Plan',
+    paymentMethod: 'Platinum Card (Amex)',
+    history: [
+      { date: '2024-02-12', amount: 9.99, status: 'Success' },
+      { date: '2024-01-12', amount: 9.99, status: 'Success' },
+    ]
+  },
 ];
 
 export const MOCK_INCOME: IncomeSource[] = [
@@ -65,6 +128,15 @@ export const MOCK_INSIGHTS: Insight[] = [
   { id: '2', type: 'WARNING', title: 'Dining spend is high', description: 'Dining spend is trending 35% above your 3-month average.', date: 'Yesterday' },
   { id: '3', type: 'WIN', title: 'Best savings month!', description: 'You saved €480 more than last month. Great job!', date: '2 days ago' },
   { id: '4', type: 'TIP', title: 'Optimize your savings', description: 'Move €200 to your Japan Trip vault to stay on track.', date: '3 days ago' },
+];
+
+export const MOCK_INCOME_TRENDS = [
+  { month: 'Oct', amount: 4800 },
+  { month: 'Nov', amount: 5200 },
+  { month: 'Dec', amount: 5500 },
+  { month: 'Jan', amount: 5350 },
+  { month: 'Feb', amount: 5400 },
+  { month: 'Mar', amount: 5470 },
 ];
 
 export const MOCK_SPENDING_TRENDS = [

@@ -66,6 +66,13 @@ export interface RecurringPayment {
   frequency: 'Monthly' | 'Weekly' | 'Annual';
   status: 'Active' | 'Paused';
   currency?: string;
+  description?: string;
+  paymentMethod?: string;
+  history?: {
+    date: string;
+    amount: number;
+    status: 'Success' | 'Failed';
+  }[];
 }
 
 export interface IncomeSource {

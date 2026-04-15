@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Filter, Sparkles, Check, Edit2, Trash2, X, Save, Loader2, Calendar, ChevronUp, ChevronDown, ArrowUpRight, ArrowDownRight, Download } from 'lucide-react';
+import { Search, Filter, Sparkles, Check, Edit2, Trash2, X, Save, Loader2, Calendar, ChevronUp, ChevronDown, ArrowUpRight, ArrowDownRight, Download, Plus } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useFinance } from '../context/FinanceContext';
 import { Transaction } from '../types';
@@ -15,9 +15,20 @@ export const TransactionsPage: React.FC = () => {
     confirmCategory, 
     suggestions, 
     isCategorizing,
-    accounts
+    accounts,
+    addManualTransaction,
+    isAddTransactionModalOpen,
+    setIsAddTransactionModalOpen
   } = useFinance();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [newTransactionForm, setNewTransactionForm] = useState<Partial<Transaction>>({
+    date: new Date().toISOString().split('T')[0],
+    merchant: '',
+    amount: 0,
+    category: 'Others',
+    type: 'expense',
+    account: accounts[0]?.name || 'Main Current'
+  });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showBulkActions, setShowBulkActions] = useState(false);
@@ -72,6 +83,20 @@ export const TransactionsPage: React.FC = () => {
     await bulkUpdateTransactions(selectedIds, { status: 'confirmed', aiTag: 'Reviewed' });
     setSelectedIds([]);
     setIsBulkUpdating(false);
+  };
+
+  const handleAddTransaction = async () => {
+    if (!newTransactionForm.merchant || !newTransactionForm.amount) return;
+    await addManualTransaction(newTransactionForm);
+    setIsAddTransactionModalOpen(false);
+    setNewTransactionForm({
+      date: new Date().toISOString().split('T')[0],
+      merchant: '',
+      amount: 0,
+      category: 'Others',
+      type: 'expense',
+      account: accounts[0]?.name || 'Main Current'
+    });
   };
 
   const handleEdit = (tx: Transaction) => {
@@ -176,6 +201,13 @@ export const TransactionsPage: React.FC = () => {
         </div>
         
         <div className="flex gap-3">
+          <button 
+            onClick={() => setIsAddTransactionModalOpen(true)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent text-white text-sm font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Transaction</span>
+          </button>
           <button 
             onClick={categorizeTransactions}
             disabled={isCategorizing || transactions.filter(t => t.category === 'Uncategorized' || (t.confidence && t.confidence < 0.8)).length === 0}
@@ -793,6 +825,151 @@ export const TransactionsPage: React.FC = () => {
                 >
                   Delete
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Add Transaction Modal */}
+      <AnimatePresence>
+        {isAddTransactionModalOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsAddTransactionModalOpen(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 40 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 40 }}
+              className="relative glass-card max-w-lg w-full overflow-hidden border-white/10 shadow-2xl"
+            >
+              <div className="p-8 border-b border-white/5 flex justify-between items-center">
+                <div>
+                  <h3 className="text-2xl font-bold tracking-tight">Add Transaction</h3>
+                  <p className="text-xs text-white/40 font-bold uppercase tracking-widest mt-1">Manual Entry</p>
+                </div>
+                <button 
+                  onClick={() => setIsAddTransactionModalOpen(false)}
+                  className="p-2 hover:bg-white/5 rounded-xl transition-colors"
+                >
+                  <X className="w-5 h-5 text-white/20" />
+                </button>
+              </div>
+
+              <div className="p-8 space-y-6">
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Type</label>
+                    <div className="flex p-1 bg-white/5 rounded-xl border border-white/5">
+                      <button 
+                        onClick={() => setNewTransactionForm({ ...newTransactionForm, type: 'expense' })}
+                        className={cn(
+                          "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
+                          newTransactionForm.type === 'expense' ? "bg-negative text-white shadow-lg" : "text-white/40 hover:text-white"
+                        )}
+                      >
+                        Expense
+                      </button>
+                      <button 
+                        onClick={() => setNewTransactionForm({ ...newTransactionForm, type: 'income' })}
+                        className={cn(
+                          "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
+                          newTransactionForm.type === 'income' ? "bg-positive text-white shadow-lg" : "text-white/40 hover:text-white"
+                        )}
+                      >
+                        Income
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Date</label>
+                    <input 
+                      type="date"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-all text-white"
+                      value={newTransactionForm.date}
+                      onChange={e => setNewTransactionForm({ ...newTransactionForm, date: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Merchant / Description</label>
+                  <input 
+                    type="text"
+                    placeholder="e.g. Starbucks, Amazon, Salary"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-all text-white"
+                    value={newTransactionForm.merchant}
+                    onChange={e => setNewTransactionForm({ ...newTransactionForm, merchant: e.target.value })}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Amount</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 font-bold">$</span>
+                      <input 
+                        type="number"
+                        placeholder="0.00"
+                        className="w-full bg-white/5 border border-white/10 rounded-xl pl-8 pr-4 py-3 text-sm outline-none focus:border-accent transition-all font-mono text-white"
+                        value={newTransactionForm.amount || ''}
+                        onChange={e => setNewTransactionForm({ ...newTransactionForm, amount: parseFloat(e.target.value) })}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Category</label>
+                    <div className="relative">
+                      <select 
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-all appearance-none text-white"
+                        value={newTransactionForm.category}
+                        onChange={e => setNewTransactionForm({ ...newTransactionForm, category: e.target.value })}
+                      >
+                        {['Housing', 'Food & Drink', 'Transport', 'Entertainment', 'Shopping', 'Electronics', 'Utilities', 'Health', 'Education', 'Salary', 'Freelance', 'Investment', 'Gift', 'Refund', 'Others'].map(c => (
+                          <option key={c} value={c} className="bg-[#050508]">{c}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-white/20 pointer-events-none" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Account</label>
+                  <div className="relative">
+                    <select 
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-all appearance-none text-white"
+                      value={newTransactionForm.account}
+                      onChange={e => setNewTransactionForm({ ...newTransactionForm, account: e.target.value })}
+                    >
+                      {accounts.map(a => (
+                        <option key={a.id} value={a.name} className="bg-[#050508]">{a.name}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-white/20 pointer-events-none" />
+                  </div>
+                </div>
+
+                <div className="pt-4 flex gap-4">
+                  <button 
+                    onClick={() => setIsAddTransactionModalOpen(false)}
+                    className="flex-1 py-4 rounded-2xl bg-white/5 text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-white/10 transition-all border border-white/5 text-white/40 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleAddTransaction}
+                    disabled={!newTransactionForm.merchant || !newTransactionForm.amount}
+                    className="flex-[2] py-4 rounded-2xl bg-accent text-white text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-accent/80 transition-all shadow-lg violet-glow disabled:opacity-50"
+                  >
+                    Add Transaction
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

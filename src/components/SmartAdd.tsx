@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Sparkles, X, Send, Camera, FileText, Loader2, Mic, MicOff } from 'lucide-react';
+import { Plus, Sparkles, X, Send, Camera, FileText, Loader2, Mic, MicOff, Keyboard } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useFinance } from '../context/FinanceContext';
 
-export const SmartAdd: React.FC = () => {
+export const SmartAdd: React.FC<{ setActiveTab: (tab: string) => void }> = ({ setActiveTab }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [naturalInput, setNaturalInput] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [analysisType, setAnalysisType] = useState<'text' | 'file'>('text');
-  const { addTransactions, analyzeFile } = useFinance();
+  const { addTransactions, analyzeFile, setIsAddTransactionModalOpen } = useFinance();
 
   const speak = (text: string) => {
     const utterance = new SpeechSynthesisUtterance(text);
@@ -95,6 +95,12 @@ export const SmartAdd: React.FC = () => {
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const openManualEntry = () => {
+    setIsAdding(false);
+    setActiveTab('transactions');
+    setIsAddTransactionModalOpen(true);
   };
 
   return (
@@ -184,6 +190,15 @@ export const SmartAdd: React.FC = () => {
                     <p className="text-[8px] text-white/20 uppercase font-bold mt-1">PDF or Image</p>
                   </div>
                 </label>
+
+                <button 
+                  onClick={openManualEntry}
+                  disabled={isAnalyzing}
+                  className="col-span-2 flex items-center justify-center gap-3 p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all group/manual"
+                >
+                  <Keyboard className="w-4 h-4 text-white/40 group-hover/manual:text-white transition-colors" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-white/40 group-hover/manual:text-white transition-colors">Switch to Manual Entry</span>
+                </button>
               </div>
               
               <div className="flex gap-4">

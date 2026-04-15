@@ -13,6 +13,7 @@ interface FinanceContextType {
   spendingDataByCurrency: Record<string, { name: string; value: number; color: string }[]>;
   isLoading: boolean;
   addTransactions: (input: string) => Promise<void>;
+  addManualTransaction: (transaction: Partial<Transaction>) => Promise<void>;
   analyzeFile: (file: File, type: 'bill' | 'statement') => Promise<void>;
   deleteTransaction: (id: string) => void;
   addSavingsGoal: (goal: SavingsGoal) => void;
@@ -39,6 +40,8 @@ interface FinanceContextType {
   confirmCategory: (id: string, category: string) => void;
   suggestions: Record<string, { category: string; confidence: number }[]>;
   isCategorizing: boolean;
+  isAddTransactionModalOpen: boolean;
+  setIsAddTransactionModalOpen: (isOpen: boolean) => void;
   netWorthByCurrency: Record<string, {
     total: number;
     assets: number;
@@ -77,6 +80,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([]);
   const [suggestions, setSuggestions] = useState<Record<string, { category: string; confidence: number }[]>>({});
   const [isCategorizing, setIsCategorizing] = useState(false);
+  const [isAddTransactionModalOpen, setIsAddTransactionModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   // Initial data fetch
@@ -510,6 +514,21 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, []);
 
+  const addManualTransaction = useCallback(async (transaction: Partial<Transaction>) => {
+    try {
+      const newTx = await financeApi.createTransaction({
+        ...transaction,
+        status: transaction.status || 'confirmed',
+        confidence: 1.0,
+        aiTag: transaction.aiTag || 'Manual Entry'
+      });
+      setTransactions(prev => [newTx, ...prev]);
+    } catch (error) {
+      console.error('Failed to add manual transaction:', error);
+      throw error;
+    }
+  }, []);
+
   const deleteTransaction = useCallback(async (id: string) => {
     try {
       await financeApi.deleteTransaction(id);
@@ -755,6 +774,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       spendingDataByCurrency, 
       isLoading,
       addTransactions, 
+      addManualTransaction,
       analyzeFile, 
       deleteTransaction,
       updateTransaction,
@@ -781,6 +801,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       confirmCategory,
       suggestions,
       isCategorizing,
+      isAddTransactionModalOpen,
+      setIsAddTransactionModalOpen,
       healthMetricsByCurrency,
       netWorthByCurrency,
       monthlyTrends

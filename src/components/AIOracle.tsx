@@ -27,7 +27,7 @@ export const AIOracle: React.FC = () => {
       
       try {
         // Initialize MCP Client
-        const mcp = new MCPClient('/mcp/sse');
+        const mcp = new MCPClient('/api/finance/mcp/sse');
         await mcp.connect();
         mcpClientRef.current = mcp;
 
