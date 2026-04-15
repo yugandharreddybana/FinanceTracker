@@ -1,11 +1,27 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { MOCK_INCOME } from '../constants';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { TrendingUp, ArrowUpRight, Calendar, DollarSign, Briefcase } from 'lucide-react';
+import { TrendingUp, ArrowUpRight, Calendar, DollarSign, Briefcase, ChevronDown } from 'lucide-react';
+
+const CustomTooltip = ({ active, payload, currency }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="glass-card p-3 border-accent/20 bg-card/90 backdrop-blur-xl">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">{payload[0].payload.source}</p>
+        <p className="text-sm font-bold font-mono text-white">{payload[0].value.toLocaleString('en-US', { style: 'currency', currency: currency || 'USD' })}</p>
+      </div>
+    );
+  }
+  return null;
+};
 
 export const IncomeAnalyticsPage: React.FC = () => {
-  const totalIncome = MOCK_INCOME.reduce((acc, curr) => acc + curr.amount, 0);
+  const currencies = Array.from(new Set(MOCK_INCOME.map(i => i.currency || 'USD')));
+  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'USD');
+
+  const filteredIncome = MOCK_INCOME.filter(i => (i.currency || 'USD') === selectedCurrency);
+  const totalIncome = filteredIncome.reduce((acc, curr) => acc + curr.amount, 0);
 
   return (
     <motion.div
@@ -14,10 +30,26 @@ export const IncomeAnalyticsPage: React.FC = () => {
       exit={{ opacity: 0, y: -20 }}
       className="max-w-7xl mx-auto"
     >
-      <div className="flex justify-between items-end mb-12">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-12 gap-6">
         <div>
           <h1 className="text-4xl font-bold tracking-tight mb-2">Income Analytics</h1>
           <p className="text-white/40">Detailed breakdown and forecasting of your earnings</p>
+        </div>
+        <div className="flex items-center gap-4">
+          {currencies.length > 1 && (
+            <div className="relative">
+              <select
+                value={selectedCurrency}
+                onChange={(e) => setSelectedCurrency(e.target.value)}
+                className="appearance-none bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm font-bold text-white pr-10 focus:outline-none focus:ring-1 focus:ring-accent"
+              >
+                {currencies.map(c => (
+                  <option key={c} value={c} className="bg-[#050508] text-white">{c}</option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+            </div>
+          )}
         </div>
       </div>
 
@@ -35,7 +67,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
           </div>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={MOCK_INCOME}>
+              <BarChart data={filteredIncome}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                 <XAxis 
                   dataKey="source" 
@@ -48,12 +80,9 @@ export const IncomeAnalyticsPage: React.FC = () => {
                   tickLine={false} 
                   tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontFamily: 'Geist Mono' }} 
                 />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#13131A', border: '1px solid rgba(124,110,250,0.2)', borderRadius: '12px' }}
-                  itemStyle={{ color: '#F0F0FF', fontFamily: 'Geist Mono' }}
-                />
+                <Tooltip content={<CustomTooltip currency={selectedCurrency} />} />
                 <Bar dataKey="amount" radius={[6, 6, 0, 0]}>
-                  {MOCK_INCOME.map((entry, index) => (
+                  {filteredIncome.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Bar>
@@ -65,7 +94,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
         <div className="space-y-6">
           <div className="glass-card p-8 bg-accent/5 border-accent/20">
             <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-2">Total Monthly Income</p>
-            <h4 className="text-4xl font-bold font-mono tracking-tighter mb-4">${totalIncome.toLocaleString()}</h4>
+            <h4 className="text-4xl font-bold font-mono tracking-tighter mb-4">{totalIncome.toLocaleString('en-US', { style: 'currency', currency: selectedCurrency })}</h4>
             <div className="flex items-center gap-1 text-positive text-xs font-bold">
               <TrendingUp className="w-4 h-4" />
               <span>+15% vs last year</span>
@@ -75,7 +104,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
           <div className="glass-card p-6">
             <h4 className="text-xs font-bold uppercase tracking-widest text-white/30 mb-6">Income Sources</h4>
             <div className="space-y-6">
-              {MOCK_INCOME.map(source => (
+              {filteredIncome.map(source => (
                 <div key={source.id} className="flex justify-between items-center">
                   <div className="flex items-center gap-3">
                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: source.color }} />
@@ -84,7 +113,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
                       <p className="text-[10px] text-white/30 uppercase font-mono">{source.frequency}</p>
                     </div>
                   </div>
-                  <span className="font-mono font-bold">${source.amount}</span>
+                  <span className="font-mono font-bold">{source.amount.toLocaleString('en-US', { style: 'currency', currency: selectedCurrency })}</span>
                 </div>
               ))}
             </div>

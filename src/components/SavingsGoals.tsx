@@ -57,9 +57,9 @@ export const SavingsGoals: React.FC = () => {
                 <span className="text-[10px] font-bold font-mono text-white/20 uppercase tracking-widest">{Math.round(progress)}%</span>
               </div>
               <p className="text-xs text-white/40 font-mono font-medium mb-3">
-                <span className="text-white font-bold">${goal.current.toLocaleString()}</span>
+                <span className="text-white font-bold">{goal.current.toLocaleString('en-US', { style: 'currency', currency: goal.currency || 'USD' })}</span>
                 <span className="mx-1">/</span>
-                <span>${goal.target.toLocaleString()}</span>
+                <span>{goal.target.toLocaleString('en-US', { style: 'currency', currency: goal.currency || 'USD' })}</span>
               </p>
               <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden p-[2px] border border-white/5">
                 <motion.div

@@ -258,9 +258,9 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
               onChange={(e) => setSelectedBank(e.target.value)}
               className="bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-xs font-bold text-white/70 outline-none focus:border-accent/50 transition-all"
             >
-              <option value="ALL" className="bg-background text-white">All Accounts</option>
+              <option value="ALL" className="bg-[#050508] text-white">All Accounts</option>
               {accounts.map(acc => (
-                <option key={acc.id} value={acc.name} className="bg-background text-white">{acc.name}</option>
+                <option key={acc.id} value={acc.name} className="bg-[#050508] text-white">{acc.name}</option>
               ))}
             </select>
             <button 

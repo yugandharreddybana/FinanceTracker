@@ -8,6 +8,7 @@ type TimeRange = '6M' | '1M' | '15D' | '7D' | 'CUSTOM';
 export const SpendingTrends: React.FC = () => {
   const { transactions } = useFinance();
   const [timeRange, setTimeRange] = useState<TimeRange>('6M');
+  const [selectedCurrency, setSelectedCurrency] = useState<string>('ALL');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
 
@@ -21,6 +22,8 @@ export const SpendingTrends: React.FC = () => {
     'AUD': '#EC4899',
     'CAD': '#06B6D4',
   };
+
+  const filteredCurrencies = selectedCurrency === 'ALL' ? currencies : [selectedCurrency];
 
   const trendData = useMemo(() => {
     const today = new Date();
@@ -72,7 +75,7 @@ export const SpendingTrends: React.FC = () => {
             })
             .reduce((acc, t) => acc + Math.abs(t.amount), 0);
             
-          dataPoint[curr] = amount || Math.random() * 2000 + 1000;
+          dataPoint[curr] = amount || (transactions.length > 0 ? 0 : Math.random() * 2000 + 1000);
         });
         data.push(dataPoint);
       }
@@ -92,7 +95,7 @@ export const SpendingTrends: React.FC = () => {
             })
             .reduce((acc, t) => acc + Math.abs(t.amount), 0);
             
-          dataPoint[curr] = amount || Math.random() * 100 + 50;
+          dataPoint[curr] = amount || (transactions.length > 0 ? 0 : Math.random() * 100 + 50);
         });
         data.push(dataPoint);
       }
@@ -107,37 +110,49 @@ export const SpendingTrends: React.FC = () => {
           <p className="text-accent text-[10px] font-bold tracking-[0.3em] uppercase mb-1">Spending Trends</p>
           <h3 className="text-2xl font-bold tracking-tight">Analytics</h3>
         </div>
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <select 
+            value={selectedCurrency}
+            onChange={(e) => setSelectedCurrency(e.target.value)}
+            className="bg-white/5 border border-white/10 rounded-lg py-1.5 px-3 text-xs font-bold text-white/70 outline-none focus:border-accent/50 transition-all"
+          >
+            <option value="ALL" className="bg-[#050508] text-white">All Currencies</option>
+            {currencies.map(curr => (
+              <option key={curr} value={curr} className="bg-[#050508] text-white">{curr}</option>
+            ))}
+          </select>
+
           <select 
             value={timeRange}
             onChange={(e) => setTimeRange(e.target.value as TimeRange)}
             className="bg-white/5 border border-white/10 rounded-lg py-1.5 px-3 text-xs font-bold text-white/70 outline-none focus:border-accent/50 transition-all"
           >
-            <option value="6M" className="bg-background text-white">Last 6 Months</option>
-            <option value="1M" className="bg-background text-white">Last Month</option>
-            <option value="15D" className="bg-background text-white">Last 15 Days</option>
-            <option value="7D" className="bg-background text-white">Last Week</option>
-            <option value="CUSTOM" className="bg-background text-white">Custom Dates</option>
+            <option value="6M" className="bg-[#050508] text-white">Last 6 Months</option>
+            <option value="1M" className="bg-[#050508] text-white">Last Month</option>
+            <option value="15D" className="bg-[#050508] text-white">Last 15 Days</option>
+            <option value="7D" className="bg-[#050508] text-white">Last Week</option>
+            <option value="CUSTOM" className="bg-[#050508] text-white">Custom Dates</option>
           </select>
-          {timeRange === 'CUSTOM' && (
-            <div className="flex items-center gap-2">
-              <input 
-                type="date" 
-                value={customStart}
-                onChange={(e) => setCustomStart(e.target.value)}
-                className="bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] text-white/70 outline-none"
-              />
-              <span className="text-white/30 text-[10px]">to</span>
-              <input 
-                type="date" 
-                value={customEnd}
-                onChange={(e) => setCustomEnd(e.target.value)}
-                className="bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] text-white/70 outline-none"
-              />
-            </div>
-          )}
         </div>
       </div>
+
+      {timeRange === 'CUSTOM' && (
+        <div className="flex items-center gap-2 mb-6 self-end">
+          <input 
+            type="date" 
+            value={customStart}
+            onChange={(e) => setCustomStart(e.target.value)}
+            className="bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] text-white/70 outline-none"
+          />
+          <span className="text-white/30 text-[10px]">to</span>
+          <input 
+            type="date" 
+            value={customEnd}
+            onChange={(e) => setCustomEnd(e.target.value)}
+            className="bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] text-white/70 outline-none"
+          />
+        </div>
+      )}
 
       <div className="flex-1 min-h-[240px] w-full">
         <ResponsiveContainer width="100%" height="100%">
@@ -160,7 +175,7 @@ export const SpendingTrends: React.FC = () => {
             />
             <YAxis 
               hide 
-              domain={['dataMin - 500', 'dataMax + 500']}
+              domain={['auto', 'auto']}
             />
             <Tooltip 
               contentStyle={{ 
@@ -173,9 +188,17 @@ export const SpendingTrends: React.FC = () => {
               }}
               itemStyle={{ color: '#7C6EFA' }}
               cursor={{ stroke: 'rgba(124, 110, 250, 0.2)', strokeWidth: 2 }}
-              formatter={(value: number, name: string) => [value.toLocaleString('en-US', { style: 'currency', currency: name }), name]}
+              formatter={(value: number, name: string) => [
+                value.toLocaleString('en-US', { 
+                  style: 'currency', 
+                  currency: name,
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 0 
+                }), 
+                name
+              ]}
             />
-            {currencies.map((curr, i) => (
+            {filteredCurrencies.map((curr, i) => (
               <Area 
                 key={curr}
                 type="monotone" 

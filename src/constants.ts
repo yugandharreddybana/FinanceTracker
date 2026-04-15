@@ -38,26 +38,26 @@ export const MOCK_ACCOUNTS: BankAccount[] = [
 ];
 
 export const MOCK_BUDGETS: Budget[] = [
-  { id: '1', category: 'Housing', emoji: '🏠', limit: 1500, spent: 1500, color: '#7C6EFA', rolloverEnabled: true, rolloverAmount: 0 },
-  { id: '2', category: 'Food', emoji: '🍱', limit: 600, spent: 450, color: '#22D3A5', rolloverEnabled: true, rolloverAmount: 50 },
-  { id: '3', category: 'Transport', emoji: '🚗', limit: 300, spent: 340, color: '#F43F5E', perTransactionLimit: 50 },
-  { id: '4', category: 'Entertainment', emoji: '🎬', limit: 200, spent: 180, color: '#F59E0B', rolloverEnabled: true, rolloverAmount: 20 },
-  { id: '5', category: 'Shopping', emoji: '🛍️', limit: 400, spent: 210, color: '#EC4899' },
-  { id: '6', category: 'Health', emoji: '🏥', limit: 150, spent: 80, color: '#06B6D4' },
-  { id: '7', category: 'Utilities', emoji: '⚡', limit: 250, spent: 220, color: '#8B5CF6' },
+  { id: '1', category: 'Housing', emoji: '🏠', limit: 1500, spent: 1500, color: '#7C6EFA', rolloverEnabled: true, rolloverAmount: 0, currency: 'USD' },
+  { id: '2', category: 'Food', emoji: '🍱', limit: 600, spent: 450, color: '#22D3A5', rolloverEnabled: true, rolloverAmount: 50, currency: 'USD' },
+  { id: '3', category: 'Transport', emoji: '🚗', limit: 300, spent: 340, color: '#F43F5E', perTransactionLimit: 50, currency: 'USD' },
+  { id: '4', category: 'Entertainment', emoji: '🎬', limit: 200, spent: 180, color: '#F59E0B', rolloverEnabled: true, rolloverAmount: 20, currency: 'USD' },
+  { id: '5', category: 'Shopping', emoji: '🛍️', limit: 400, spent: 210, color: '#EC4899', currency: 'USD' },
+  { id: '6', category: 'Health', emoji: '🏥', limit: 150, spent: 80, color: '#06B6D4', currency: 'USD' },
+  { id: '7', category: 'Utilities', emoji: '⚡', limit: 250, spent: 220, color: '#8B5CF6', currency: 'USD' },
 ];
 
 export const MOCK_RECURRING: RecurringPayment[] = [
-  { id: '1', name: 'Netflix', amount: 15.99, date: 17, category: 'Entertainment', frequency: 'Monthly', status: 'Active' },
-  { id: '2', name: 'Rent', amount: 1500.00, date: 1, category: 'Housing', frequency: 'Monthly', status: 'Active' },
-  { id: '3', name: 'Gym', amount: 45.00, date: 5, category: 'Health', frequency: 'Monthly', status: 'Active' },
-  { id: '4', name: 'Spotify', amount: 9.99, date: 12, category: 'Entertainment', frequency: 'Monthly', status: 'Paused' },
+  { id: '1', name: 'Netflix', amount: 15.99, date: 17, category: 'Entertainment', frequency: 'Monthly', status: 'Active', currency: 'EUR' },
+  { id: '2', name: 'Rent', amount: 1500.00, date: 1, category: 'Housing', frequency: 'Monthly', status: 'Active', currency: 'USD' },
+  { id: '3', name: 'Gym', amount: 45.00, date: 5, category: 'Health', frequency: 'Monthly', status: 'Active', currency: 'USD' },
+  { id: '4', name: 'Spotify', amount: 9.99, date: 12, category: 'Entertainment', frequency: 'Monthly', status: 'Paused', currency: 'EUR' },
 ];
 
 export const MOCK_INCOME: IncomeSource[] = [
-  { id: '1', source: 'Tech Corp Salary', amount: 4500, date: '2024-03-25', frequency: 'Monthly', color: '#7C6EFA' },
-  { id: '2', source: 'Freelance Design', amount: 850, date: '2024-03-15', frequency: 'Variable', color: '#22D3A5' },
-  { id: '3', source: 'Dividends', amount: 120, date: '2024-03-10', frequency: 'Quarterly', color: '#F59E0B' },
+  { id: '1', source: 'Tech Corp Salary', amount: 4500, date: '2024-03-25', frequency: 'Monthly', color: '#7C6EFA', currency: 'USD' },
+  { id: '2', source: 'Freelance Design', amount: 850, date: '2024-03-15', frequency: 'Variable', color: '#22D3A5', currency: 'USD' },
+  { id: '3', source: 'Dividends', amount: 120, date: '2024-03-10', frequency: 'Quarterly', color: '#F59E0B', currency: 'EUR' },
 ];
 
 export const MOCK_INSIGHTS: Insight[] = [
@@ -103,7 +103,8 @@ export const MOCK_LOANS: Loan[] = [
     startDate: '2020-01-01',
     endDate: '2050-01-01',
     category: 'Housing',
-    color: '#7C6EFA'
+    color: '#7C6EFA',
+    currency: 'USD'
   },
   {
     id: '2',
@@ -115,6 +116,7 @@ export const MOCK_LOANS: Loan[] = [
     startDate: '2021-06-15',
     endDate: '2026-06-15',
     category: 'Transport',
-    color: '#F43F5E'
+    color: '#F43F5E',
+    currency: 'USD'
   }
 ];

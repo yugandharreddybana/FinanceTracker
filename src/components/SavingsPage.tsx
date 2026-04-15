@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFinance } from '../context/FinanceContext';
 import { Plus, Target, TrendingUp, Calendar, ArrowRight, X, ChevronDown } from 'lucide-react';
@@ -10,7 +10,12 @@ export const SavingsPage: React.FC = () => {
   const [fundingGoal, setFundingGoal] = React.useState<string | null>(null);
   const [fundAmount, setFundAmount] = React.useState('');
   const [selectedAccountId, setSelectedAccountId] = React.useState('');
-  const [newGoal, setNewGoal] = React.useState({ name: '', target: '', emoji: '🎯', deadline: '' });
+  const [newGoal, setNewGoal] = React.useState({ name: '', target: '', emoji: '🎯', deadline: '', currency: 'USD' });
+
+  const currencies = Array.from(new Set(savingsGoals.map(g => g.currency || 'USD')));
+  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'USD');
+
+  const filteredGoals = savingsGoals.filter(g => (g.currency || 'USD') === selectedCurrency);
 
   const handleAddGoal = () => {
     if (!newGoal.name || !newGoal.target) return;
@@ -21,10 +26,11 @@ export const SavingsPage: React.FC = () => {
       current: 0,
       emoji: newGoal.emoji,
       deadline: newGoal.deadline || 'No deadline',
-      isHero: false
+      isHero: false,
+      currency: newGoal.currency || 'USD'
     });
     setIsAdding(false);
-    setNewGoal({ name: '', target: '', emoji: '🎯', deadline: '' });
+    setNewGoal({ name: '', target: '', emoji: '🎯', deadline: '', currency: 'USD' });
   };
 
   const handleTransfer = () => {
@@ -42,18 +48,34 @@ export const SavingsPage: React.FC = () => {
       exit={{ opacity: 0, y: -20 }}
       className="max-w-7xl mx-auto"
     >
-      <div className="flex justify-between items-end mb-12">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-12 gap-6">
         <div>
           <h1 className="text-4xl font-bold tracking-tight mb-2">Savings Goals</h1>
           <p className="text-white/40">Plan and track your future aspirations</p>
         </div>
-        <button 
-          onClick={() => setIsAdding(true)}
-          className="flex items-center gap-2 px-6 py-3 rounded-xl bg-accent text-white text-sm font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Goal</span>
-        </button>
+        <div className="flex items-center gap-4">
+          {currencies.length > 1 && (
+            <div className="relative">
+              <select
+                value={selectedCurrency}
+                onChange={(e) => setSelectedCurrency(e.target.value)}
+                className="appearance-none bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm font-bold text-white pr-10 focus:outline-none focus:ring-1 focus:ring-accent"
+              >
+                {currencies.map(c => (
+                  <option key={c} value={c} className="bg-[#050508] text-white">{c}</option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+            </div>
+          )}
+          <button 
+            onClick={() => setIsAdding(true)}
+            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-accent text-white text-sm font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow"
+          >
+            <Plus className="w-4 h-4" />
+            <span>New Goal</span>
+          </button>
+        </div>
       </div>
 
       <AnimatePresence>
@@ -65,7 +87,7 @@ export const SavingsPage: React.FC = () => {
             className="overflow-hidden mb-12"
           >
             <div className="glass-card p-8 border-accent/20 bg-accent/[0.02]">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-6 items-end">
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Goal Name</label>
                   <input 
@@ -77,7 +99,7 @@ export const SavingsPage: React.FC = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Target Amount ($)</label>
+                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Target Amount</label>
                   <input 
                     type="number"
                     value={newGoal.target}
@@ -95,6 +117,21 @@ export const SavingsPage: React.FC = () => {
                     placeholder="e.g. Dec 2024"
                     className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all"
                   />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Currency</label>
+                  <select 
+                    value={newGoal.currency || 'USD'}
+                    onChange={(e) => setNewGoal(prev => ({ ...prev, currency: e.target.value }))}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all"
+                  >
+                    <option value="USD" className="bg-[#050508] text-white">USD ($)</option>
+                    <option value="EUR" className="bg-[#050508] text-white">EUR (€)</option>
+                    <option value="GBP" className="bg-[#050508] text-white">GBP (£)</option>
+                    <option value="JPY" className="bg-[#050508] text-white">JPY (¥)</option>
+                    <option value="AUD" className="bg-[#050508] text-white">AUD ($)</option>
+                    <option value="CAD" className="bg-[#050508] text-white">CAD ($)</option>
+                  </select>
                 </div>
                 <div className="flex gap-3">
                   <button 
@@ -117,7 +154,7 @@ export const SavingsPage: React.FC = () => {
       </AnimatePresence>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
-        {savingsGoals.map((goal) => {
+        {filteredGoals.map((goal) => {
           const progress = (goal.current / goal.target) * 100;
           return (
             <motion.div
@@ -140,10 +177,10 @@ export const SavingsPage: React.FC = () => {
               <div className="mb-8">
                 <div className="flex justify-between items-end mb-2">
                   <span className="text-3xl font-bold font-mono tracking-tighter">
-                    ${goal.current.toLocaleString()}
+                    {goal.current.toLocaleString('en-US', { style: 'currency', currency: goal.currency || 'USD' })}
                   </span>
                   <span className="text-sm text-white/40 font-mono">
-                    of ${goal.target.toLocaleString()}
+                    of {goal.target.toLocaleString('en-US', { style: 'currency', currency: goal.currency || 'USD' })}
                   </span>
                 </div>
                 <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
@@ -281,9 +318,9 @@ export const SavingsPage: React.FC = () => {
                       onChange={(e) => setSelectedAccountId(e.target.value)}
                       className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-6 outline-none focus:border-accent/50 transition-all font-bold text-sm"
                     >
-                      <option value="" disabled className="bg-background text-white">Select an account</option>
+                      <option value="" disabled className="bg-[#050508] text-white">Select an account</option>
                       {accounts.map(account => (
-                        <option key={account.id} value={account.id} className="bg-background text-white">
+                        <option key={account.id} value={account.id} className="bg-[#050508] text-white">
                           {account.name} (${account.balance.toLocaleString()})
                         </option>
                       ))}

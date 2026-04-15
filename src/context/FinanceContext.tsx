@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
-import { Transaction, SavingsGoal, RecurringPayment, Loan, Budget, BankAccount } from '../types';
-import { MOCK_TRANSACTIONS, MOCK_SAVINGS_GOALS, MOCK_RECURRING, MOCK_LOANS, MOCK_BUDGETS, MOCK_ACCOUNTS } from '../constants';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { Transaction, SavingsGoal, RecurringPayment, Loan, Budget, BankAccount, IncomeSource } from '../types';
+import { financeApi } from '../services/api';
 
 interface FinanceContextType {
   transactions: Transaction[];
@@ -9,19 +9,31 @@ interface FinanceContextType {
   loans: Loan[];
   budgets: Budget[];
   accounts: BankAccount[];
-  spendingData: { name: string; value: number; color: string }[];
+  incomeSources: IncomeSource[];
+  spendingDataByCurrency: Record<string, { name: string; value: number; color: string }[]>;
+  isLoading: boolean;
   addTransactions: (input: string) => Promise<void>;
   analyzeFile: (file: File, type: 'bill' | 'statement') => Promise<void>;
   deleteTransaction: (id: string) => void;
   addSavingsGoal: (goal: SavingsGoal) => void;
   updateSavingsGoal: (id: string, current: number) => void;
   addRecurringPayment: (payment: RecurringPayment) => void;
+  updateRecurringPayment: (id: string, updates: Partial<RecurringPayment>) => void;
+  deleteRecurringPayment: (id: string) => void;
   updateTransaction: (id: string, updates: Partial<Transaction>) => void;
+  bulkUpdateTransactions: (ids: string[], updates: Partial<Transaction>) => Promise<void>;
   addLoan: (loan: Loan) => void;
+  updateLoan: (id: string, updates: Partial<Loan>) => void;
+  deleteLoan: (id: string) => void;
   addBudget: (budget: Budget) => void;
   updateBudget: (id: string, updates: Partial<Budget>) => void;
   deleteBudget: (id: string) => void;
   addAccount: (account: BankAccount) => void;
+  updateAccount: (id: string, updates: Partial<BankAccount>) => void;
+  deleteAccount: (id: string) => void;
+  addIncomeSource: (income: IncomeSource) => void;
+  updateIncomeSource: (id: string, updates: Partial<IncomeSource>) => void;
+  deleteIncomeSource: (id: string) => void;
   transferToSavings: (amount: number, goalId: string, accountId: string) => void;
   categorizeTransactions: () => Promise<void>;
   confirmCategory: (id: string, category: string) => void;
@@ -56,14 +68,45 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [transactions, setTransactions] = useState<Transaction[]>(MOCK_TRANSACTIONS);
-  const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>(MOCK_SAVINGS_GOALS);
-  const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>(MOCK_RECURRING);
-  const [loans, setLoans] = useState<Loan[]>(MOCK_LOANS);
-  const [budgets, setBudgets] = useState<Budget[]>(MOCK_BUDGETS);
-  const [accounts, setAccounts] = useState<BankAccount[]>(MOCK_ACCOUNTS);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
+  const [recurringPayments, setRecurringPayments] = useState<RecurringPayment[]>([]);
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [accounts, setAccounts] = useState<BankAccount[]>([]);
+  const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([]);
   const [suggestions, setSuggestions] = useState<Record<string, { category: string; confidence: number }[]>>({});
   const [isCategorizing, setIsCategorizing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Initial data fetch
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [txs, goals, recs, lns, bdgts, accs, incs] = await Promise.all([
+          financeApi.getTransactions(),
+          financeApi.getSavingsGoals(),
+          financeApi.getRecurringPayments(),
+          financeApi.getLoans(),
+          financeApi.getBudgets(),
+          financeApi.getAccounts(),
+          financeApi.getIncomeSources()
+        ]);
+        setTransactions(txs);
+        setSavingsGoals(goals);
+        setRecurringPayments(recs);
+        setLoans(lns);
+        setBudgets(bdgts);
+        setAccounts(accs);
+        setIncomeSources(incs);
+      } catch (error) {
+        console.error('Failed to fetch initial data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   const netWorthByCurrency = React.useMemo(() => {
     const result: Record<string, { total: number; assets: number; liabilities: number; change: number }> = {};
@@ -171,20 +214,58 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }).catch(err => console.error('Failed to sync transactions:', err));
   }, [transactions]);
 
-  const spendingData = React.useMemo(() => {
-    const totals: Record<string, number> = {};
-    transactions.forEach(t => {
-      if (t.type === 'expense') {
-        const cat = t.category || 'Uncategorized';
-        totals[cat] = (totals[cat] || 0) + Math.abs(t.amount);
-      }
+  const spendingDataByCurrency = React.useMemo(() => {
+    const result: Record<string, { name: string, value: number, color: string }[]> = {};
+    const currencies = Array.from(new Set(transactions.map(t => t.currency || 'USD')));
+    
+    currencies.forEach(curr => {
+      const totals: Record<string, number> = {};
+      transactions.forEach(t => {
+        if (t.type === 'expense' && (t.currency || 'USD') === curr) {
+          const cat = t.category || 'Uncategorized';
+          totals[cat] = (totals[cat] || 0) + Math.abs(t.amount);
+        }
+      });
+      result[curr] = Object.entries(totals).map(([name, value]) => ({
+        name,
+        value,
+        color: CATEGORY_COLORS[name] || '#6B7280'
+      })).sort((a, b) => b.value - a.value);
     });
-    return Object.entries(totals).map(([name, value]) => ({
-      name,
-      value,
-      color: CATEGORY_COLORS[name] || '#6B7280'
-    })).sort((a, b) => b.value - a.value);
+    
+    return result;
   }, [transactions]);
+
+  const transferToSavings = useCallback(async (amount: number, goalId: string, accountId: string) => {
+    const goal = savingsGoals.find(g => g.id === goalId);
+    const account = accounts.find(a => a.id === accountId);
+    if (!goal || !account) return;
+
+    try {
+      // Create a transaction for the transfer
+      const newTx = await financeApi.createTransaction({
+        date: new Date().toISOString().split('T')[0],
+        merchant: `Transfer to ${goal.name}`,
+        amount: -Math.abs(amount),
+        category: 'Savings',
+        type: 'expense',
+        status: 'confirmed',
+        aiTag: 'Savings Transfer',
+        account: account.name,
+        confidence: 1.0,
+        savingsGoalId: goalId
+      });
+
+      const updatedGoal = await financeApi.updateSavingsGoal(goalId, { current: goal.current + Math.abs(amount) });
+      const updatedAccount = await financeApi.updateAccount(accountId, { balance: account.balance - Math.abs(amount) });
+
+      setTransactions(prev => [newTx, ...prev]);
+      setSavingsGoals(prev => prev.map(g => g.id === goalId ? updatedGoal : g));
+      setAccounts(prev => prev.map(a => a.id === accountId ? updatedAccount : a));
+    } catch (error) {
+      console.error('Failed to transfer to savings:', error);
+    }
+  }, [savingsGoals, accounts]);
 
   const addTransactions = useCallback(async (input: string) => {
     try {
@@ -260,7 +341,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      results.forEach((res: any, index: number) => {
+      for (const res of results) {
         if (res.intent === 'TRANSACTION') {
           let dateStr = res.date;
           const matchedDate = new Date(res.date);
@@ -271,8 +352,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           const amount = res.amount;
           const type = res.type || (amount > 0 ? 'income' : 'expense');
 
-          const newTransaction: Transaction = {
-            id: `smart-tx-${Date.now()}-${index}`,
+          const newTx = await financeApi.createTransaction({
             date: dateStr,
             merchant: res.merchant || res.name || 'Unknown',
             amount: type === 'expense' ? -Math.abs(amount) : Math.abs(amount),
@@ -282,33 +362,30 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
             aiTag: 'Smart Added',
             account: 'Main Current',
             confidence: res.confidence || 0.9
-          };
-          setTransactions(prev => [newTransaction, ...prev]);
+          });
+          setTransactions(prev => [newTx, ...prev]);
         } else if (res.intent === 'SAVINGS_GOAL') {
-          const newGoal: SavingsGoal = {
-            id: `smart-goal-${Date.now()}-${index}`,
+          const newGoal = await financeApi.createSavingsGoal({
             name: res.name || 'New Goal',
             target: res.target || 1000,
             current: 0,
             emoji: res.emoji || '🎯',
             deadline: res.deadline,
             isHero: false
-          };
+          });
           setSavingsGoals(prev => [newGoal, ...prev]);
         } else if (res.intent === 'RECURRING_PAYMENT') {
-          const newRecurring: RecurringPayment = {
-            id: `smart-rec-${Date.now()}-${index}`,
+          const newRecurring = await financeApi.createRecurringPayment({
             name: res.name || res.merchant || 'Subscription',
             amount: Math.abs(res.amount || 0),
             date: res.dayOfMonth || 1,
             category: res.category || 'Subscription',
             frequency: res.frequency || 'Monthly',
             status: 'Active'
-          };
+          });
           setRecurringPayments(prev => [newRecurring, ...prev]);
         } else if (res.intent === 'LOAN') {
-          const newLoan: Loan = {
-            id: `smart-loan-${Date.now()}-${index}`,
+          const newLoan = await financeApi.createLoan({
             name: res.name || 'New Loan',
             totalAmount: res.totalAmount || 10000,
             remainingAmount: res.totalAmount || 10000,
@@ -318,38 +395,37 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
             endDate: res.endDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000 * 5).toISOString().split('T')[0],
             category: res.category || 'Debt',
             color: '#F43F5E'
-          };
+          });
           setLoans(prev => [newLoan, ...prev]);
         } else if (res.intent === 'SAVINGS_TRANSFER') {
           const amount = Math.abs(res.amount || 0);
           const goalId = res.goalId;
           if (goalId && amount > 0) {
-            // Default to first account if none specified in smart add
             const defaultAccountId = accounts[0]?.id || 'acc-1';
             transferToSavings(amount, goalId, defaultAccountId);
           }
         }
-      });
+      }
     } catch (error) {
       console.error("Error parsing smart add:", error);
-      // Fallback (only for transactions for now)
       const separators = /[;,\n]/;
       const entries = input.split(separators).map(e => e.trim()).filter(e => e.length > 0);
-      const fallbackTransactions: Transaction[] = entries.map((entry, index) => ({
-        id: `fallback-${Date.now()}-${index}`,
-        date: new Date().toISOString().split('T')[0],
-        merchant: entry.split(' ')[0] || 'Unknown',
-        amount: -10,
-        category: 'Uncategorized',
-        type: 'expense',
-        status: 'confirmed',
-        aiTag: 'Manual Entry',
-        account: 'Main Current',
-        confidence: 0.5
-      }));
-      setTransactions(prev => [...fallbackTransactions, ...prev]);
+      for (const entry of entries) {
+        const newTx = await financeApi.createTransaction({
+          date: new Date().toISOString().split('T')[0],
+          merchant: entry.split(' ')[0] || 'Unknown',
+          amount: -10,
+          category: 'Uncategorized',
+          type: 'expense',
+          status: 'confirmed',
+          aiTag: 'Manual Entry',
+          account: 'Main Current',
+          confidence: 0.5
+        });
+        setTransactions(prev => [newTx, ...prev]);
+      }
     }
-  }, []);
+  }, [accounts, savingsGoals, transferToSavings]);
 
   const analyzeFile = useCallback(async (file: File, type: 'bill' | 'statement') => {
     const reader = new FileReader();
@@ -405,26 +481,27 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const parsedTransactions: Transaction[] = results.map((res: any, index: number) => {
+      const parsedTransactions: Transaction[] = [];
+      for (const res of results) {
         let dateStr = res.date;
         const matchedDate = new Date(res.date);
         if (isNaN(matchedDate.getTime()) || matchedDate > today) {
           dateStr = new Date().toISOString().split('T')[0];
         }
 
-        return {
-          id: `file-${Date.now()}-${index}`,
+        const newTx = await financeApi.createTransaction({
           date: dateStr,
           merchant: res.merchant,
-          amount: -Math.abs(res.amount), // Assume expense for bills/statements unless specified
+          amount: -Math.abs(res.amount),
           category: res.category || 'Uncategorized',
           type: 'expense',
           status: 'confirmed',
           aiTag: type === 'bill' ? 'Bill Scanned' : 'Statement Uploaded',
           account: 'Main Current',
           confidence: res.confidence || 0.95
-        };
-      });
+        });
+        parsedTransactions.push(newTx);
+      }
 
       setTransactions(prev => [...parsedTransactions, ...prev]);
     } catch (error) {
@@ -433,76 +510,185 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, []);
 
-  const deleteTransaction = useCallback((id: string) => {
-    setTransactions(prev => prev.filter(t => t.id !== id));
+  const deleteTransaction = useCallback(async (id: string) => {
+    try {
+      await financeApi.deleteTransaction(id);
+      setTransactions(prev => prev.filter(t => t.id !== id));
+    } catch (error) {
+      console.error('Failed to delete transaction:', error);
+    }
   }, []);
 
-  const addSavingsGoal = useCallback((goal: SavingsGoal) => {
-    setSavingsGoals(prev => [goal, ...prev]);
+  const addSavingsGoal = useCallback(async (goal: SavingsGoal) => {
+    try {
+      const newGoal = await financeApi.createSavingsGoal(goal);
+      setSavingsGoals(prev => [newGoal, ...prev]);
+    } catch (error) {
+      console.error('Failed to add savings goal:', error);
+    }
   }, []);
 
-  const updateSavingsGoal = useCallback((id: string, current: number) => {
-    setSavingsGoals(prev => prev.map(g => g.id === id ? { ...g, current } : g));
+  const updateSavingsGoal = useCallback(async (id: string, current: number) => {
+    try {
+      const updated = await financeApi.updateSavingsGoal(id, { current });
+      setSavingsGoals(prev => prev.map(g => g.id === id ? updated : g));
+    } catch (error) {
+      console.error('Failed to update savings goal:', error);
+    }
   }, []);
 
-  const addRecurringPayment = useCallback((payment: RecurringPayment) => {
-    setRecurringPayments(prev => [payment, ...prev]);
+  const addRecurringPayment = useCallback(async (payment: RecurringPayment) => {
+    try {
+      const newPayment = await financeApi.createRecurringPayment(payment);
+      setRecurringPayments(prev => [newPayment, ...prev]);
+    } catch (error) {
+      console.error('Failed to add recurring payment:', error);
+    }
   }, []);
 
-  const updateTransaction = useCallback((id: string, updates: Partial<Transaction>) => {
-    setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+  const updateRecurringPayment = useCallback(async (id: string, updates: Partial<RecurringPayment>) => {
+    try {
+      const updated = await financeApi.updateRecurringPayment(id, updates);
+      setRecurringPayments(prev => prev.map(p => p.id === id ? updated : p));
+    } catch (error) {
+      console.error('Failed to update recurring payment:', error);
+    }
   }, []);
 
-  const addLoan = useCallback((loan: Loan) => {
-    setLoans(prev => [loan, ...prev]);
+  const deleteRecurringPayment = useCallback(async (id: string) => {
+    try {
+      await financeApi.deleteRecurringPayment(id);
+      setRecurringPayments(prev => prev.filter(p => p.id !== id));
+    } catch (error) {
+      console.error('Failed to delete recurring payment:', error);
+    }
   }, []);
 
-  const addBudget = useCallback((budget: Budget) => {
-    setBudgets(prev => [budget, ...prev]);
+  const updateTransaction = useCallback(async (id: string, updates: Partial<Transaction>) => {
+    try {
+      const updated = await financeApi.updateTransaction(id, updates);
+      setTransactions(prev => prev.map(t => t.id === id ? updated : t));
+    } catch (error) {
+      console.error('Failed to update transaction:', error);
+    }
   }, []);
 
-  const updateBudget = useCallback((id: string, updates: Partial<Budget>) => {
-    setBudgets(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
+  const bulkUpdateTransactions = useCallback(async (ids: string[], updates: Partial<Transaction>) => {
+    try {
+      await financeApi.bulkUpdateTransactions(ids, updates);
+      setTransactions(prev => prev.map(t => ids.includes(t.id) ? { ...t, ...updates } : t));
+    } catch (error) {
+      console.error('Failed to bulk update transactions:', error);
+    }
   }, []);
 
-  const deleteBudget = useCallback((id: string) => {
-    setBudgets(prev => prev.filter(b => b.id !== id));
+  const addLoan = useCallback(async (loan: Loan) => {
+    try {
+      const newLoan = await financeApi.createLoan(loan);
+      setLoans(prev => [newLoan, ...prev]);
+    } catch (error) {
+      console.error('Failed to add loan:', error);
+    }
   }, []);
 
-  const addAccount = useCallback((account: BankAccount) => {
-    setAccounts(prev => [account, ...prev]);
+  const updateLoan = useCallback(async (id: string, updates: Partial<Loan>) => {
+    try {
+      const updated = await financeApi.updateLoan(id, updates);
+      setLoans(prev => prev.map(l => l.id === id ? updated : l));
+    } catch (error) {
+      console.error('Failed to update loan:', error);
+    }
   }, []);
 
-  const transferToSavings = useCallback((amount: number, goalId: string, accountId: string) => {
-    const goal = savingsGoals.find(g => g.id === goalId);
-    const account = accounts.find(a => a.id === accountId);
-    if (!goal || !account) return;
+  const deleteLoan = useCallback(async (id: string) => {
+    try {
+      await financeApi.deleteLoan(id);
+      setLoans(prev => prev.filter(l => l.id !== id));
+    } catch (error) {
+      console.error('Failed to delete loan:', error);
+    }
+  }, []);
 
-    // Create a transaction for the transfer
-    const newTransaction: Transaction = {
-      id: `transfer-${Date.now()}`,
-      date: new Date().toISOString().split('T')[0],
-      merchant: `Transfer to ${goal.name}`,
-      amount: -Math.abs(amount),
-      category: 'Savings',
-      type: 'expense',
-      status: 'confirmed',
-      aiTag: 'Savings Transfer',
-      account: account.name,
-      confidence: 1.0,
-      savingsGoalId: goalId
-    };
+  const addBudget = useCallback(async (budget: Budget) => {
+    try {
+      const newBudget = await financeApi.createBudget(budget);
+      setBudgets(prev => [newBudget, ...prev]);
+    } catch (error) {
+      console.error('Failed to add budget:', error);
+    }
+  }, []);
 
-    setTransactions(prev => [newTransaction, ...prev]);
-    setSavingsGoals(prev => prev.map(g => 
-      g.id === goalId ? { ...g, current: g.current + Math.abs(amount) } : g
-    ));
-    
-    // Update account balance
-    setAccounts(prev => prev.map(a => 
-      a.id === accountId ? { ...a, balance: a.balance - Math.abs(amount) } : a
-    ));
-  }, [savingsGoals, accounts]);
+  const updateBudget = useCallback(async (id: string, updates: Partial<Budget>) => {
+    try {
+      const updated = await financeApi.updateBudget(id, updates);
+      setBudgets(prev => prev.map(b => b.id === id ? updated : b));
+    } catch (error) {
+      console.error('Failed to update budget:', error);
+    }
+  }, []);
+
+  const deleteBudget = useCallback(async (id: string) => {
+    try {
+      await financeApi.deleteBudget(id);
+      setBudgets(prev => prev.filter(b => b.id !== id));
+    } catch (error) {
+      console.error('Failed to delete budget:', error);
+    }
+  }, []);
+
+  const addAccount = useCallback(async (account: BankAccount) => {
+    try {
+      const newAccount = await financeApi.createAccount(account);
+      setAccounts(prev => [newAccount, ...prev]);
+    } catch (error) {
+      console.error('Failed to add account:', error);
+    }
+  }, []);
+
+  const updateAccount = useCallback(async (id: string, updates: Partial<BankAccount>) => {
+    try {
+      const updated = await financeApi.updateAccount(id, updates);
+      setAccounts(prev => prev.map(a => a.id === id ? updated : a));
+    } catch (error) {
+      console.error('Failed to update account:', error);
+    }
+  }, []);
+
+  const deleteAccount = useCallback(async (id: string) => {
+    try {
+      await financeApi.deleteAccount(id);
+      setAccounts(prev => prev.filter(a => a.id !== id));
+    } catch (error) {
+      console.error('Failed to delete account:', error);
+    }
+  }, []);
+
+  const addIncomeSource = useCallback(async (income: IncomeSource) => {
+    try {
+      const newIncome = await financeApi.createIncomeSource(income);
+      setIncomeSources(prev => [newIncome, ...prev]);
+    } catch (error) {
+      console.error('Failed to add income source:', error);
+    }
+  }, []);
+
+  const updateIncomeSource = useCallback(async (id: string, updates: Partial<IncomeSource>) => {
+    try {
+      const updated = await financeApi.updateIncomeSource(id, updates);
+      setIncomeSources(prev => prev.map(i => i.id === id ? updated : i));
+    } catch (error) {
+      console.error('Failed to update income source:', error);
+    }
+  }, []);
+
+  const deleteIncomeSource = useCallback(async (id: string) => {
+    try {
+      await financeApi.deleteIncomeSource(id);
+      setIncomeSources(prev => prev.filter(i => i.id !== id));
+    } catch (error) {
+      console.error('Failed to delete income source:', error);
+    }
+  }, []);
 
   const categorizeTransactions = useCallback(async () => {
     const targets = transactions.filter(t => t.category === 'Uncategorized' || (t.confidence && t.confidence < 0.8));
@@ -565,19 +751,31 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       loans,
       budgets,
       accounts,
-      spendingData, 
+      incomeSources,
+      spendingDataByCurrency, 
+      isLoading,
       addTransactions, 
       analyzeFile, 
       deleteTransaction,
       updateTransaction,
+      bulkUpdateTransactions,
       addSavingsGoal,
       updateSavingsGoal,
       addRecurringPayment,
+      updateRecurringPayment,
+      deleteRecurringPayment,
       addLoan,
+      updateLoan,
+      deleteLoan,
       addBudget,
       updateBudget,
       deleteBudget,
       addAccount,
+      updateAccount,
+      deleteAccount,
+      addIncomeSource,
+      updateIncomeSource,
+      deleteIncomeSource,
       transferToSavings,
       categorizeTransactions,
       confirmCategory,

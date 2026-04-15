@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useFinance } from '../context/FinanceContext';
 import { cn } from '../lib/utils';
 import { Budget } from '../types';
-import { TrendingUp, AlertCircle, Sparkles, Home, Utensils, Car, Film, ShoppingBag, Smartphone, Zap, Heart, GraduationCap, MoreHorizontal, Plane, Gift, ShieldCheck, Wallet, Coffee, Plus } from 'lucide-react';
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
+import { TrendingUp, AlertCircle, Sparkles, Home, Utensils, Car, Film, ShoppingBag, Smartphone, Zap, Heart, GraduationCap, MoreHorizontal, Plane, Gift, ShieldCheck, Wallet, Coffee, Plus, PieChart as PieChartIcon } from 'lucide-react';
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   'Housing': <Home className="w-5 h-5" />,
@@ -23,6 +24,17 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   'Others': <MoreHorizontal className="w-5 h-5" />,
 };
 
+const PRESET_COLORS = [
+  '#7C6EFA', // Indigo
+  '#22D3EE', // Cyan
+  '#22D3A5', // Emerald
+  '#F43F5E', // Rose
+  '#F59E0B', // Amber
+  '#8B5CF6', // Violet
+  '#EC4899', // Pink
+  '#3B82F6', // Blue
+];
+
 interface BudgetsPageProps {
   setActiveTab: (tab: string) => void;
 }
@@ -36,9 +48,11 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
     category: '', 
     limit: '', 
     rolloverEnabled: false, 
-    perTransactionLimit: '' 
+    perTransactionLimit: '',
+    color: PRESET_COLORS[0]
   });
   const [selectedCategory, setSelectedCategory] = React.useState<string | null>(null);
+  const [isProcessingRollover, setIsProcessingRollover] = React.useState(false);
 
   const totalBudget = budgets.reduce((acc, b) => acc + b.limit + (b.rolloverAmount || 0), 0);
   const totalSpent = budgets.reduce((acc, b) => acc + b.spent, 0);
@@ -54,6 +68,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
       limit: Number(formData.limit),
       rolloverEnabled: formData.rolloverEnabled,
       perTransactionLimit: formData.perTransactionLimit ? Number(formData.perTransactionLimit) : undefined,
+      color: formData.color
     };
 
     if (editingBudget) {
@@ -64,13 +79,38 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
         ...budgetData,
         spent: 0,
         emoji: '📊',
-        color: '#7C6EFA'
       });
     }
     
     setIsAdding(false);
     setEditingBudget(null);
-    setFormData({ category: '', limit: '', rolloverEnabled: false, perTransactionLimit: '' });
+    setFormData({ category: '', limit: '', rolloverEnabled: false, perTransactionLimit: '', color: PRESET_COLORS[0] });
+  };
+
+  const handleProcessRollover = async () => {
+    setIsProcessingRollover(true);
+    // Simulate a delay for processing
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    budgets.forEach(budget => {
+      if (budget.rolloverEnabled) {
+        const effectiveLimit = budget.limit + (budget.rolloverAmount || 0);
+        const difference = effectiveLimit - budget.spent;
+        
+        // Transfer the difference to next month's rolloverAmount
+        // If overspent, difference is negative, reducing next month's effective limit
+        // If underspent, difference is positive, increasing next month's effective limit
+        updateBudget(budget.id, {
+          spent: 0,
+          rolloverAmount: (budget.rolloverAmount || 0) + difference
+        });
+      } else {
+        // Just reset spent if rollover is not enabled
+        updateBudget(budget.id, { spent: 0 });
+      }
+    });
+
+    setIsProcessingRollover(false);
   };
 
   const startEdit = (e: React.MouseEvent, budget: Budget) => {
@@ -80,7 +120,8 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
       category: budget.category,
       limit: budget.limit.toString(),
       rolloverEnabled: !!budget.rolloverEnabled,
-      perTransactionLimit: budget.perTransactionLimit?.toString() || ''
+      perTransactionLimit: budget.perTransactionLimit?.toString() || '',
+      color: budget.color || PRESET_COLORS[0]
     });
     setIsAdding(true);
   };
@@ -97,13 +138,26 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
           <h1 className="text-5xl font-bold tracking-tighter mb-3 font-display">Budgets</h1>
           <p className="text-white/40 font-medium">Track and optimize your monthly spending with AI insights</p>
         </div>
-        <button 
-          onClick={() => setIsAdding(true)}
-          className="flex items-center gap-2 px-6 py-3 rounded-xl bg-accent text-white text-sm font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Create New Budget</span>
-        </button>
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={handleProcessRollover}
+            disabled={isProcessingRollover}
+            className={cn(
+              "flex items-center gap-2 px-6 py-3 rounded-xl bg-white/5 border border-white/10 text-white/60 text-sm font-bold hover:bg-white/10 hover:text-white transition-all disabled:opacity-50",
+              isProcessingRollover && "animate-pulse"
+            )}
+          >
+            <TrendingUp className={cn("w-4 h-4", isProcessingRollover && "animate-bounce")} />
+            <span>{isProcessingRollover ? 'Processing...' : 'Process Rollover'}</span>
+          </button>
+          <button 
+            onClick={() => setIsAdding(true)}
+            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-accent text-white text-sm font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create New Budget</span>
+          </button>
+        </div>
       </div>
 
       <AnimatePresence>
@@ -165,12 +219,44 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                     </label>
                   </div>
                 </div>
+                
+                <div className="space-y-4">
+                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Select Custom Color</label>
+                  <div className="flex flex-wrap gap-3">
+                    {PRESET_COLORS.map(color => (
+                      <button
+                        key={color}
+                        onClick={() => setFormData(prev => ({ ...prev, color }))}
+                        className={cn(
+                          "w-10 h-10 rounded-xl transition-all border-2",
+                          formData.color === color ? "border-white scale-110 shadow-lg" : "border-transparent hover:scale-105"
+                        )}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                    <div className="relative">
+                      <input 
+                        type="color"
+                        value={formData.color}
+                        onChange={(e) => setFormData(prev => ({ ...prev, color: e.target.value }))}
+                        className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 cursor-pointer opacity-0 absolute inset-0"
+                      />
+                      <div 
+                        className="w-10 h-10 rounded-xl border-2 border-dashed border-white/20 flex items-center justify-center text-white/20"
+                        style={{ backgroundColor: PRESET_COLORS.includes(formData.color) ? 'transparent' : formData.color }}
+                      >
+                        {!PRESET_COLORS.includes(formData.color) ? null : <Plus className="w-4 h-4" />}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex justify-end gap-3">
                   <button 
                     onClick={() => {
                       setIsAdding(false);
                       setEditingBudget(null);
-                      setFormData({ category: '', limit: '', rolloverEnabled: false, perTransactionLimit: '' });
+                      setFormData({ category: '', limit: '', rolloverEnabled: false, perTransactionLimit: '', color: PRESET_COLORS[0] });
                     }}
                     className="px-6 py-3 rounded-xl bg-white/5 border border-white/10 text-sm font-bold hover:bg-white/10 transition-all"
                   >
@@ -267,6 +353,77 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
              healthMetrics.budgetAdherence > 0.5 ? "Good progress. Keep an eye on your discretionary spending." : 
              "Budget under pressure. Review your high-cost categories."}
           </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-16">
+        <div className="lg:col-span-12 glass-card p-10">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
+            <div className="space-y-2">
+              <h3 className="text-xl font-bold flex items-center gap-3">
+                <PieChartIcon className="w-5 h-5 text-accent" />
+                Spending Distribution
+              </h3>
+              <p className="text-xs text-white/40 font-medium">Visual breakdown of expenses across all budget categories</p>
+            </div>
+            
+            <div className="flex-1 w-full flex flex-col md:flex-row items-center gap-12">
+              <div className="w-full md:w-1/2 h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={budgets}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={80}
+                      outerRadius={120}
+                      paddingAngle={5}
+                      dataKey="spent"
+                      nameKey="category"
+                      stroke="none"
+                    >
+                      {budgets.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          return (
+                            <div className="glass-card p-4 border-accent/20 bg-card/90 backdrop-blur-xl">
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">{data.category}</p>
+                              <p className="text-lg font-bold font-mono text-white">
+                                {data.spent.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                              </p>
+                              <p className="text-[10px] text-accent font-bold uppercase tracking-widest mt-1">
+                                {Math.round((data.spent / totalSpent) * 100)}% of total
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              
+              <div className="w-full md:w-1/2 grid grid-cols-2 gap-4">
+                {budgets.map((budget) => (
+                  <div key={budget.id} className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: budget.color }} />
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold text-white truncate">{budget.category}</p>
+                      <p className="text-[10px] font-mono text-white/40">
+                        {Math.round((budget.spent / totalSpent) * 100)}%
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

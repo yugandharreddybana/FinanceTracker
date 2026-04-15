@@ -1,14 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { motion } from 'motion/react';
 import { useFinance } from '../context/FinanceContext';
+import { ChevronDown } from 'lucide-react';
 
-const CustomTooltip = ({ active, payload }: any) => {
+const CustomTooltip = ({ active, payload, currency }: any) => {
   if (active && payload && payload.length) {
     return (
       <div className="glass-card p-3 border-accent/20 bg-card/90 backdrop-blur-xl">
         <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">{payload[0].name}</p>
-        <p className="text-sm font-bold font-mono text-white">${payload[0].value.toLocaleString()}</p>
+        <p className="text-sm font-bold font-mono text-white">{payload[0].value.toLocaleString('en-US', { style: 'currency', currency: currency || 'USD' })}</p>
       </div>
     );
   }
@@ -16,7 +17,11 @@ const CustomTooltip = ({ active, payload }: any) => {
 };
 
 export const SpendingPulse: React.FC = () => {
-  const { spendingData } = useFinance();
+  const { spendingDataByCurrency } = useFinance();
+  const currencies = Object.keys(spendingDataByCurrency);
+  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'USD');
+  
+  const spendingData = spendingDataByCurrency[selectedCurrency] || [];
 
   return (
     <div className="glass-card p-8 flex flex-col h-full group">
@@ -25,8 +30,24 @@ export const SpendingPulse: React.FC = () => {
           <h3 className="text-lg font-bold tracking-tight">Spending Pulse</h3>
           <p className="text-[10px] text-white/30 uppercase tracking-widest font-bold">Real-time Analysis</p>
         </div>
-        <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center border border-white/5">
-          <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+        <div className="flex items-center gap-4">
+          {currencies.length > 1 && (
+            <div className="relative">
+              <select
+                value={selectedCurrency}
+                onChange={(e) => setSelectedCurrency(e.target.value)}
+                className="appearance-none bg-white/5 border border-white/10 rounded-full px-3 py-1 text-xs font-bold text-white pr-8 focus:outline-none focus:ring-1 focus:ring-accent"
+              >
+                {currencies.map(c => (
+                  <option key={c} value={c} className="bg-[#050508] text-white">{c}</option>
+                ))}
+              </select>
+              <ChevronDown className="w-3 h-3 absolute right-3 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+            </div>
+          )}
+          <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center border border-white/5">
+            <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+          </div>
         </div>
       </div>
 
@@ -51,7 +72,7 @@ export const SpendingPulse: React.FC = () => {
                 />
               ))}
             </Pie>
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<CustomTooltip currency={selectedCurrency} />} />
           </PieChart>
         </ResponsiveContainer>
         
@@ -75,7 +96,7 @@ export const SpendingPulse: React.FC = () => {
               <span className="text-xs font-medium text-white/60 group-hover/item:text-white transition-colors">{item.name}</span>
             </div>
             <div className="flex items-center gap-4">
-              <span className="text-xs font-mono font-bold">${item.value.toLocaleString()}</span>
+              <span className="text-xs font-mono font-bold">{item.value.toLocaleString('en-US', { style: 'currency', currency: selectedCurrency })}</span>
               <div className="w-12 h-1 bg-white/5 rounded-full overflow-hidden">
                 <div 
                   className="h-full bg-white/20" 

@@ -10,6 +10,7 @@ export const TransactionsPage: React.FC = () => {
     transactions, 
     deleteTransaction, 
     updateTransaction, 
+    bulkUpdateTransactions,
     categorizeTransactions, 
     confirmCategory, 
     suggestions, 
@@ -18,6 +19,10 @@ export const TransactionsPage: React.FC = () => {
   } = useFinance();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [showBulkActions, setShowBulkActions] = useState(false);
+  const [bulkCategory, setBulkCategory] = useState('');
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Transaction>>({});
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [filter, setFilter] = useState('All Time');
@@ -36,6 +41,37 @@ export const TransactionsPage: React.FC = () => {
       setSortField(field);
       setSortOrder('desc');
     }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === sortedTransactions.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(sortedTransactions.map(t => t.id));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleBulkCategorize = async () => {
+    if (!bulkCategory || selectedIds.length === 0) return;
+    setIsBulkUpdating(true);
+    await bulkUpdateTransactions(selectedIds, { category: bulkCategory });
+    setSelectedIds([]);
+    setBulkCategory('');
+    setIsBulkUpdating(false);
+  };
+
+  const handleBulkMarkReviewed = async () => {
+    if (selectedIds.length === 0) return;
+    setIsBulkUpdating(true);
+    await bulkUpdateTransactions(selectedIds, { status: 'confirmed', aiTag: 'Reviewed' });
+    setSelectedIds([]);
+    setIsBulkUpdating(false);
   };
 
   const handleEdit = (tx: Transaction) => {
@@ -280,6 +316,19 @@ export const TransactionsPage: React.FC = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-white/5 bg-white/[0.02]">
+                <th className="px-8 py-5 w-10">
+                  <button 
+                    onClick={toggleSelectAll}
+                    className={cn(
+                      "w-5 h-5 rounded border flex items-center justify-center transition-all",
+                      selectedIds.length === sortedTransactions.length && sortedTransactions.length > 0
+                        ? "bg-accent border-accent text-white" 
+                        : "border-white/20 hover:border-white/40"
+                    )}
+                  >
+                    {selectedIds.length === sortedTransactions.length && sortedTransactions.length > 0 && <Check className="w-3 h-3" />}
+                  </button>
+                </th>
                 <th 
                   className="px-8 py-5 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] cursor-pointer hover:text-white transition-colors"
                   onClick={() => handleSort('date')}
@@ -299,7 +348,7 @@ export const TransactionsPage: React.FC = () => {
                   </div>
                 </th>
                 <th className="px-8 py-5 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Category</th>
-                <th className="px-8 py-5 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Account</th>
+                <th className="px-8 py-5 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Bank Account</th>
                 <th 
                   className="px-8 py-5 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] text-right cursor-pointer hover:text-white transition-colors"
                   onClick={() => handleSort('amount')}
@@ -327,9 +376,21 @@ export const TransactionsPage: React.FC = () => {
                   className={cn(
                     "group hover:bg-white/[0.03] transition-all cursor-pointer",
                     editingId === tx.id && "bg-accent/5",
-                    expandedId === tx.id && "bg-white/[0.02]"
+                    expandedId === tx.id && "bg-white/[0.02]",
+                    selectedIds.includes(tx.id) && "bg-accent/5"
                   )}
                 >
+                  <td className="px-8 py-5" onClick={(e) => e.stopPropagation()}>
+                    <button 
+                      onClick={() => toggleSelect(tx.id)}
+                      className={cn(
+                        "w-5 h-5 rounded border flex items-center justify-center transition-all",
+                        selectedIds.includes(tx.id) ? "bg-accent border-accent text-white" : "border-white/20 hover:border-white/40"
+                      )}
+                    >
+                      {selectedIds.includes(tx.id) && <Check className="w-3 h-3" />}
+                    </button>
+                  </td>
                   <td className="px-8 py-5 text-sm text-white/40 font-mono font-medium">
                     {editingId === tx.id ? (
                       <input 
@@ -369,16 +430,19 @@ export const TransactionsPage: React.FC = () => {
                   </td>
                   <td className="px-8 py-5">
                     {editingId === tx.id ? (
-                      <select 
-                        onClick={e => e.stopPropagation()}
-                        className="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs outline-none focus:border-accent"
-                        value={editForm.category}
-                        onChange={e => setEditForm({...editForm, category: e.target.value})}
-                      >
-                        {['Housing', 'Food & Drink', 'Transport', 'Entertainment', 'Shopping', 'Electronics', 'Utilities', 'Health', 'Education', 'Others', 'Uncategorized'].map(c => (
-                          <option key={c} value={c} className="bg-background text-white">{c}</option>
-                        ))}
-                      </select>
+                      <div className="relative">
+                        <select 
+                          onClick={e => e.stopPropagation()}
+                          className="appearance-none bg-white/5 border border-white/10 rounded px-3 py-1.5 text-xs outline-none focus:border-accent pr-8 w-full font-medium"
+                          value={editForm.category}
+                          onChange={e => setEditForm({...editForm, category: e.target.value})}
+                        >
+                          {['Housing', 'Food & Drink', 'Transport', 'Entertainment', 'Shopping', 'Electronics', 'Utilities', 'Health', 'Education', 'Others', 'Uncategorized'].map(c => (
+                            <option key={c} value={c} className="bg-[#050508] text-white">{c}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="w-3 h-3 absolute right-2.5 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+                      </div>
                     ) : (
                       <div className="flex flex-col gap-2">
                         <div className="flex items-center gap-2">
@@ -457,17 +521,20 @@ export const TransactionsPage: React.FC = () => {
                   </td>
                   <td className="px-8 py-5">
                     {editingId === tx.id ? (
-                      <select 
-                        onClick={e => e.stopPropagation()}
-                        className="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs outline-none focus:border-accent"
-                        value={editForm.account || ''}
-                        onChange={e => setEditForm({...editForm, account: e.target.value})}
-                      >
-                        <option value="" className="bg-background text-white">Select Account</option>
-                        {accounts.map(a => (
-                          <option key={a.id} value={a.name} className="bg-background text-white">{a.name}</option>
-                        ))}
-                      </select>
+                      <div className="relative">
+                        <select 
+                          onClick={e => e.stopPropagation()}
+                          className="appearance-none bg-white/5 border border-white/10 rounded px-3 py-1.5 text-xs outline-none focus:border-accent pr-8 w-full font-medium"
+                          value={editForm.account || ''}
+                          onChange={e => setEditForm({...editForm, account: e.target.value})}
+                        >
+                          <option value="" className="bg-[#050508] text-white">Select Account</option>
+                          {accounts.map(a => (
+                            <option key={a.id} value={a.name} className="bg-[#050508] text-white">{a.name}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="w-3 h-3 absolute right-2.5 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+                      </div>
                     ) : (
                       <span className="text-sm font-medium text-white/60">{tx.account || 'Unknown'}</span>
                     )}
@@ -490,13 +557,52 @@ export const TransactionsPage: React.FC = () => {
                   </td>
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-3">
-                      {tx.aiTag && (
-                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-accent/5 border border-accent/20 text-accent text-[10px] font-bold uppercase tracking-widest violet-glow">
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>{tx.aiTag}</span>
+                      {editingId === tx.id ? (
+                        <div className="flex flex-col gap-2">
+                          <div className="relative">
+                            <input 
+                              type="text"
+                              onClick={e => e.stopPropagation()}
+                              placeholder="AI Tag"
+                              className="bg-white/5 border border-white/10 rounded px-2 py-1 text-[10px] outline-none focus:border-accent font-bold uppercase tracking-widest w-24"
+                              value={editForm.aiTag || ''}
+                              onChange={e => setEditForm({...editForm, aiTag: e.target.value})}
+                            />
+                            <Sparkles className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 text-accent opacity-50 pointer-events-none" />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input 
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="1"
+                              onClick={e => e.stopPropagation()}
+                              className="bg-white/5 border border-white/10 rounded px-2 py-1 text-[10px] outline-none focus:border-accent font-mono w-16"
+                              value={editForm.confidence || 0}
+                              onChange={e => setEditForm({...editForm, confidence: parseFloat(e.target.value)})}
+                            />
+                            <span className="text-[8px] text-white/30 font-bold uppercase">Conf.</span>
+                          </div>
                         </div>
+                      ) : (
+                        <>
+                          {tx.aiTag && (
+                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-accent/5 border border-accent/20 text-accent text-[10px] font-bold uppercase tracking-widest violet-glow">
+                              <Sparkles className="w-3.5 h-3.5" />
+                              <span>{tx.aiTag}</span>
+                            </div>
+                          )}
+                          {tx.confidence && (
+                            <span className="text-[10px] font-mono font-bold text-white/20">
+                              {Math.round(tx.confidence * 100)}%
+                            </span>
+                          )}
+                        </>
                       )}
-                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
+                      <div className={cn(
+                        "flex gap-2 transition-all",
+                        editingId === tx.id ? "opacity-100" : "opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0"
+                      )}>
                         {editingId === tx.id ? (
                           <>
                             <button onClick={(e) => { e.stopPropagation(); handleSave(); }} className="p-1.5 rounded-lg bg-positive/20 text-positive hover:bg-positive/30 transition-all"><Save className="w-4 h-4" /></button>
@@ -520,7 +626,7 @@ export const TransactionsPage: React.FC = () => {
                       exit={{ opacity: 0 }}
                       className="bg-white/[0.01] border-b border-white/5"
                     >
-                      <td colSpan={6} className="p-0">
+                      <td colSpan={7} className="p-0">
                         <motion.div
                           initial={{ height: 0 }}
                           animate={{ height: 'auto' }}
@@ -558,6 +664,69 @@ export const TransactionsPage: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Bulk Actions Bar */}
+      <AnimatePresence>
+        {selectedIds.length > 0 && (
+          <motion.div 
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[150] w-full max-w-2xl px-6"
+          >
+            <div className="glass-card p-4 flex items-center justify-between shadow-2xl border-accent/30 bg-card/90 backdrop-blur-2xl">
+              <div className="flex items-center gap-4">
+                <div className="bg-accent text-white w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm shadow-lg violet-glow">
+                  {selectedIds.length}
+                </div>
+                <span className="text-sm font-bold text-white/80">Transactions Selected</span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <select 
+                    value={bulkCategory}
+                    onChange={(e) => setBulkCategory(e.target.value)}
+                    className="appearance-none bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs font-bold outline-none focus:border-accent pr-10 text-white/70"
+                  >
+                    <option value="" className="bg-[#050508]">Bulk Categorize...</option>
+                    {['Housing', 'Food & Drink', 'Transport', 'Entertainment', 'Shopping', 'Electronics', 'Utilities', 'Health', 'Education', 'Others'].map(c => (
+                      <option key={c} value={c} className="bg-[#050508]">{c}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-3 h-3 absolute right-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+                </div>
+
+                <button 
+                  onClick={handleBulkCategorize}
+                  disabled={!bulkCategory || isBulkUpdating}
+                  className="px-4 py-2 bg-accent text-white rounded-xl text-xs font-bold hover:bg-accent/80 transition-all disabled:opacity-50"
+                >
+                  Apply
+                </button>
+
+                <div className="w-px h-6 bg-white/10 mx-1" />
+
+                <button 
+                  onClick={handleBulkMarkReviewed}
+                  disabled={isBulkUpdating}
+                  className="px-4 py-2 bg-white/5 border border-white/10 text-white/60 rounded-xl text-xs font-bold hover:bg-white/10 hover:text-white transition-all disabled:opacity-50 flex items-center gap-2"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Mark Reviewed</span>
+                </button>
+
+                <button 
+                  onClick={() => setSelectedIds([])}
+                  className="p-2 text-white/20 hover:text-negative transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Delete Confirmation Modal */}
       <AnimatePresence>

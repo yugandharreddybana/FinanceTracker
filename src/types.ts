@@ -53,6 +53,7 @@ export interface Budget {
   rolloverEnabled?: boolean;
   rolloverAmount?: number;
   perTransactionLimit?: number;
+  currency?: string;
 }
 
 export interface RecurringPayment {
@@ -63,6 +64,7 @@ export interface RecurringPayment {
   category: string;
   frequency: 'Monthly' | 'Weekly' | 'Annual';
   status: 'Active' | 'Paused';
+  currency?: string;
 }
 
 export interface IncomeSource {
@@ -72,6 +74,7 @@ export interface IncomeSource {
   date: string;
   frequency: string;
   color: string;
+  currency?: string;
 }
 
 export interface Loan {
@@ -85,6 +88,7 @@ export interface Loan {
   endDate: string;
   category: string;
   color: string;
+  currency?: string;
 }
 
 export interface Insight {

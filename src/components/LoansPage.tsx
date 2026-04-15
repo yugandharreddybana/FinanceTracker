@@ -214,10 +214,10 @@ export const LoansPage: React.FC = () => {
                       value={loanForm.category}
                       onChange={e => setLoanForm({...loanForm, category: e.target.value})}
                     >
-                      <option value="Personal" className="bg-background text-white">Personal</option>
-                      <option value="Housing" className="bg-background text-white">Housing</option>
-                      <option value="Transport" className="bg-background text-white">Transport</option>
-                      <option value="Education" className="bg-background text-white">Education</option>
+                      <option value="Personal" className="bg-[#050508] text-white">Personal</option>
+                      <option value="Housing" className="bg-[#050508] text-white">Housing</option>
+                      <option value="Transport" className="bg-[#050508] text-white">Transport</option>
+                      <option value="Education" className="bg-[#050508] text-white">Education</option>
                     </select>
                   </div>
                 </div>

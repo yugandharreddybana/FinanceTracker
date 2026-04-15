@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, ExternalLink, RefreshCw, Shield, Lock, Globe, X, ChevronRight, Landmark, CreditCard, Wallet as WalletIcon, Check } from 'lucide-react';
+import { Plus, ExternalLink, RefreshCw, Shield, Lock, Globe, X, ChevronRight, Landmark, CreditCard, Wallet as WalletIcon, Check, ChevronDown } from 'lucide-react';
 import { MOCK_ACCOUNTS } from '../constants';
 import { cn } from '../lib/utils';
 import { BankAccount } from '../types';
@@ -54,6 +54,22 @@ export const BankAccountsPage: React.FC = () => {
         <div>
           <h1 className="text-5xl font-bold tracking-tighter mb-3 font-display">Bank Accounts</h1>
           <p className="text-white/40 font-medium">Manage and monitor your connected financial institutions</p>
+        </div>
+        <div className="flex items-center gap-4">
+          {currencies.length > 1 && (
+            <div className="relative">
+              <select
+                value={selectedCurrency}
+                onChange={(e) => setSelectedCurrency(e.target.value)}
+                className="appearance-none bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm font-bold text-white pr-10 focus:outline-none focus:ring-1 focus:ring-accent"
+              >
+                {currencies.map(c => (
+                  <option key={c} value={c} className="bg-[#050508] text-white">{c}</option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+            </div>
+          )}
         </div>
       </div>
 
@@ -472,9 +488,9 @@ export const BankAccountsPage: React.FC = () => {
                             onChange={(e) => setManualForm(prev => ({ ...prev, type: e.target.value as any }))}
                             className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all"
                           >
-                            <option value="Current" className="bg-background text-white">Current</option>
-                            <option value="Savings" className="bg-background text-white">Savings</option>
-                            <option value="Credit" className="bg-background text-white">Credit</option>
+                            <option value="Current" className="bg-[#050508] text-white">Current</option>
+                            <option value="Savings" className="bg-[#050508] text-white">Savings</option>
+                            <option value="Credit" className="bg-[#050508] text-white">Credit</option>
                           </select>
                         </div>
                         <div className="space-y-2">
@@ -484,12 +500,12 @@ export const BankAccountsPage: React.FC = () => {
                             onChange={(e) => setManualForm(prev => ({ ...prev, currency: e.target.value }))}
                             className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all"
                           >
-                            <option value="USD" className="bg-background text-white">USD ($)</option>
-                            <option value="EUR" className="bg-background text-white">EUR (€)</option>
-                            <option value="GBP" className="bg-background text-white">GBP (£)</option>
-                            <option value="JPY" className="bg-background text-white">JPY (¥)</option>
-                            <option value="AUD" className="bg-background text-white">AUD ($)</option>
-                            <option value="CAD" className="bg-background text-white">CAD ($)</option>
+                            <option value="USD" className="bg-[#050508] text-white">USD ($)</option>
+                            <option value="EUR" className="bg-[#050508] text-white">EUR (€)</option>
+                            <option value="GBP" className="bg-[#050508] text-white">GBP (£)</option>
+                            <option value="JPY" className="bg-[#050508] text-white">JPY (¥)</option>
+                            <option value="AUD" className="bg-[#050508] text-white">AUD ($)</option>
+                            <option value="CAD" className="bg-[#050508] text-white">CAD ($)</option>
                           </select>
                         </div>
                       </div>

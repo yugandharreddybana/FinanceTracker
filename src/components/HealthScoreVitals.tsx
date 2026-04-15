@@ -47,7 +47,7 @@ export const HealthScoreVitals: React.FC = () => {
                 className="appearance-none bg-white/5 border border-white/10 rounded-full px-3 py-1 text-xs font-bold text-white pr-8 focus:outline-none focus:ring-1 focus:ring-accent"
               >
                 {currencies.map(c => (
-                  <option key={c} value={c} className="bg-background text-white">{c}</option>
+                  <option key={c} value={c} className="bg-[#050508] text-white">{c}</option>
                 ))}
               </select>
               <ChevronDown className="w-3 h-3 absolute right-3 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />

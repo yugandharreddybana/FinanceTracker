@@ -44,7 +44,7 @@ export const NetWorthPage: React.FC = () => {
               className="appearance-none bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm font-bold text-white pr-10 focus:outline-none focus:ring-1 focus:ring-accent"
             >
               {currencies.map(c => (
-                <option key={c} value={c} className="bg-background text-white">{c}</option>
+                <option key={c} value={c} className="bg-[#050508] text-white">{c}</option>
               ))}
             </select>
             <ChevronDown className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
@@ -84,6 +84,8 @@ export const NetWorthPage: React.FC = () => {
                   stroke="#7C6EFA" 
                   strokeWidth={4} 
                   fill="url(#netWorthGradient)" 
+                  animationDuration={1500}
+                  animationBegin={200}
                 />
               </AreaChart>
             </ResponsiveContainer>
