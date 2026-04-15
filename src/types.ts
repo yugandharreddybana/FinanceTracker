@@ -53,6 +53,7 @@ export interface Budget {
   rolloverEnabled?: boolean;
   rolloverAmount?: number;
   perTransactionLimit?: number;
+  dueDate?: string;
   currency?: string;
 }
 

@@ -4,7 +4,7 @@ import { useFinance } from '../context/FinanceContext';
 import { cn } from '../lib/utils';
 import { Budget } from '../types';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
-import { TrendingUp, AlertCircle, Sparkles, Home, Utensils, Car, Film, ShoppingBag, Smartphone, Zap, Heart, GraduationCap, MoreHorizontal, Plane, Gift, ShieldCheck, Wallet, Coffee, Plus, PieChart as PieChartIcon } from 'lucide-react';
+import { TrendingUp, AlertCircle, Sparkles, Home, Utensils, Car, Film, ShoppingBag, Smartphone, Zap, Heart, GraduationCap, MoreHorizontal, Plane, Gift, ShieldCheck, Wallet, Coffee, Plus, PieChart as PieChartIcon, Calendar, ArrowUpDown } from 'lucide-react';
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   'Housing': <Home className="w-5 h-5" />,
@@ -49,10 +49,24 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
     limit: '', 
     rolloverEnabled: false, 
     perTransactionLimit: '',
-    color: PRESET_COLORS[0]
+    color: PRESET_COLORS[0],
+    dueDate: ''
   });
   const [selectedCategory, setSelectedCategory] = React.useState<string | null>(null);
   const [isProcessingRollover, setIsProcessingRollover] = React.useState(false);
+  const [sortBy, setSortBy] = React.useState<'category' | 'limit' | 'spent' | 'dueDate'>('category');
+
+  const sortedBudgets = [...budgets].sort((a, b) => {
+    if (sortBy === 'category') return a.category.localeCompare(b.category);
+    if (sortBy === 'limit') return b.limit - a.limit;
+    if (sortBy === 'spent') return b.spent - a.spent;
+    if (sortBy === 'dueDate') {
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+    }
+    return 0;
+  });
 
   const totalBudget = budgets.reduce((acc, b) => acc + b.limit + (b.rolloverAmount || 0), 0);
   const totalSpent = budgets.reduce((acc, b) => acc + b.spent, 0);
@@ -68,7 +82,8 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
       limit: Number(formData.limit),
       rolloverEnabled: formData.rolloverEnabled,
       perTransactionLimit: formData.perTransactionLimit ? Number(formData.perTransactionLimit) : undefined,
-      color: formData.color
+      color: formData.color,
+      dueDate: formData.dueDate || undefined
     };
 
     if (editingBudget) {
@@ -84,7 +99,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
     
     setIsAdding(false);
     setEditingBudget(null);
-    setFormData({ category: '', limit: '', rolloverEnabled: false, perTransactionLimit: '', color: PRESET_COLORS[0] });
+    setFormData({ category: '', limit: '', rolloverEnabled: false, perTransactionLimit: '', color: PRESET_COLORS[0], dueDate: '' });
   };
 
   const handleProcessRollover = async () => {
@@ -121,7 +136,8 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
       limit: budget.limit.toString(),
       rolloverEnabled: !!budget.rolloverEnabled,
       perTransactionLimit: budget.perTransactionLimit?.toString() || '',
-      color: budget.color || PRESET_COLORS[0]
+      color: budget.color || PRESET_COLORS[0],
+      dueDate: budget.dueDate || ''
     });
     setIsAdding(true);
   };
@@ -201,6 +217,18 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                       className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all"
                     />
                   </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Due Date</label>
+                    <div className="relative">
+                      <input 
+                        type="date"
+                        value={formData.dueDate}
+                        onChange={(e) => setFormData(prev => ({ ...prev, dueDate: e.target.value }))}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all text-sm"
+                      />
+                      <Calendar className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-white/20 pointer-events-none" />
+                    </div>
+                  </div>
                   <div className="flex items-center gap-4 h-[50px]">
                     <label className="flex items-center gap-3 cursor-pointer group">
                       <div 
@@ -256,7 +284,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                     onClick={() => {
                       setIsAdding(false);
                       setEditingBudget(null);
-                      setFormData({ category: '', limit: '', rolloverEnabled: false, perTransactionLimit: '', color: PRESET_COLORS[0] });
+                      setFormData({ category: '', limit: '', rolloverEnabled: false, perTransactionLimit: '', color: PRESET_COLORS[0], dueDate: '' });
                     }}
                     className="px-6 py-3 rounded-xl bg-white/5 border border-white/10 text-sm font-bold hover:bg-white/10 transition-all"
                   >
@@ -444,12 +472,40 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
         )}
       </AnimatePresence>
 
+      <div className="flex justify-between items-center mb-8">
+        <div className="flex items-center gap-4">
+          <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Sort By:</span>
+          <div className="flex gap-2">
+            {[
+              { id: 'category', label: 'Category' },
+              { id: 'limit', label: 'Limit' },
+              { id: 'spent', label: 'Spent' },
+              { id: 'dueDate', label: 'Due Date' }
+            ].map(option => (
+              <button
+                key={option.id}
+                onClick={() => setSortBy(option.id as any)}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all border",
+                  sortBy === option.id 
+                    ? "bg-accent border-accent text-white" 
+                    : "bg-white/5 border-white/10 text-white/40 hover:bg-white/10"
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
         <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-8">
-          {budgets.map((budget, i) => {
+          {sortedBudgets.map((budget, i) => {
             const effectiveLimit = budget.limit + (budget.rolloverAmount || 0);
             const progress = (budget.spent / effectiveLimit) * 100;
             const isOver = budget.spent > effectiveLimit;
+            const isAtLimit = progress >= 90 && progress <= 100;
             
             return (
               <motion.div
@@ -461,9 +517,13 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                 onClick={() => setSelectedCategory(selectedCategory === budget.category ? null : budget.category)}
                 className={cn(
                   "glass-card p-8 flex flex-col group border-white/5 hover:border-accent/30 transition-all cursor-pointer relative overflow-hidden",
-                  selectedCategory === budget.category && "border-accent/50 bg-accent/[0.05] shadow-[0_0_30px_rgba(124,110,250,0.1)]"
+                  selectedCategory === budget.category && "border-accent/50 bg-accent/[0.05] shadow-[0_0_30px_rgba(124,110,250,0.1)]",
+                  isOver && "border-negative/30 shadow-[0_0_20px_rgba(244,63,94,0.1)]"
                 )}
               >
+                {isOver && (
+                  <div className="absolute inset-0 bg-negative/[0.02] animate-pulse pointer-events-none" />
+                )}
                 {selectedCategory === budget.category && (
                   <motion.div 
                     layoutId="active-budget"
@@ -476,15 +536,23 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                       className="w-12 h-12 rounded-2xl flex items-center justify-center border transition-all group-hover:scale-110 shadow-lg"
                       style={{ 
                         backgroundColor: `${budget.color}15`, 
-                        borderColor: `${budget.color}30`,
-                        color: budget.color 
+                        borderColor: isOver ? '#F43F5E' : `${budget.color}30`,
+                        color: isOver ? '#F43F5E' : budget.color 
                       }}
                     >
                       {CATEGORY_ICONS[budget.category] || <span className="text-xl">{budget.emoji}</span>}
                     </div>
                     <div>
                       <h3 className="font-bold text-lg tracking-tight">{budget.category}</h3>
-                      <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest">Monthly Allocation</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest">Monthly Allocation</p>
+                        {budget.dueDate && (
+                          <div className="flex items-center gap-1 text-[9px] font-bold text-accent uppercase tracking-widest bg-accent/10 px-1.5 py-0.5 rounded">
+                            <Calendar className="w-2.5 h-2.5" />
+                            <span>Due {new Date(budget.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-2">
@@ -513,14 +581,16 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                   <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
                     <div className="flex flex-col gap-1">
                       <span className="text-white/40">Spent: <span className="text-white font-mono text-xs ml-1">{budget.spent.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</span></span>
-                      {budget.rolloverAmount && budget.rolloverAmount > 0 && (
-                        <span className="text-positive">Rollover: <span className="font-mono text-xs ml-1">+{budget.rolloverAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</span></span>
+                      {budget.rolloverAmount && budget.rolloverAmount !== 0 && (
+                        <span className={cn(budget.rolloverAmount > 0 ? "text-positive" : "text-negative")}>
+                          Rollover: <span className="font-mono text-xs ml-1">{budget.rolloverAmount > 0 ? '+' : ''}{budget.rolloverAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</span>
+                        </span>
                       )}
                       {budget.perTransactionLimit && (
                         <span className="text-accent">Tx Limit: <span className="font-mono text-xs ml-1">{budget.perTransactionLimit.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</span></span>
                       )}
                     </div>
-                    <span className={cn(isOver ? "text-negative" : "text-white/40")}>
+                    <span className={cn(isOver ? "text-negative font-bold" : "text-white/40")}>
                       {isOver ? `-${Math.round(budget.spent - effectiveLimit).toLocaleString('en-US', { style: 'currency', currency: 'USD' })} over` : `${Math.round(effectiveLimit - budget.spent).toLocaleString('en-US', { style: 'currency', currency: 'USD' })} left`}
                     </span>
                   </div>
@@ -531,10 +601,11 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                       transition={{ duration: 1.5, ease: "easeOut" }}
                       className={cn(
                         "h-full rounded-full transition-all duration-700",
-                        progress > 90 ? "bg-negative shadow-[0_0_12px_rgba(244,63,94,0.4)]" : 
-                        progress > 70 ? "bg-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.4)]" : 
-                        "bg-positive shadow-[0_0_12px_rgba(34,211,165,0.4)]"
+                        isOver ? "bg-negative shadow-[0_0_12px_rgba(244,63,94,0.6)] animate-pulse" : 
+                        isAtLimit ? "bg-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.4)]" : 
+                        "bg-gradient-to-r from-positive/50 to-positive shadow-[0_0_12px_rgba(34,211,165,0.2)]"
                       )}
+                      style={!isOver && !isAtLimit ? { backgroundColor: budget.color } : {}}
                     />
                   </div>
                 </div>
@@ -646,8 +717,14 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                   </thead>
                   <tbody>
                     {transactions
-                      .filter(t => t.category === selectedCategory)
-                      .slice(0, 10)
+                      .filter(t => {
+                        if (t.category !== selectedCategory) return false;
+                        const txDate = new Date(t.date);
+                        const now = new Date();
+                        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+                        return txDate >= lastMonth;
+                      })
+                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                       .map((t, i) => {
                         const currentBudget = budgets.find(b => b.category === selectedCategory);
                         const isOverLimit = currentBudget?.perTransactionLimit && Math.abs(t.amount) > currentBudget.perTransactionLimit;
