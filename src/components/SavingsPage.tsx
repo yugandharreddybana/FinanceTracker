@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFinance } from '../context/FinanceContext';
 import { Plus, Target, TrendingUp, Calendar, ArrowRight, X, ChevronDown } from 'lucide-react';
@@ -12,16 +12,8 @@ export const SavingsPage: React.FC = () => {
   const [selectedAccountId, setSelectedAccountId] = React.useState('');
   const [newGoal, setNewGoal] = React.useState({ name: '', target: '', emoji: '🎯', deadline: '', currency: 'USD' });
 
-  const currencies = useMemo(() => Array.from(new Set(savingsGoals.map(g => g.currency || 'USD'))), [savingsGoals]);
-  const [selectedCurrency, setSelectedCurrency] = useState('USD');
-
-  // Update selected currency if the current one is no longer available, 
-  // or if we just added the first goal.
-  React.useEffect(() => {
-    if (currencies.length > 0 && !currencies.includes(selectedCurrency)) {
-      setSelectedCurrency(currencies[0]);
-    }
-  }, [currencies, selectedCurrency]);
+  const currencies = Array.from(new Set(savingsGoals.map(g => g.currency || 'USD')));
+  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'USD');
 
   const filteredGoals = savingsGoals.filter(g => (g.currency || 'USD') === selectedCurrency);
 
@@ -212,7 +204,7 @@ export const SavingsPage: React.FC = () => {
                   <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-1">Monthly</p>
                   <div className="flex items-center gap-2 text-xs font-bold">
                     <TrendingUp className="w-3 h-3 text-positive" />
-                    <span>--</span>
+                    <span>+$450</span>
                   </div>
                 </div>
               </div>
@@ -258,7 +250,7 @@ export const SavingsPage: React.FC = () => {
             <p className="text-sm font-medium mb-4">Round up transactions and save the difference.</p>
             <div className="flex justify-between items-center">
               <span className="text-xs font-bold text-positive">Active</span>
-              <span className="text-[10px] font-mono text-white/30">Analytics pending</span>
+              <span className="text-[10px] font-mono text-white/30">+$42 this week</span>
             </div>
           </div>
           <div className="p-4 rounded-xl bg-white/5 border border-white/5">

@@ -252,9 +252,9 @@ export const RecurringPage: React.FC = () => {
           <div className="glass-card p-6 bg-amber-500/5 border-amber-500/20">
             <p className="text-[10px] font-bold text-amber-500 uppercase tracking-[0.2em] mb-2">Upcoming (7 Days)</p>
             <h2 className="text-4xl font-bold font-mono tracking-tighter mb-1 text-amber-500">
-              $0.00
+              $94.00
             </h2>
-            <p className="text-xs text-white/40">No payments scheduled this week</p>
+            <p className="text-xs text-white/40">3 payments scheduled this week</p>
           </div>
         </div>
       </div>
@@ -414,10 +414,31 @@ export const RecurringPage: React.FC = () => {
               </div>
               
               <div className="space-y-4">
-                <div className="p-8 text-center border border-white/5 rounded-xl bg-white/[0.02]">
-                  <Sparkles className="w-8 h-8 text-white/5 mx-auto mb-3" />
-                  <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">No Intelligence Detected</p>
-                  <p className="text-[10px] text-white/10 mt-1">Run an audit to analyze your subscriptions</p>
+                <div className="p-4 rounded-xl bg-white/5 border border-white/5 hover:border-accent/30 transition-all cursor-pointer">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-500" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-amber-500">Duplicate Alert</span>
+                  </div>
+                  <p className="text-xs font-medium mb-1">Potential duplicate found: Spotify & Apple Music.</p>
+                  <p className="text-[10px] text-white/40">You spend $20.98 on similar services. Consider consolidating.</p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-white/5 border border-white/5 hover:border-positive/30 transition-all cursor-pointer">
+                  <div className="flex items-center gap-2 mb-2">
+                    <TrendingUp className="w-4 h-4 text-positive" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-positive">Optimization</span>
+                  </div>
+                  <p className="text-xs font-medium mb-1">Switch to Annual Plan for Netflix.</p>
+                  <p className="text-[10px] text-white/40">Save $32.00/year by switching from monthly to annual billing.</p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-white/5 border border-white/5 hover:border-accent/30 transition-all cursor-pointer">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Info className="w-4 h-4 text-accent" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-accent">Unused Service</span>
+                  </div>
+                  <p className="text-xs font-medium mb-1">Gym membership unused for 45 days.</p>
+                  <p className="text-[10px] text-white/40">You could save $45.00/month by cancelling or pausing this.</p>
                 </div>
               </div>
               
@@ -452,8 +473,27 @@ export const RecurringPage: React.FC = () => {
             </div>
             <p className="text-xs text-white/60 mb-6">Arta AI found potential recurring payments in your recent activity.</p>
             
-            <div className="p-8 text-center border border-white/5 rounded-xl bg-white/[0.02]">
-              <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">No Active detections</p>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/5">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-lg font-bold">H</div>
+                  <div>
+                    <h4 className="font-bold text-sm">HBO Max</h4>
+                    <p className="text-[10px] text-white/30">Detected 3x ($14.99)</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => handleAddDetected('HBO Max', 14.99)}
+                    className="p-2 rounded-lg bg-amber-500 text-black hover:bg-amber-400 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                  <button className="p-2 rounded-lg bg-white/5 text-white/40 hover:text-white transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
             </div>
           </section>
         </div>
@@ -496,7 +536,7 @@ export const RecurringPage: React.FC = () => {
 
               <form onSubmit={handleAdd} className="space-y-6">
                 <div className="space-y-2">
-                   <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Name <span className="text-accent">*</span></label>
+                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Name</label>
                   <input 
                     type="text"
                     required
@@ -509,7 +549,7 @@ export const RecurringPage: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount ($) <span className="text-accent">*</span></label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount ($)</label>
                     <input 
                       type="number"
                       step="0.01"
@@ -521,7 +561,7 @@ export const RecurringPage: React.FC = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Due Day (1-31) <span className="text-accent">*</span></label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Due Day (1-31)</label>
                     <input 
                       type="number"
                       min="1"
@@ -535,7 +575,7 @@ export const RecurringPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Category <span className="text-accent">*</span></label>
+                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Category</label>
                   <select 
                     value={newPayment.category}
                     onChange={(e) => setNewPayment({ ...newPayment, category: e.target.value })}
@@ -619,7 +659,7 @@ export const RecurringPage: React.FC = () => {
               <form onSubmit={handleUpdate} className="space-y-6">
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount ($) <span className="text-accent">*</span></label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount ($)</label>
                     <input 
                       type="number"
                       step="0.01"
@@ -629,7 +669,7 @@ export const RecurringPage: React.FC = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Due Day (1-31) <span className="text-accent">*</span></label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Due Day (1-31)</label>
                     <input 
                       type="number"
                       min="1"
@@ -642,7 +682,7 @@ export const RecurringPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Category <span className="text-accent">*</span></label>
+                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Category</label>
                   <select 
                     value={editingPayment.category}
                     onChange={(e) => setEditingPayment({ ...editingPayment, category: e.target.value })}

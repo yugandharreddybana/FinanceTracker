@@ -338,7 +338,7 @@ export const LoansPage: React.FC = () => {
 
               <div className="p-8 space-y-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Loan Name <span className="text-accent">*</span></label>
+                  <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Loan Name</label>
                   <input 
                     type="text" 
                     placeholder="e.g. Car Loan"
@@ -349,7 +349,7 @@ export const LoansPage: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Total Amount <span className="text-accent">*</span></label>
+                    <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Total Amount</label>
                     <input 
                       type="number" 
                       placeholder="0.00"
@@ -359,7 +359,7 @@ export const LoansPage: React.FC = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Tenure (Years) <span className="text-accent">*</span></label>
+                    <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Tenure (Years)</label>
                     <input 
                       type="number" 
                       placeholder="5"
@@ -371,7 +371,7 @@ export const LoansPage: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Interest Rate (%) <span className="text-accent">*</span></label>
+                    <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Interest Rate (%)</label>
                     <input 
                       type="number" 
                       placeholder="5.0"
@@ -381,7 +381,7 @@ export const LoansPage: React.FC = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Category <span className="text-accent">*</span></label>
+                    <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Category</label>
                     <select 
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-negative transition-all"
                       value={loanForm.category}
@@ -569,7 +569,7 @@ export const LoansPage: React.FC = () => {
                         </div>
                         <div className="space-y-4">
                           <div className="space-y-1">
-                            <label className="text-[8px] font-bold text-white/20 uppercase tracking-widest">Principal <span className="text-accent">*</span></label>
+                            <label className="text-[8px] font-bold text-white/20 uppercase tracking-widest">Principal</label>
                             <input 
                               type="number" 
                               className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent"
@@ -582,7 +582,7 @@ export const LoansPage: React.FC = () => {
                             />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-[8px] font-bold text-white/20 uppercase tracking-widest">Rate (%) <span className="text-accent">*</span></label>
+                            <label className="text-[8px] font-bold text-white/20 uppercase tracking-widest">Rate (%)</label>
                             <input 
                               type="number" 
                               className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent"
@@ -595,7 +595,7 @@ export const LoansPage: React.FC = () => {
                             />
                           </div>
                           <div className="space-y-1">
-                            <label className="text-[8px] font-bold text-white/20 uppercase tracking-widest">Years <span className="text-accent">*</span></label>
+                            <label className="text-[8px] font-bold text-white/20 uppercase tracking-widest">Years</label>
                             <input 
                               type="number" 
                               className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent"

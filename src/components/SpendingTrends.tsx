@@ -154,7 +154,7 @@ export const SpendingTrends: React.FC = () => {
         </div>
       )}
 
-      <div className="flex-1 min-h-[300px] w-full mt-4">
+      <div className="flex-1 min-h-[240px] w-full">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={trendData}>
             <defs>

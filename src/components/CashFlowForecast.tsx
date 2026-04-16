@@ -21,14 +21,7 @@ const CustomTooltip = ({ active, payload, currency }: any) => {
 export const CashFlowForecast: React.FC = () => {
   const { netWorthByCurrency, recurringPayments } = useFinance();
   const currencies = Object.keys(netWorthByCurrency);
-  const [selectedCurrency, setSelectedCurrency] = useState('USD');
-
-  // Update selected currency if the current one is no longer available
-  React.useEffect(() => {
-    if (currencies.length > 0 && !currencies.includes(selectedCurrency)) {
-      setSelectedCurrency(currencies[0]);
-    }
-  }, [currencies, selectedCurrency]);
+  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'USD');
   
   const netWorth = netWorthByCurrency[selectedCurrency] || { assets: 0 };
 
@@ -44,7 +37,8 @@ export const CashFlowForecast: React.FC = () => {
       
       currentBalance -= paymentsToday;
       
-      // No random daily fluctuation for production
+      // Add some random daily fluctuation
+      currentBalance += (Math.random() - 0.5) * 100;
 
       data.push({
         day: i,

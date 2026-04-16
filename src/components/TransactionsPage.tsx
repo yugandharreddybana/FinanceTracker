@@ -887,7 +887,7 @@ export const TransactionsPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Date <span className="text-accent">*</span></label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Date</label>
                     <input 
                       type="date"
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-all text-white"
@@ -898,7 +898,7 @@ export const TransactionsPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Merchant / Description <span className="text-accent">*</span></label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Merchant / Description</label>
                   <input 
                     type="text"
                     placeholder="e.g. Starbucks, Amazon, Salary"
@@ -910,7 +910,7 @@ export const TransactionsPage: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Amount <span className="text-accent">*</span></label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Amount</label>
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 font-bold">$</span>
                       <input 
@@ -923,7 +923,7 @@ export const TransactionsPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Category <span className="text-accent">*</span></label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Category</label>
                     <div className="relative">
                       <select 
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-all appearance-none text-white"
@@ -940,7 +940,7 @@ export const TransactionsPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Account <span className="text-accent">*</span></label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Account</label>
                   <div className="relative">
                     <select 
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-all appearance-none text-white"
