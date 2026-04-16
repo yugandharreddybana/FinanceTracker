@@ -24,6 +24,7 @@ export const AIOracle: React.FC = () => {
     const initAI = async () => {
       if (isInitializingRef.current || mcpClientRef.current) return;
       isInitializingRef.current = true;
+      setIsLoading(true);
       
       try {
         // Initialize MCP Client
@@ -44,23 +45,20 @@ export const AIOracle: React.FC = () => {
         }));
 
         // Proactive initial analysis
-        setIsLoading(true);
         const systemInstruction = "You are the Arta Oracle, a premium financial AI. You have access to real-time transaction data via MCP tools. Use these tools to provide accurate, data-driven insights. Always be professional, insightful, and proactive.";
         const initialAnalysisPrompt = "Perform a quick proactive analysis of my recent transactions and give me one high-impact insight or suggestion.";
         
-        const userContent = { role: 'user', parts: [{ text: initialAnalysisPrompt }] };
-        historyRef.current.push(userContent);
+        historyRef.current = [{ role: 'user', parts: [{ text: initialAnalysisPrompt }] }];
 
-        let response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
+        let result = await ai.models.generateContent({
+          model: "gemini-1.5-flash",
           contents: historyRef.current,
-          config: {
-            systemInstruction,
-            tools: [{ functionDeclarations }]
-          }
+          config: { systemInstruction, tools: [{ functionDeclarations }] }
         });
         
+        let response = result;
         let functionCalls = response.functionCalls;
+        
         while (functionCalls) {
           // Add AI's function call to history
           historyRef.current.push(response.candidates[0].content);
@@ -76,23 +74,18 @@ export const AIOracle: React.FC = () => {
           }));
 
           // Add tool results to history
-          const toolContent = { role: 'user', parts: toolResults };
-          historyRef.current.push(toolContent);
+          historyRef.current.push({ role: 'user', parts: toolResults });
 
           response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: "gemini-1.5-flash",
             contents: historyRef.current,
-            config: {
-              systemInstruction,
-              tools: [{ functionDeclarations }]
-            }
+            config: { systemInstruction, tools: [{ functionDeclarations }] }
           });
           functionCalls = response.functionCalls;
         }
 
-        // Add final AI response to history
-        historyRef.current.push(response.candidates[0].content);
         setMessages(prev => [...prev, { role: 'ai', content: response.text || "I've connected to your financial stream." }]);
+        historyRef.current.push(response.candidates[0].content);
       } catch (err) {
         console.error("Failed to initialize AI Oracle:", err);
       } finally {
@@ -139,22 +132,16 @@ export const AIOracle: React.FC = () => {
         parameters: tool.inputSchema
       }));
 
-      const userContent = { role: 'user', parts: [{ text: userMessage }] };
-      historyRef.current.push(userContent);
+      historyRef.current.push({ role: 'user', parts: [{ text: userMessage }] });
 
       let response = await aiRef.current.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-1.5-flash",
         contents: historyRef.current,
-        config: {
-          systemInstruction,
-          tools: [{ functionDeclarations }]
-        }
+        config: { systemInstruction, tools: [{ functionDeclarations }] }
       });
       
-      // Handle potential tool calls (MCP loop)
       let functionCalls = response.functionCalls;
       while (functionCalls) {
-        // Add AI's function call to history
         historyRef.current.push(response.candidates[0].content);
 
         const toolResults = await Promise.all(functionCalls.map(async (call: any) => {
@@ -167,24 +154,18 @@ export const AIOracle: React.FC = () => {
           };
         }));
 
-        // Add tool results to history
-        const toolContent = { role: 'user', parts: toolResults };
-        historyRef.current.push(toolContent);
+        historyRef.current.push({ role: 'user', parts: toolResults });
 
         response = await aiRef.current.models.generateContent({
-          model: "gemini-3-flash-preview",
+          model: "gemini-1.5-flash",
           contents: historyRef.current,
-          config: {
-            systemInstruction,
-            tools: [{ functionDeclarations }]
-          }
+          config: { systemInstruction, tools: [{ functionDeclarations }] }
         });
         functionCalls = response.functionCalls;
       }
 
-      // Add final AI response to history
-      historyRef.current.push(response.candidates[0].content);
       setMessages(prev => [...prev, { role: 'ai', content: response.text || "I've processed your request." }]);
+      historyRef.current.push(response.candidates[0].content);
     } catch (err) {
       console.error("Oracle Error:", err);
       setMessages(prev => [...prev, { role: 'ai', content: "Forgive me, my connection to the financial stream was interrupted. Please try again." }]);

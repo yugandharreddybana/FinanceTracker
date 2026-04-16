@@ -1,25 +1,40 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, ExternalLink, RefreshCw, Shield, Lock, Globe, X, ChevronRight, Landmark, CreditCard, Wallet as WalletIcon, Check, ChevronDown } from 'lucide-react';
+import { Edit2, Trash2, Plus, ExternalLink, RefreshCw, Shield, Lock, Globe, X, ChevronRight, Landmark, CreditCard, Wallet as WalletIcon, Check, ChevronDown, Search } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { BankAccount } from '../types';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useFinance } from '../context/FinanceContext';
 import { WORLD_CURRENCIES } from '../constants/currencies';
 
-const sparklineData = Array.from({ length: 20 }, (_, i) => ({ value: Math.random() * 100 }));
+const sparklineData = Array.from({ length: 20 }, (_, i) => ({ value: 0 }));
 
 export const BankAccountsPage: React.FC = () => {
-  const { accounts, addAccount, transactions, netWorthByCurrency } = useFinance();
+  const { accounts, addAccount, updateAccount, deleteAccount, transactions, netWorthByCurrency } = useFinance();
   const [isConnecting, setIsConnecting] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<BankAccount | null>(null);
   const [isManual, setIsManual] = useState(false);
   const [manualForm, setManualForm] = useState({ bank: '', name: '', balance: '', type: 'Current' as any, currency: 'USD' });
+
+  const [isEditingAccount, setIsEditingAccount] = useState(false);
+  const [editAccountForm, setEditAccountForm] = useState<Partial<BankAccount>>({});
+  const [currencySearch, setCurrencySearch] = useState('');
+  const [isCurrencyDropdownOpen, setIsCurrencyDropdownOpen] = useState(false);
+  const [accountToDelete, setAccountToDelete] = useState<BankAccount | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
   const [transactionFilter, setTransactionFilter] = useState('');
 
   const currencies = Object.keys(netWorthByCurrency);
-  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'USD');
-  
+  const [selectedCurrency, setSelectedCurrency] = useState('USD');
+
+  // Update selected currency if the current one is no longer available
+  React.useEffect(() => {
+    if (currencies.length > 0 && !currencies.includes(selectedCurrency)) {
+      setSelectedCurrency(currencies[0]);
+    }
+  }, [currencies, selectedCurrency]);
+
   const netWorth = netWorthByCurrency[selectedCurrency] || { total: 0, assets: 0, liabilities: 0, change: 0 };
 
   const creditUtilization = accounts
@@ -29,19 +44,34 @@ export const BankAccountsPage: React.FC = () => {
   const handleManualSubmit = () => {
     if (!manualForm.bank || !manualForm.balance) return;
     addAccount({
-      id: `manual-${Date.now()}`,
       name: manualForm.name || manualForm.bank,
       bank: manualForm.bank,
       balance: Number(manualForm.balance),
       type: manualForm.type,
       currency: manualForm.currency || 'USD',
       color: '#7C6EFA',
-      lastSynced: 'Just now'
-    });
+      lastSynced: new Date().toISOString()
+    } as any);
     setIsManual(false);
     setIsConnecting(false);
     setManualForm({ bank: '', name: '', balance: '', type: 'Current', currency: 'USD' });
   };
+
+  const handleEditSubmit = () => {
+    if (!selectedAccount) return;
+    updateAccount(selectedAccount.id, editAccountForm);
+    setSelectedAccount({ ...selectedAccount, ...editAccountForm } as BankAccount);
+    setIsEditingAccount(false);
+  };
+
+  const handleConfirmDelete = () => {
+    if (accountToDelete) {
+      deleteAccount(accountToDelete.id);
+      setAccountToDelete(null);
+      setSelectedAccount(null);
+    }
+  };
+
 
   return (
     <motion.div
@@ -79,7 +109,7 @@ export const BankAccountsPage: React.FC = () => {
           { label: 'Credit Utilization', value: creditUtilization.toLocaleString('en-US', { style: 'currency', currency: selectedCurrency }), color: 'text-negative' },
           { label: 'Active Links', value: `${accounts.length} Institutions`, color: 'text-positive' }
         ].map((stat, i) => (
-          <motion.div 
+          <motion.div
             key={stat.label}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -105,17 +135,17 @@ export const BankAccountsPage: React.FC = () => {
           >
             {/* Mesh Gradient Background */}
             <div className="absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity duration-700">
-              <div 
-                className="absolute top-[-20%] right-[-10%] w-[60%] h-[80%] blur-[80px] rounded-full" 
+              <div
+                className="absolute top-[-20%] right-[-10%] w-[60%] h-[80%] blur-[80px] rounded-full"
                 style={{ backgroundColor: account.color }}
               />
             </div>
-            
-            <div 
-              className="absolute top-0 left-0 w-full h-1.5 opacity-60" 
+
+            <div
+              className="absolute top-0 left-0 w-full h-1.5 opacity-60"
               style={{ backgroundColor: account.color }}
             />
-            
+
             <div className="flex justify-between items-start mb-8 relative z-10">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-xl font-bold border border-white/5 group-hover:border-white/20 transition-all">
@@ -126,9 +156,33 @@ export const BankAccountsPage: React.FC = () => {
                   <p className="text-xs text-white/30 font-medium">{account.bank}</p>
                 </div>
               </div>
-              <span className="px-3 py-1 rounded-lg bg-white/5 border border-white/5 text-[10px] font-bold uppercase tracking-widest text-white/40">
-                {account.type}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1 rounded-lg bg-white/5 border border-white/5 text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  {account.type}
+                </span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedAccount(account);
+                    setIsEditingAccount(true);
+                    setEditAccountForm(account);
+                  }}
+                  className="p-1.5 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-colors"
+                  title="Edit Account"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setAccountToDelete(account);
+                  }}
+                  className="p-1.5 hover:bg-negative/20 rounded-lg text-white/40 hover:text-negative transition-colors"
+                  title="Delete Account"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             <div className="mb-8 relative z-10">
@@ -143,15 +197,15 @@ export const BankAccountsPage: React.FC = () => {
                 <AreaChart data={sparklineData}>
                   <defs>
                     <linearGradient id={`grad-${account.id}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={account.color} stopOpacity={0.4}/>
-                      <stop offset="100%" stopColor={account.color} stopOpacity={0}/>
+                      <stop offset="0%" stopColor={account.color} stopOpacity={0.4} />
+                      <stop offset="100%" stopColor={account.color} stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <Area 
-                    type="monotone" 
-                    dataKey="value" 
-                    stroke={account.color} 
-                    fill={`url(#grad-${account.id})`} 
+                  <Area
+                    type="monotone"
+                    dataKey="value"
+                    stroke={account.color}
+                    fill={`url(#grad-${account.id})`}
                     strokeWidth={3}
                     animationDuration={2000}
                   />
@@ -164,7 +218,7 @@ export const BankAccountsPage: React.FC = () => {
                 <RefreshCw className="w-3.5 h-3.5 animate-spin-slow" />
                 <span>{account.lastSynced}</span>
               </div>
-              <button 
+              <button
                 onClick={() => setSelectedAccount(account)}
                 className="flex items-center gap-2 text-[10px] text-accent font-bold uppercase tracking-[0.2em] hover:text-white transition-colors group/btn"
               >
@@ -192,7 +246,7 @@ export const BankAccountsPage: React.FC = () => {
       <AnimatePresence>
         {selectedAccount && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -207,12 +261,12 @@ export const BankAccountsPage: React.FC = () => {
             >
               <div className="p-8 border-b border-white/5 bg-accent/5 flex justify-between items-center">
                 <div className="flex items-center gap-6">
-                  <div 
+                  <div
                     className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-bold border shadow-lg"
-                    style={{ 
-                      backgroundColor: `${selectedAccount.color}15`, 
+                    style={{
+                      backgroundColor: `${selectedAccount.color}15`,
                       borderColor: `${selectedAccount.color}30`,
-                      color: selectedAccount.color 
+                      color: selectedAccount.color
                     }}
                   >
                     {selectedAccount.bank.charAt(0)}
@@ -222,123 +276,289 @@ export const BankAccountsPage: React.FC = () => {
                     <p className="text-xs text-white/40 font-bold uppercase tracking-widest">{selectedAccount.bank} • {selectedAccount.type} Account</p>
                   </div>
                 </div>
-                <button onClick={() => setSelectedAccount(null)} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
-                  <X className="w-6 h-6 text-white/20 hover:text-white" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setIsEditingAccount(!isEditingAccount);
+                      if (!isEditingAccount) setEditAccountForm(selectedAccount);
+                    }}
+                    className={cn(
+                      "p-2 rounded-xl transition-colors",
+                      isEditingAccount ? "bg-accent/20 text-accent" : "hover:bg-white/5 text-white/40 hover:text-white"
+                    )}
+                    title="Edit Account"
+                  >
+                    <Edit2 className="w-5 h-5" />
+                  </button>
+                   <button
+                    onClick={() => setAccountToDelete(selectedAccount)}
+                    className="p-2 hover:bg-negative/20 rounded-xl transition-colors group/del"
+                    title="Delete Account"
+                  >
+                    <Trash2 className="w-5 h-5 text-white/40 group-hover/del:text-negative" />
+                  </button>
+                  <div className="w-px h-6 bg-white/10 mx-2" />
+                  <button onClick={() => { setSelectedAccount(null); setIsEditingAccount(false); }} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
+                    <X className="w-6 h-6 text-white/20 hover:text-white" />
+                  </button>
+                </div>
               </div>
 
               <div className="p-8">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-                  <div className="glass-card p-6 bg-white/[0.02]">
-                    <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2">Current Balance</p>
-                    <p className="text-3xl font-bold font-mono tracking-tighter">
-                      ${selectedAccount.balance.toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="glass-card p-6 bg-positive/5 border-positive/10">
-                    <p className="text-[10px] font-bold text-positive uppercase tracking-widest mb-2">Income So Far</p>
-                    <p className="text-3xl font-bold font-mono tracking-tighter text-positive">
-                      +${transactions
-                        .filter(t => t.account === selectedAccount.name && t.type === 'income')
-                        .reduce((acc, t) => acc + t.amount, 0).toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="glass-card p-6 bg-negative/5 border-negative/10">
-                    <p className="text-[10px] font-bold text-negative uppercase tracking-widest mb-2">Expense So Far</p>
-                    <p className="text-3xl font-bold font-mono tracking-tighter text-negative">
-                      -${transactions
-                        .filter(t => t.account === selectedAccount.name && t.type === 'expense')
-                        .reduce((acc, t) => acc + Math.abs(t.amount), 0).toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mb-10 glass-card p-6 border-white/5">
-                  <h4 className="text-sm font-bold uppercase tracking-widest text-white/60 mb-6">Income vs Expense (Last 7 Days)</h4>
-                  <div className="h-48 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart 
-                        data={Array.from({ length: 7 }).map((_, i) => {
-                          const d = new Date();
-                          d.setDate(d.getDate() - (6 - i));
-                          const dateStr = d.toISOString().split('T')[0];
-                          const dayTransactions = transactions.filter(t => t.account === selectedAccount.name && t.date === dateStr);
-                          return {
-                            date: d.toLocaleDateString('default', { weekday: 'short' }),
-                            income: dayTransactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0),
-                            expense: dayTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + Math.abs(t.amount), 0)
-                          };
-                        })}
-                        margin={{ top: 0, right: 0, left: -20, bottom: 0 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                        <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 700 }} dy={10} />
-                        <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 700 }} />
-                        <Tooltip 
-                          contentStyle={{ backgroundColor: '#0F0F19', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', color: '#fff' }}
-                          cursor={{ fill: 'rgba(255,255,255,0.05)' }}
-                        />
-                        <Bar dataKey="income" fill="#22D3A5" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                        <Bar dataKey="expense" fill="#F43F5E" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  <div className="flex justify-between items-center">
-                    <h4 className="text-sm font-bold uppercase tracking-widest text-white/60">Recent Transactions</h4>
-                    <div className="relative">
-                      <input 
+                {isEditingAccount ? (
+                  <div className="space-y-6">
+                    <div>
+                      <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2 block">Account Name <span className="text-accent">*</span></label>
+                      <input
                         type="text"
-                        placeholder="Filter transactions..."
-                        value={transactionFilter}
-                        onChange={(e) => setTransactionFilter(e.target.value)}
-                        className="bg-white/5 border border-white/10 rounded-lg py-1.5 px-4 text-xs outline-none focus:border-accent/50 transition-all w-64"
+                        value={editAccountForm.name || ''}
+                        onChange={e => setEditAccountForm({ ...editAccountForm, name: e.target.value })}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-accent/50 transition-colors"
                       />
                     </div>
-                  </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2 block">Bank / Institution <span className="text-accent">*</span></label>
+                        <input
+                          type="text"
+                          value={editAccountForm.bank || ''}
+                          onChange={e => setEditAccountForm({ ...editAccountForm, bank: e.target.value })}
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-accent/50 transition-colors"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2 block">Account Type <span className="text-accent">*</span></label>
+                        <select
+                          value={editAccountForm.type || 'Current'}
+                          onChange={e => setEditAccountForm({ ...editAccountForm, type: e.target.value as any })}
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-accent/50 transition-colors appearance-none"
+                        >
+                          <option value="Current" className="bg-[#050508]">Current</option>
+                          <option value="Savings" className="bg-[#050508]">Savings</option>
+                          <option value="Credit" className="bg-[#050508]">Credit</option>
+                          <option value="Loan" className="bg-[#050508]">Loan</option>
+                          <option value="Investment" className="bg-[#050508]">Investment</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2 block">Balance <span className="text-accent">*</span></label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            value={editAccountForm.balance ?? ''}
+                            onChange={e => setEditAccountForm({ ...editAccountForm, balance: Number(e.target.value) })}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-accent/50 transition-colors"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2 block">Currency <span className="text-accent">*</span></label>
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-left text-white focus:outline-none focus:border-accent/50 transition-colors flex justify-between items-center"
+                          >
+                            <span>
+                              {WORLD_CURRENCIES.find(c => c.code === editAccountForm.currency)?.code || 'Select Currency'}
+                              <span className="text-white/40 ml-2">
+                                ({WORLD_CURRENCIES.find(c => c.code === editAccountForm.currency)?.symbol})
+                              </span>
+                            </span>
+                            <ChevronDown className={cn("w-4 h-4 text-white/20 transition-transform", isCurrencyDropdownOpen && "rotate-180")} />
+                          </button>
 
-                  <div className="glass-card overflow-hidden border-white/5">
-                    <div className="max-h-[300px] overflow-y-auto">
-                      <table className="w-full text-left border-collapse">
-                        <thead className="sticky top-0 z-10 bg-[#0A0A0B]">
-                          <tr className="border-b border-white/5">
-                            <th className="px-6 py-4 text-[10px] font-bold text-white/30 uppercase tracking-widest">Date</th>
-                            <th className="px-6 py-4 text-[10px] font-bold text-white/30 uppercase tracking-widest">Merchant</th>
-                            <th className="px-6 py-4 text-[10px] font-bold text-white/30 uppercase tracking-widest">Category</th>
-                            <th className="px-6 py-4 text-[10px] font-bold text-white/30 uppercase tracking-widest text-right">Amount</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {transactions
-                            .filter(t => t.account === selectedAccount.name)
-                            .filter(t => 
-                              t.merchant.toLowerCase().includes(transactionFilter.toLowerCase()) ||
-                              t.category.toLowerCase().includes(transactionFilter.toLowerCase())
-                            )
-                            .map((t, i) => (
-                              <tr key={t.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
-                                <td className="px-6 py-4 text-xs font-mono text-white/40">{t.date}</td>
-                                <td className="px-6 py-4 text-sm font-bold">{t.merchant}</td>
-                                <td className="px-6 py-4">
-                                  <span className="px-2 py-1 rounded-md bg-white/5 text-[10px] font-bold uppercase tracking-widest text-white/30">
-                                    {t.category}
-                                  </span>
-                                </td>
-                                <td className={cn(
-                                  "px-6 py-4 text-sm font-bold font-mono text-right",
-                                  t.type === 'expense' ? "text-negative" : "text-positive"
-                                )}>
-                                  {t.type === 'expense' ? '-' : '+'}${Math.abs(t.amount).toLocaleString()}
-                                </td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
+                          <AnimatePresence>
+                            {isCurrencyDropdownOpen && (
+                              <>
+                                <div
+                                  className="fixed inset-0 z-[60]"
+                                  onClick={() => setIsCurrencyDropdownOpen(false)}
+                                />
+                                <motion.div
+                                  initial={{ opacity: 0, y: -10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: -10 }}
+                                  className="absolute top-full left-0 right-0 mt-2 bg-[#0A0A0F] border border-white/10 rounded-xl shadow-2xl z-[70] overflow-hidden"
+                                >
+                                  <div className="p-2 border-b border-white/5">
+                                    <div className="relative">
+                                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/20" />
+                                      <input
+                                        type="text"
+                                        placeholder="Search currency..."
+                                        className="w-full bg-white/5 border border-white/5 rounded-lg py-2 pl-9 pr-3 text-xs outline-none focus:border-accent/30 transition-all"
+                                        value={currencySearch}
+                                        onChange={(e) => setCurrencySearch(e.target.value)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        autoFocus
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="max-h-60 overflow-y-auto no-scrollbar">
+                                    {WORLD_CURRENCIES.filter(curr =>
+                                      curr.code.toLowerCase().includes(currencySearch.toLowerCase()) ||
+                                      curr.name.toLowerCase().includes(currencySearch.toLowerCase())
+                                    ).map(curr => (
+                                      <button
+                                        key={curr.code}
+                                        onClick={() => {
+                                          setEditAccountForm({ ...editAccountForm, currency: curr.code });
+                                          setIsCurrencyDropdownOpen(false);
+                                          setCurrencySearch('');
+                                        }}
+                                        className={cn(
+                                          "w-full px-4 py-3 text-left text-xs hover:bg-white/5 transition-colors flex items-center justify-between",
+                                          editAccountForm.currency === curr.code ? "text-accent bg-accent/5" : "text-white/60"
+                                        )}
+                                      >
+                                        <span>{curr.code} - {curr.name}</span>
+                                        <span className="text-white/20 font-mono tracking-widest">{curr.symbol}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </motion.div>
+                              </>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="pt-4 flex justify-end gap-3">
+                      <button
+                        onClick={() => {
+                          setIsEditingAccount(false);
+                          setSelectedAccount(null);
+                        }}
+                        className="px-6 py-3 rounded-xl border border-white/10 text-white/60 font-bold hover:bg-white/5 hover:text-white transition-all text-sm"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleEditSubmit}
+                        className="px-6 py-3 rounded-xl bg-accent text-white font-bold hover:bg-accent/80 transition-all shadow-[0_0_20px_rgba(124,110,250,0.3)] text-sm"
+                      >
+                        Save Changes
+                      </button>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+                      <div className="glass-card p-6 bg-white/[0.02]">
+                        <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2">Current Balance</p>
+                        <p className="text-3xl font-bold font-mono tracking-tighter">
+                          ${selectedAccount.balance.toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="glass-card p-6 bg-positive/5 border-positive/10">
+                        <p className="text-[10px] font-bold text-positive uppercase tracking-widest mb-2">Income So Far</p>
+                        <p className="text-3xl font-bold font-mono tracking-tighter text-positive">
+                          +${transactions
+                            .filter(t => t.account === selectedAccount.name && t.type === 'income')
+                            .reduce((acc, t) => acc + t.amount, 0).toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="glass-card p-6 bg-negative/5 border-negative/10">
+                        <p className="text-[10px] font-bold text-negative uppercase tracking-widest mb-2">Expense So Far</p>
+                        <p className="text-3xl font-bold font-mono tracking-tighter text-negative">
+                          -${transactions
+                            .filter(t => t.account === selectedAccount.name && t.type === 'expense')
+                            .reduce((acc, t) => acc + Math.abs(t.amount), 0).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mb-10 glass-card p-6 border-white/5">
+                      <h4 className="text-sm font-bold uppercase tracking-widest text-white/60 mb-6">Income vs Expense (Last 7 Days)</h4>
+                      <div className="h-48 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={Array.from({ length: 7 }).map((_, i) => {
+                              const d = new Date();
+                              d.setDate(d.getDate() - (6 - i));
+                              const dateStr = d.toISOString().split('T')[0];
+                              const dayTransactions = transactions.filter(t => t.account === selectedAccount.name && t.date === dateStr);
+                              return {
+                                date: d.toLocaleDateString('default', { weekday: 'short' }),
+                                income: dayTransactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0),
+                                expense: dayTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + Math.abs(t.amount), 0)
+                              };
+                            })}
+                            margin={{ top: 0, right: 0, left: -20, bottom: 0 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                            <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 700 }} dy={10} />
+                            <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 700 }} />
+                            <Tooltip
+                              contentStyle={{ backgroundColor: '#0F0F19', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', color: '#fff' }}
+                              cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                            />
+                            <Bar dataKey="income" fill="#22D3A5" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                            <Bar dataKey="expense" fill="#F43F5E" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    <div className="space-y-6">
+                      <div className="flex justify-between items-center">
+                        <h4 className="text-sm font-bold uppercase tracking-widest text-white/60">Recent Transactions</h4>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="Filter transactions..."
+                            value={transactionFilter}
+                            onChange={(e) => setTransactionFilter(e.target.value)}
+                            className="bg-white/5 border border-white/10 rounded-lg py-1.5 px-4 text-xs outline-none focus:border-accent/50 transition-all w-64"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="glass-card overflow-hidden border-white/5">
+                        <div className="max-h-[300px] overflow-y-auto">
+                          <table className="w-full text-left border-collapse">
+                            <thead className="sticky top-0 z-10 bg-[#0A0A0B]">
+                              <tr className="border-b border-white/5">
+                                <th className="px-6 py-4 text-[10px] font-bold text-white/30 uppercase tracking-widest">Date</th>
+                                <th className="px-6 py-4 text-[10px] font-bold text-white/30 uppercase tracking-widest">Merchant</th>
+                                <th className="px-6 py-4 text-[10px] font-bold text-white/30 uppercase tracking-widest">Category</th>
+                                <th className="px-6 py-4 text-[10px] font-bold text-white/30 uppercase tracking-widest text-right">Amount</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {transactions
+                                .filter(t => t.account === selectedAccount.name)
+                                .filter(t =>
+                                  t.merchant.toLowerCase().includes(transactionFilter.toLowerCase()) ||
+                                  t.category.toLowerCase().includes(transactionFilter.toLowerCase())
+                                )
+                                .map((t, i) => (
+                                  <tr key={t.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                                    <td className="px-6 py-4 text-xs font-mono text-white/40">{t.date}</td>
+                                    <td className="px-6 py-4 text-sm font-bold">{t.merchant}</td>
+                                    <td className="px-6 py-4">
+                                      <span className="px-2 py-1 rounded-md bg-white/5 text-[10px] font-bold uppercase tracking-widest text-white/30">
+                                        {t.category}
+                                      </span>
+                                    </td>
+                                    <td className={cn(
+                                      "px-6 py-4 text-sm font-bold font-mono text-right",
+                                      t.type === 'expense' ? "text-negative" : "text-positive"
+                                    )}>
+                                      {t.type === 'expense' ? '-' : '+'}${Math.abs(t.amount).toLocaleString()}
+                                    </td>
+                                  </tr>
+                                ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </motion.div>
           </div>
@@ -349,7 +569,7 @@ export const BankAccountsPage: React.FC = () => {
       <AnimatePresence>
         {isConnecting && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -431,7 +651,7 @@ export const BankAccountsPage: React.FC = () => {
                       </div>
 
                       <div className="flex gap-4">
-                        <button 
+                        <button
                           onClick={() => setIsManual(true)}
                           className="flex-1 py-4 rounded-2xl bg-white/5 font-bold hover:bg-white/10 transition-all text-white/40"
                         >
@@ -452,8 +672,8 @@ export const BankAccountsPage: React.FC = () => {
                     >
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Bank Name</label>
-                          <input 
+                          <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Bank Name <span className="text-accent">*</span></label>
+                          <input
                             type="text"
                             value={manualForm.bank}
                             onChange={(e) => setManualForm(prev => ({ ...prev, bank: e.target.value }))}
@@ -462,8 +682,8 @@ export const BankAccountsPage: React.FC = () => {
                           />
                         </div>
                         <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Account Name</label>
-                          <input 
+                          <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Account Name <span className="text-accent">*</span></label>
+                          <input
                             type="text"
                             value={manualForm.name}
                             onChange={(e) => setManualForm(prev => ({ ...prev, name: e.target.value }))}
@@ -472,8 +692,8 @@ export const BankAccountsPage: React.FC = () => {
                           />
                         </div>
                         <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Current Balance ($)</label>
-                          <input 
+                          <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Current Balance ($) <span className="text-accent">*</span></label>
+                          <input
                             type="number"
                             value={manualForm.balance}
                             onChange={(e) => setManualForm(prev => ({ ...prev, balance: e.target.value }))}
@@ -482,8 +702,8 @@ export const BankAccountsPage: React.FC = () => {
                           />
                         </div>
                         <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Account Type</label>
-                          <select 
+                          <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Account Type <span className="text-accent">*</span></label>
+                          <select
                             value={manualForm.type}
                             onChange={(e) => setManualForm(prev => ({ ...prev, type: e.target.value as any }))}
                             className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all"
@@ -493,30 +713,88 @@ export const BankAccountsPage: React.FC = () => {
                             <option value="Credit" className="bg-[#050508] text-white">Credit</option>
                           </select>
                         </div>
-                        <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Currency</label>
-                          <select 
-                            value={manualForm.currency || 'USD'}
-                            onChange={(e) => setManualForm(prev => ({ ...prev, currency: e.target.value }))}
-                            className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all"
-                          >
-                            {WORLD_CURRENCIES.map(curr => (
-                              <option key={curr.code} value={curr.code} className="bg-[#050508] text-white">
-                                {curr.code} ({curr.symbol}) - {curr.name}
-                              </option>
-                            ))}
-                          </select>
+                        <div className="relative">
+                          <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2 block ml-1">Currency <span className="text-accent">*</span></label>
+                          <div className="relative">
+                             <button
+                               type="button"
+                               onClick={() => setIsCurrencyDropdownOpen(!isCurrencyDropdownOpen)}
+                               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-left text-white focus:outline-none focus:border-accent/50 transition-colors flex justify-between items-center"
+                             >
+                              <span>
+                                {WORLD_CURRENCIES.find(c => c.code === manualForm.currency)?.code || 'Select Currency'}
+                                <span className="text-white/40 ml-2">
+                                  ({WORLD_CURRENCIES.find(c => c.code === manualForm.currency)?.symbol})
+                                </span>
+                              </span>
+                              <ChevronDown className={cn("w-4 h-4 transition-transform", isCurrencyDropdownOpen && "rotate-180")} />
+                            </button>
+
+                            <AnimatePresence>
+                              {isCurrencyDropdownOpen && (
+                                <>
+                                  <div 
+                                    className="fixed inset-0 z-[60]" 
+                                    onClick={() => setIsCurrencyDropdownOpen(false)} 
+                                  />
+                                  <motion.div
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    className="absolute bottom-full left-0 right-0 mb-2 bg-[#0A0A0F] border border-white/10 rounded-xl shadow-2xl z-[70] overflow-hidden"
+                                  >
+                                    <div className="p-2 border-b border-white/5">
+                                      <div className="relative">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/20" />
+                                        <input
+                                          type="text"
+                                          placeholder="Search currency..."
+                                          className="w-full bg-white/5 border border-white/5 rounded-lg py-2 pl-9 pr-3 text-xs outline-none focus:border-accent/30 transition-all"
+                                          value={currencySearch}
+                                          onChange={(e) => setCurrencySearch(e.target.value)}
+                                          onClick={(e) => e.stopPropagation()}
+                                          autoFocus
+                                        />
+                                      </div>
+                                    </div>
+                                    <div className="max-h-60 overflow-y-auto no-scrollbar">
+                                      {WORLD_CURRENCIES.filter(curr => 
+                                        curr.code.toLowerCase().includes(currencySearch.toLowerCase()) ||
+                                        curr.name.toLowerCase().includes(currencySearch.toLowerCase())
+                                      ).map(curr => (
+                                        <button
+                                          key={curr.code}
+                                          onClick={() => {
+                                            setManualForm({ ...manualForm, currency: curr.code });
+                                            setIsCurrencyDropdownOpen(false);
+                                            setCurrencySearch('');
+                                          }}
+                                          className={cn(
+                                            "w-full px-4 py-3 text-left text-xs hover:bg-white/5 transition-colors flex items-center justify-between",
+                                            manualForm.currency === curr.code ? "text-accent bg-accent/5" : "text-white/60"
+                                          )}
+                                        >
+                                          <span>{curr.code} - {curr.name}</span>
+                                          <span className="text-white/20 font-mono tracking-widest">{curr.symbol}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </motion.div>
+                                </>
+                              )}
+                            </AnimatePresence>
+                          </div>
                         </div>
                       </div>
 
                       <div className="flex gap-4">
-                        <button 
+                        <button
                           onClick={() => setIsManual(false)}
                           className="flex-1 py-4 rounded-2xl bg-white/5 font-bold hover:bg-white/10 transition-all text-white/40"
                         >
                           Back to Auto
                         </button>
-                        <button 
+                        <button
                           onClick={handleManualSubmit}
                           className="flex-[2] py-4 rounded-2xl bg-accent text-white font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow"
                         >
@@ -526,6 +804,52 @@ export const BankAccountsPage: React.FC = () => {
                     </motion.div>
                   )}
                 </AnimatePresence>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {accountToDelete && (
+          <div className="fixed inset-0 z-[250] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setAccountToDelete(null)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative glass-card p-10 max-w-md w-full border-negative/30 shadow-[0_0_50px_rgba(244,63,94,0.2)]"
+            >
+              <div className="flex flex-col items-center text-center">
+                <div className="w-20 h-20 rounded-3xl bg-negative/10 flex items-center justify-center mb-6 border border-negative/20">
+                  <Trash2 className="w-10 h-10 text-negative" />
+                </div>
+                <h3 className="text-3xl font-bold mb-4 tracking-tight">Delete Account?</h3>
+                <p className="text-white/40 mb-10 leading-relaxed">
+                  You are about to permanently disconnect <span className="text-white font-bold">{accountToDelete.name}</span>. 
+                  Historical transaction data will be archived, but the live connection will be terminated.
+                </p>
+                <div className="flex gap-4 w-full">
+                  <button 
+                    onClick={() => setAccountToDelete(null)}
+                    className="flex-1 py-4 rounded-2xl bg-white/5 font-bold hover:bg-white/10 transition-all text-sm uppercase tracking-widest"
+                  >
+                    Abort
+                  </button>
+                  <button 
+                    onClick={handleConfirmDelete}
+                    className="flex-1 py-4 rounded-2xl bg-negative text-white font-bold hover:bg-negative/80 transition-all shadow-lg text-sm uppercase tracking-widest"
+                  >
+                    Confirm Purge
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

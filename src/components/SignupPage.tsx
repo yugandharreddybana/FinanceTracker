@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Sparkles, Mail, Lock, User, ArrowRight, Loader2, AlertCircle, ShieldCheck } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
 
 interface SignupPageProps {
   onSignup: () => void;
@@ -14,6 +15,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onSwitchToLogi
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const { showToast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,6 +40,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onSwitchToLogi
     // Simulate API call
     setTimeout(() => {
       setIsLoading(false);
+      showToast('success', 'Account Created', 'Welcome to Arta Finance. Your terminal is ready.');
       onSignup();
     }, 1500);
   };
@@ -78,7 +81,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onSwitchToLogi
             )}
 
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest ml-1">Full Name</label>
+              <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest ml-1">Full Name <span className="text-accent">*</span></label>
               <div className="relative group">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-accent transition-colors" />
                 <input 
@@ -92,7 +95,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onSwitchToLogi
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest ml-1">Email Address</label>
+              <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest ml-1">Email Address <span className="text-accent">*</span></label>
               <div className="relative group">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-accent transition-colors" />
                 <input 
@@ -106,7 +109,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onSwitchToLogi
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest ml-1">Password</label>
+              <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest ml-1">Password <span className="text-accent">*</span></label>
               <div className="relative group">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-accent transition-colors" />
                 <input 

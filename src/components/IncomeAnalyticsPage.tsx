@@ -191,8 +191,8 @@ export const IncomeAnalyticsPage: React.FC = () => {
             <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-2">Total Monthly Income</p>
             <h4 className="text-4xl font-bold font-mono tracking-tighter mb-4">{totalIncome.toLocaleString('en-US', { style: 'currency', currency: selectedCurrency })}</h4>
             <div className="flex items-center gap-1 text-positive text-xs font-bold">
-              <TrendingUp className="w-4 h-4" />
-              <span>+15% vs last year</span>
+              {totalIncome > 0 && <TrendingUp className="w-4 h-4" />}
+              <span>{totalIncome > 0 ? "Income active" : "No income sources"}</span>
             </div>
           </div>
 
@@ -238,8 +238,10 @@ export const IncomeAnalyticsPage: React.FC = () => {
             <Briefcase className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-1">Tax Estimate</p>
-            <h4 className="text-xl font-bold font-mono text-negative">$1,240</h4>
+            <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-1">Tax Estimate (20%)</p>
+            <h4 className="text-xl font-bold font-mono text-negative">
+              {(totalIncome * 0.2).toLocaleString('en-US', { style: 'currency', currency: selectedCurrency })}
+            </h4>
           </div>
         </div>
         <div className="glass-card p-6 flex items-center gap-4">
@@ -248,7 +250,9 @@ export const IncomeAnalyticsPage: React.FC = () => {
           </div>
           <div>
             <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-1">Take-home Pay</p>
-            <h4 className="text-xl font-bold font-mono text-positive">$4,230</h4>
+            <h4 className="text-xl font-bold font-mono text-positive">
+              {(totalIncome * 0.8).toLocaleString('en-US', { style: 'currency', currency: selectedCurrency })}
+            </h4>
           </div>
         </div>
         <div className="glass-card p-6 flex items-center gap-4">
@@ -257,7 +261,9 @@ export const IncomeAnalyticsPage: React.FC = () => {
           </div>
           <div>
             <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-1">Next Payday</p>
-            <h4 className="text-xl font-bold font-mono">March 25</h4>
+            <h4 className="text-xl font-bold font-mono">
+              {filteredIncome.length > 0 ? "Upcoming" : "Not Set"}
+            </h4>
           </div>
         </div>
       </div>

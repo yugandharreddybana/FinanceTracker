@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, AlertCircle, TrendingUp, Award, Lightbulb, BarChart, Send, Mic, MicOff, MessageSquare, X, Loader2, Volume2, VolumeX } from 'lucide-react';
+import { Sparkles, AlertCircle, TrendingUp, Award, Lightbulb, BarChart, Send, Mic, MicOff, MessageSquare, X, Loader2, Volume2, VolumeX, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { GoogleGenAI } from "@google/genai";
 import { MCPClient } from '../services/mcpClient';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useFinance } from '../context/FinanceContext';
+import { useToast } from '../context/ToastContext';
+import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 
 interface Insight {
   id: string;
@@ -23,17 +25,33 @@ interface AIInsightsPageProps {
 
 export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose }) => {
   const { accounts } = useFinance();
+  const { showToast } = useToast();
   const [selectedBank, setSelectedBank] = useState<string>('ALL');
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
-  const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
+
+  const {
+    isListening,
+    transcript,
+    interimTranscript,
+    startListening,
+    stopListening
+  } = useSpeechRecognition({
+    onResult: (text, isFinal) => {
+      if (isFinal) {
+        setInput(prev => (prev + (prev ? ' ' : '') + text).trim());
+      }
+    }
+  });
   const [insights, setInsights] = useState<Insight[]>([]);
   const [messages, setMessages] = useState<{ role: 'user' | 'ai', content: string }[]>([
-    { role: 'ai', content: "Welcome back, Yugandhar. I'm analyzing your real-time financial stream. How can I help you optimize your wealth today?" }
+    { role: 'ai', content: "Welcome back. I'm analyzing your real-time financial stream. How can I help you optimize your wealth today?" }
   ]);
+
+  const [insightRatings, setInsightRatings] = useState<Record<string, 'up' | 'down'>>({});
 
   const mcpClientRef = useRef<MCPClient | null>(null);
   const aiRef = useRef<any>(null);
@@ -181,46 +199,37 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
     }
   };
 
-  const startListening = () => {
-    if (window.self !== window.top) {
-      alert("Speech recognition is often blocked in preview environments. Please open the app in a new tab to use voice features.");
-      return;
+  const handleRateInsight = (id: string, rating: 'up' | 'down') => {
+    setInsightRatings(prev => ({
+      ...prev,
+      [id]: prev[id] === rating ? undefined : rating
+    }) as any);
+    
+    if (rating === 'up') {
+      showToast('success', 'Feedback Recorded', 'Thank you! This helps improve your future insights.');
+    } else {
+      showToast('info', 'Feedback Recorded', 'Understood. We will adjust future suggestions accordingly.');
     }
-
-    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Speech recognition is not supported in this browser.");
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.onstart = () => {
-      setIsListening(true);
-      setIsVoiceMode(true);
-    };
-    recognition.onend = () => setIsListening(false);
-    recognition.onerror = (event: any) => {
-      console.error("Speech recognition error:", event.error);
-      setIsListening(false);
-      if (event.error === 'network') {
-        setMessages(prev => [...prev, { role: 'ai', content: "I'm having trouble connecting to the speech service. This is often caused by browser restrictions in the preview environment. Please try opening the app in a new tab, or type your message instead." }]);
-      } else if (event.error === 'not-allowed') {
-        setMessages(prev => [...prev, { role: 'ai', content: "Microphone access was denied. Please check your browser permissions." }]);
-      } else {
-        setMessages(prev => [...prev, { role: 'ai', content: `Speech recognition encountered an error: ${event.error}` }]);
-      }
-    };
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setInput(transcript);
-      // Auto-send after a short delay
-      setTimeout(() => {
-        document.getElementById('insights-send-btn')?.click();
-      }, 500);
-    };
-    recognition.start();
   };
+
+  const toggleListening = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      setIsVoiceMode(true);
+      startListening();
+    }
+  };
+
+  // Effect to handle auto-send when silence is matched and transcript exists
+  useEffect(() => {
+    if (!isListening && isVoiceMode && input.trim()) {
+      const sendBtn = document.getElementById('insights-send-btn');
+      if (sendBtn) {
+        setTimeout(() => sendBtn.click(), 500);
+      }
+    }
+  }, [isListening, isVoiceMode, input]);
 
   const speakMessage = async (text: string) => {
     if (isSpeaking) {
@@ -331,12 +340,40 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
                           <span className="text-[10px] font-bold font-mono text-white/20 uppercase tracking-widest">{insight.date}</span>
                         </div>
                         <p className="text-sm text-white/50 leading-relaxed mb-6 font-medium">{insight.description}</p>
-                        <div className="flex gap-6 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0">
-                          <button className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent hover:text-white transition-colors flex items-center gap-2">
-                            <span>Execute Strategy</span>
-                            <TrendingUp className="w-3 h-3" />
-                          </button>
-                          <button className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/20 hover:text-white transition-colors">Archive</button>
+                        <div className="flex justify-between items-center opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0">
+                          <div className="flex gap-6">
+                            <button className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent hover:text-white transition-colors flex items-center gap-2">
+                              <span>Execute Strategy</span>
+                              <TrendingUp className="w-3 h-3" />
+                            </button>
+                            <button className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/20 hover:text-white transition-colors">Archive</button>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRateInsight(insight.id, 'up');
+                              }}
+                              className={cn(
+                                "p-2 rounded-lg transition-all",
+                                insightRatings[insight.id] === 'up' ? "bg-positive/20 text-positive" : "bg-white/5 text-white/20 hover:text-white"
+                              )}
+                            >
+                              <ThumbsUp className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRateInsight(insight.id, 'down');
+                              }}
+                              className={cn(
+                                "p-2 rounded-lg transition-all",
+                                insightRatings[insight.id] === 'down' ? "bg-negative/20 text-negative" : "bg-white/5 text-white/20 hover:text-white"
+                              )}
+                            >
+                              <ThumbsDown className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </motion.div>
@@ -396,12 +433,35 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
                     </ReactMarkdown>
                   </div>
                   {msg.role === 'ai' && (
-                    <button 
-                      onClick={() => speakMessage(msg.content)}
-                      className="absolute top-2 right-2 p-2 rounded-lg bg-white/5 opacity-0 group-hover/msg:opacity-100 transition-all hover:bg-white/10 text-white/40 hover:text-white"
-                    >
-                      {isSpeaking ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-                    </button>
+                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover/msg:opacity-100 transition-all">
+                      <button 
+                        onClick={() => speakMessage(msg.content)}
+                        className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white"
+                        title="Read Aloud"
+                      >
+                        {isSpeaking ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                      </button>
+                      <button 
+                        onClick={() => handleRateInsight(`msg-${i}`, 'up')}
+                        className={cn(
+                          "p-2 rounded-lg transition-all",
+                          insightRatings[`msg-${i}`] === 'up' ? "bg-positive/20 text-positive" : "bg-white/5 text-white/40 hover:text-white"
+                        )}
+                        title="Helpful"
+                      >
+                        <ThumbsUp className="w-4 h-4" />
+                      </button>
+                      <button 
+                        onClick={() => handleRateInsight(`msg-${i}`, 'down')}
+                        className={cn(
+                          "p-2 rounded-lg transition-all",
+                          insightRatings[`msg-${i}`] === 'down' ? "bg-negative/20 text-negative" : "bg-white/5 text-white/40 hover:text-white"
+                        )}
+                        title="Not Helpful"
+                      >
+                        <ThumbsDown className="w-4 h-4" />
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -438,7 +498,7 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
               <div className="relative">
                 <input
                   type="text"
-                  value={input}
+                  value={isListening ? (input + (interimTranscript ? (input ? ' ' : '') + interimTranscript : '')) : input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                   placeholder="Query the neural engine..."
@@ -449,7 +509,7 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
                 />
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
                   <button 
-                    onClick={startListening}
+                    onClick={toggleListening}
                     className={cn(
                       "p-2.5 rounded-xl transition-colors",
                       isListening ? "text-negative bg-negative/10 animate-pulse" : "text-white/20 hover:text-white"

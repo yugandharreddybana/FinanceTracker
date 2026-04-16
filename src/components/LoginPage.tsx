@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Sparkles, Mail, Lock, ArrowRight, Loader2, AlertCircle, Fingerprint } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
 
 interface LoginPageProps {
   onLogin: () => void;
@@ -15,11 +16,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
   const [isLoading, setIsLoading] = useState(false);
   const [isBiometricLoading, setIsBiometricLoading] = useState(false);
   const [error, setError] = useState('');
+  const { showToast } = useToast();
 
   const handleBiometricLogin = () => {
     setIsBiometricLoading(true);
     setTimeout(() => {
       setIsBiometricLoading(false);
+      showToast('success', 'Biometric Verified', 'Welcome back, Yugandhar.');
       onLogin();
     }, 2000);
   };
@@ -42,6 +45,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
     // Simulate API call
     setTimeout(() => {
       setIsLoading(false);
+      showToast('success', 'Authentication Successful', 'Accessing your private financial terminal...');
       onLogin();
     }, 1500);
   };
@@ -82,7 +86,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
             )}
 
             <div className="space-y-2">
-              <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest ml-1">Email Address</label>
+              <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest ml-1">Email Address <span className="text-accent">*</span></label>
               <div className="relative group">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-accent transition-colors" />
                 <input 
@@ -97,7 +101,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
 
             <div className="space-y-2">
               <div className="flex justify-between items-center ml-1">
-                <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Password</label>
+                <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Password <span className="text-accent">*</span></label>
                 <button 
                   type="button" 
                   onClick={onForgotPassword}

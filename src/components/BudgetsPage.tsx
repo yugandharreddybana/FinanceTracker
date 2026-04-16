@@ -188,7 +188,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
               <div className="flex flex-col gap-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-end">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Category Name</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Category <span className="text-accent">*</span></label>
                     <input 
                       type="text"
                       value={formData.category}
@@ -198,7 +198,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Monthly Limit ($)</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Monthly Limit ($) <span className="text-accent">*</span></label>
                     <input 
                       type="number"
                       value={formData.limit}
@@ -318,7 +318,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                   <TrendingUp className="w-3.5 h-3.5" />
                   <span>On Track</span>
                 </div>
-                <p className="text-xs text-white/40 font-medium tracking-tight">You are spending 12% less than last month</p>
+                <p className="text-xs text-white/40 font-medium tracking-tight">Your spending is currently {percentSpent > 100 ? 'over' : 'within'} your total budget</p>
               </div>
             </div>
             
@@ -396,7 +396,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
             </div>
             
             <div className="flex-1 w-full flex flex-col md:flex-row items-center gap-12">
-              <div className="w-full md:w-1/2 h-[300px]">
+              <div className="w-full md:w-1/2 h-[350px] mb-4">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie

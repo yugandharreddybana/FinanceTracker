@@ -120,10 +120,6 @@ export const HealthScorePage: React.FC = () => {
               </div>
               
               <p className="text-xs font-medium text-white/60 mb-2">{v.text}</p>
-              <div className="flex items-center gap-1 text-positive text-[10px] font-bold">
-                <ArrowUp className="w-3 h-3" />
-                <span>+2% vs last month</span>
-              </div>
             </div>
           );
         })}
@@ -131,9 +127,10 @@ export const HealthScorePage: React.FC = () => {
 
       <div className="space-y-4">
         <h3 className="text-sm font-bold text-white/40 uppercase tracking-widest mb-4">Improvement Feed</h3>
-        {[
-          { icon: Target, title: "Pay $50 extra on credit card", impact: "+4 points", effort: "Easy", color: "accent" },
-          { icon: Zap, title: "Consolidate high-interest loans", impact: "+12 points", effort: "Medium", color: "positive" },
+        {metrics.overallScore === 0 ? (
+          <p className="text-xs text-white/20 italic p-8 glass-card text-center italic">Add financial data to see personalized improvements.</p>
+        ) : [
+          { icon: Target, title: "Maintain current budget", impact: "Steady", effort: "Daily", color: "accent" },
         ].map((rec, i) => (
           <div key={i} className="glass-card p-4 flex items-center justify-between group hover:border-accent/30 transition-all cursor-pointer">
             <div className="flex items-center gap-4">

@@ -3,63 +3,46 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Sparkles, X, Send, Camera, FileText, Loader2, Mic, MicOff, Keyboard } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useFinance } from '../context/FinanceContext';
+import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 
 export const SmartAdd: React.FC<{ setActiveTab: (tab: string) => void }> = ({ setActiveTab }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [naturalInput, setNaturalInput] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isListening, setIsListening] = useState(false);
   const [analysisType, setAnalysisType] = useState<'text' | 'file'>('text');
   const { addTransactions, analyzeFile, setIsAddTransactionModalOpen } = useFinance();
+
+  const {
+    isListening,
+    transcript,
+    interimTranscript,
+    startListening,
+    stopListening
+  } = useSpeechRecognition({
+    onResult: (text, isFinal) => {
+      if (isFinal) {
+        setNaturalInput(prev => {
+          const newValue = prev + (prev ? '; ' : '') + text;
+          if (text.toLowerCase().includes('process') || text.toLowerCase().includes('done')) {
+            setTimeout(() => handleSubmit(newValue.replace(/process|done/gi, '').trim(), false), 500);
+          }
+          return newValue;
+        });
+      }
+    }
+  });
 
   const speak = (text: string) => {
     const utterance = new SpeechSynthesisUtterance(text);
     window.speechSynthesis.speak(utterance);
   };
 
-  const startListening = () => {
-    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Speech recognition is not supported in this browser.");
-      return;
+  const toggleListening = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
     }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
-    recognition.onerror = (event: any) => {
-      console.error("Speech recognition error:", event.error);
-      setIsListening(false);
-      
-      if (event.error === 'network') {
-        // Network error can sometimes be a transient issue with the speech service
-        speak("I'm having trouble connecting to the speech service. Please try again in a moment.");
-      } else if (event.error === 'not-allowed') {
-        speak("Microphone access was denied. Please check your browser permissions.");
-      } else if (event.error === 'no-speech') {
-        // Ignore no-speech errors to avoid annoying the user
-      } else {
-        speak("I encountered an error with speech recognition. Please try typing your entry.");
-      }
-    };
-
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setNaturalInput(prev => {
-        const newValue = prev + (prev ? '; ' : '') + transcript;
-        // If the transcript contains "process" or "done", auto-submit
-        if (transcript.toLowerCase().includes('process') || transcript.toLowerCase().includes('done')) {
-          setTimeout(() => handleSubmit(newValue.replace(/process|done/gi, '').trim(), false), 500);
-        }
-        return newValue;
-      });
-    };
-
-    recognition.start();
   };
 
   const handleSubmit = async (overrideInput?: string, silent: boolean = true) => {
@@ -147,7 +130,7 @@ export const SmartAdd: React.FC<{ setActiveTab: (tab: string) => void }> = ({ se
                   disabled={isAnalyzing}
                   placeholder="Coffee $5 at Starbucks; Save $10k for a car by Dec; Monthly rent $1500..."
                   className="w-full bg-white/[0.03] border border-white/10 rounded-2xl p-6 text-base outline-none focus:border-accent/50 transition-all resize-none h-40 placeholder:text-white/10 font-medium leading-relaxed disabled:opacity-50"
-                  value={naturalInput}
+                  value={isListening ? (naturalInput + (interimTranscript ? (naturalInput ? ' ' : '') + interimTranscript : '')) : naturalInput}
                   onChange={(e) => setNaturalInput(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -209,7 +192,7 @@ export const SmartAdd: React.FC<{ setActiveTab: (tab: string) => void }> = ({ se
                   Cancel
                 </button>
                 <button 
-                  onClick={startListening}
+                  onClick={toggleListening}
                   disabled={isAnalyzing}
                   className={cn(
                     "w-14 rounded-2xl transition-all border flex items-center justify-center",
