@@ -1,5 +1,6 @@
 package com.financetracker.models;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -28,6 +29,7 @@ public class Budget {
     private String emoji;
 
     @NotNull
+    @JsonProperty("limit")
     private Double limitAmount; // renamed from 'limit' to avoid SQL keyword issues
 
     @NotNull
