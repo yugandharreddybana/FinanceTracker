@@ -299,7 +299,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
 
               <form onSubmit={handleAdd} className="space-y-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Source Name</label>
+                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Source Name *</label>
                   <input 
                     type="text"
                     required
@@ -312,7 +312,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount ($)</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount ($) *</label>
                     <input 
                       type="number"
                       step="0.01"
@@ -324,9 +324,10 @@ export const IncomeAnalyticsPage: React.FC = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Frequency</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Frequency *</label>
                     <select 
                       value={newIncome.frequency}
+                      required
                       onChange={(e) => setNewIncome({ ...newIncome, frequency: e.target.value })}
                       className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-6 outline-none focus:border-accent/50 transition-all font-bold text-sm appearance-none"
                     >
@@ -415,7 +416,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
 
               <form onSubmit={handleUpdate} className="space-y-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Source Name</label>
+                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Source Name *</label>
                   <input 
                     type="text"
                     required

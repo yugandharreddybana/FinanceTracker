@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useFinance } from '../context/FinanceContext';
 import { cn } from '../lib/utils';
 import { Budget } from '../types';
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, AreaChart, Area } from 'recharts';
 import { TrendingUp, AlertCircle, Sparkles, Home, Utensils, Car, Film, ShoppingBag, Smartphone, Zap, Heart, GraduationCap, MoreHorizontal, Plane, Gift, ShieldCheck, Wallet, Coffee, Plus, PieChart as PieChartIcon, Calendar, ArrowUpDown } from 'lucide-react';
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
@@ -188,9 +188,10 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
               <div className="flex flex-col gap-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-end">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Category Name</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Category Name *</label>
                     <input 
                       type="text"
+                      required
                       value={formData.category}
                       onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
                       placeholder="e.g. Subscriptions"
@@ -198,9 +199,10 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Monthly Limit ($)</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Monthly Limit ($) *</label>
                     <input 
                       type="number"
+                      required
                       value={formData.limit}
                       onChange={(e) => setFormData(prev => ({ ...prev, limit: e.target.value }))}
                       placeholder="e.g. 200"
@@ -507,6 +509,16 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
             const isOver = budget.spent > effectiveLimit;
             const isAtLimit = progress >= 90 && progress <= 100;
             
+            // Sparkline data for budget category
+            const categoryTransactions = transactions
+              .filter(t => t.category === budget.category)
+              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+              .slice(-10);
+            
+            const categorySparkData = categoryTransactions.length > 0 
+              ? categoryTransactions.map((t, idx) => ({ value: Math.abs(t.amount), idx }))
+              : Array.from({ length: 10 }).map((_, idx) => ({ value: 0, idx }));
+
             return (
               <motion.div
                 key={budget.id}
@@ -575,6 +587,27 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                     </div>
                     <p className="text-2xl font-bold font-mono tracking-tighter">{budget.limit.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</p>
                   </div>
+                </div>
+
+                <div className="h-16 w-full mb-6 opacity-40 group-hover:opacity-100 transition-opacity">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={categorySparkData}>
+                      <defs>
+                        <linearGradient id={`grad-budget-${budget.id}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={budget.color} stopOpacity={0.4}/>
+                          <stop offset="100%" stopColor={budget.color} stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <Area 
+                        type="monotone" 
+                        dataKey="value" 
+                        stroke={budget.color} 
+                        fill={`url(#grad-budget-${budget.id})`} 
+                        strokeWidth={2}
+                        animationDuration={1500}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
                 </div>
 
                 <div className="space-y-4 mb-8">

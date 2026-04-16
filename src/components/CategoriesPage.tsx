@@ -5,13 +5,25 @@ import { useFinance } from '../context/FinanceContext';
 import { cn } from '../lib/utils';
 
 export const CategoriesPage: React.FC = () => {
-  const { spendingDataByCurrency, transactions } = useFinance();
+  const { spendingDataByCurrency, transactions, customCategories, addCategory, deleteCategory } = useFinance();
   const currencies = Object.keys(spendingDataByCurrency);
   const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'USD');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [newCatColor, setNewCatColor] = useState('#7C6EFA');
+  const [newCatIcon, setNewCatIcon] = useState('📦');
 
   const categories = spendingDataByCurrency[selectedCurrency] || [];
   const totalSpending = categories.reduce((acc, c) => acc + c.value, 0);
+
+  const handleAddCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCatName) return;
+    addCategory({ name: newCatName, color: newCatColor, icon: newCatIcon });
+    setIsAddModalOpen(false);
+    setNewCatName('');
+  };
 
   return (
     <motion.div
@@ -25,68 +37,135 @@ export const CategoriesPage: React.FC = () => {
           <h1 className="text-4xl font-bold tracking-tight mb-2">Categories</h1>
           <p className="text-white/40">Manage your spending taxonomy and rules</p>
         </div>
-        {currencies.length > 1 && (
-          <div className="relative">
-            <select
-              value={selectedCurrency}
-              onChange={(e) => setSelectedCurrency(e.target.value)}
-              className="appearance-none bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm font-bold text-white pr-10 focus:outline-none focus:ring-1 focus:ring-accent"
-            >
-              {currencies.map(c => (
-                <option key={c} value={c} className="bg-[#050508] text-white">{c}</option>
-              ))}
-            </select>
-            <ChevronDown className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
-          </div>
-        )}
+        <div className="flex items-center gap-4">
+          {currencies.length > 1 && (
+            <div className="relative">
+              <select
+                value={selectedCurrency}
+                onChange={(e) => setSelectedCurrency(e.target.value)}
+                className="appearance-none bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm font-bold text-white pr-10 focus:outline-none focus:ring-1 focus:ring-accent"
+              >
+                {currencies.map(c => (
+                  <option key={c} value={c} className="bg-[#050508] text-white">{c}</option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        {categories.map((cat) => (
-          <motion.div
-            key={cat.name}
-            whileHover={{ y: -5 }}
-            onClick={() => setSelectedCategory(cat.name)}
-            className="glass-card p-6 cursor-pointer group relative overflow-hidden"
-            style={{ borderColor: `${cat.color}30` }}
-          >
-            <div className="flex justify-between items-start mb-8">
-              <div className="text-3xl">
-                {cat.name === 'Housing' ? '🏠' : cat.name === 'Food' ? '🍱' : cat.name === 'Transport' ? '🚗' : cat.name === 'Entertainment' ? '🎬' : '📦'}
-              </div>
-              <div className="relative w-12 h-12">
-                <svg className="w-full h-full -rotate-90">
-                  <circle cx="24" cy="24" r="20" className="stroke-white/5 fill-none" strokeWidth="3" />
-                  <circle 
-                    cx="24" cy="24" r="20" className="fill-none" 
-                    stroke={cat.color} strokeWidth="3" 
-                    strokeDasharray={2 * Math.PI * 20}
-                    strokeDashoffset={2 * Math.PI * 20 * (1 - cat.value / (totalSpending || 1))}
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center text-[10px] font-mono text-white/40">
-                  {Math.round((cat.value / (totalSpending || 1)) * 100)}%
+        {customCategories.map((cat) => {
+          const spending = categories.find(c => c.name === cat.name)?.value || 0;
+          return (
+            <motion.div
+              key={cat.name}
+              whileHover={{ y: -5 }}
+              onClick={() => setSelectedCategory(cat.name)}
+              className="glass-card p-6 cursor-pointer group relative overflow-hidden"
+              style={{ borderColor: `${cat.color}30` }}
+            >
+              <div className="flex justify-between items-start mb-8">
+                <div className="text-3xl">
+                  {cat.icon}
+                </div>
+                <div className="relative w-12 h-12">
+                  <svg className="w-full h-full -rotate-90">
+                    <circle cx="24" cy="24" r="20" className="stroke-white/5 fill-none" strokeWidth="3" />
+                    <circle 
+                      cx="24" cy="24" r="20" className="fill-none" 
+                      stroke={cat.color} strokeWidth="3" 
+                      strokeDasharray={2 * Math.PI * 20}
+                      strokeDashoffset={2 * Math.PI * 20 * (1 - spending / (totalSpending || 1))}
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center text-[10px] font-mono text-white/40">
+                    {Math.round((spending / (totalSpending || 1)) * 100)}%
+                  </div>
                 </div>
               </div>
-            </div>
-            
-            <h3 className="text-lg font-bold mb-1">{cat.name}</h3>
-            <p className="text-2xl font-bold font-mono tracking-tighter">{cat.value.toLocaleString('en-US', { style: 'currency', currency: selectedCurrency })}</p>
-            
-            <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-              <ChevronRight className="w-5 h-5 text-white/40" />
-            </div>
-          </motion.div>
-        ))}
+              
+              <h3 className="text-lg font-bold mb-1">{cat.name}</h3>
+              <p className="text-2xl font-bold font-mono tracking-tighter">{spending.toLocaleString('en-US', { style: 'currency', currency: selectedCurrency })}</p>
+              
+              <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                <ChevronRight className="w-5 h-5 text-white/40" />
+              </div>
+            </motion.div>
+          );
+        })}
 
-        <div className="glass-card p-6 border-dashed border-white/10 flex flex-col items-center justify-center text-center cursor-pointer hover:border-accent/50 transition-all group min-h-[180px]">
+        <div 
+          onClick={() => setIsAddModalOpen(true)}
+          className="glass-card p-6 border-dashed border-white/10 flex flex-col items-center justify-center text-center cursor-pointer hover:border-accent/50 transition-all group min-h-[180px]"
+        >
           <Plus className="w-8 h-8 text-white/20 group-hover:text-accent mb-2" />
           <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">New Category</span>
         </div>
       </div>
 
       <AnimatePresence>
+        {isAddModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsAddModalOpen(false)}
+              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-md glass-card p-8"
+            >
+              <h2 className="text-2xl font-bold mb-6">Add Category</h2>
+              <form onSubmit={handleAddCategory} className="space-y-6">
+                <div>
+                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2 block">Name</label>
+                  <input
+                    type="text"
+                    value={newCatName}
+                    onChange={(e) => setNewCatName(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 outline-none focus:border-accent/50 transition-all"
+                    placeholder="e.g. Health, Education"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2 block">Color</label>
+                    <input
+                      type="color"
+                      value={newCatColor}
+                      onChange={(e) => setNewCatColor(e.target.value)}
+                      className="w-full h-12 rounded-xl bg-white/5 border border-white/10 outline-none cursor-pointer"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2 block">Icon (Emoji)</label>
+                    <input
+                      type="text"
+                      value={newCatIcon}
+                      onChange={(e) => setNewCatIcon(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 outline-none focus:border-accent/50 transition-all text-center text-xl"
+                      placeholder="📦"
+                    />
+                  </div>
+                </div>
+                <button
+                  type="submit"
+                  className="w-full py-4 rounded-2xl bg-accent text-white font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow"
+                >
+                  Create Category
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
         {selectedCategory && (
           <>
             <motion.div
@@ -105,7 +184,7 @@ export const CategoriesPage: React.FC = () => {
               <div className="flex justify-between items-center mb-12">
                 <div className="flex items-center gap-4">
                   <div className="text-4xl">
-                    {selectedCategory === 'Housing' ? '🏠' : selectedCategory === 'Food' ? '🍱' : selectedCategory === 'Transport' ? '🚗' : selectedCategory === 'Entertainment' ? '🎬' : '📦'}
+                    {customCategories.find(c => c.name === selectedCategory)?.icon || '📦'}
                   </div>
                   <h2 className="text-3xl font-bold">{selectedCategory}</h2>
                 </div>
@@ -116,10 +195,23 @@ export const CategoriesPage: React.FC = () => {
 
               <div className="space-y-10">
                 <section>
-                  <h3 className="text-xs font-bold uppercase tracking-widest text-white/30 mb-6 flex items-center gap-2">
-                    <BarChart3 className="w-4 h-4" />
-                    Monthly Trend
-                  </h3>
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xs font-bold uppercase tracking-widest text-white/30 flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4" />
+                      Monthly Trend
+                    </h3>
+                    <button 
+                      onClick={() => {
+                        if (window.confirm(`Are you sure you want to delete the ${selectedCategory} category?`)) {
+                          deleteCategory(selectedCategory);
+                          setSelectedCategory(null);
+                        }
+                      }}
+                      className="text-[10px] font-bold text-negative uppercase tracking-widest hover:underline"
+                    >
+                      Delete Category
+                    </button>
+                  </div>
                   <div className="h-40 w-full flex items-end gap-2">
                     {[40, 60, 45, 80, 55, 70].map((h, i) => (
                       <div key={i} className="flex-1 bg-white/5 rounded-t-lg relative group">

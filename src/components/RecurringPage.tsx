@@ -536,7 +536,7 @@ export const RecurringPage: React.FC = () => {
 
               <form onSubmit={handleAdd} className="space-y-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Name</label>
+                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Name *</label>
                   <input 
                     type="text"
                     required
@@ -549,7 +549,7 @@ export const RecurringPage: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount ($)</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount ($) *</label>
                     <input 
                       type="number"
                       step="0.01"
@@ -561,7 +561,7 @@ export const RecurringPage: React.FC = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Due Day (1-31)</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Due Day (1-31) *</label>
                     <input 
                       type="number"
                       min="1"
@@ -659,21 +659,23 @@ export const RecurringPage: React.FC = () => {
               <form onSubmit={handleUpdate} className="space-y-6">
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount ($)</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount ($) *</label>
                     <input 
                       type="number"
                       step="0.01"
+                      required
                       value={editingPayment.amount}
                       onChange={(e) => setEditingPayment({ ...editingPayment, amount: Number(e.target.value) })}
                       className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-6 text-xl font-bold font-mono outline-none focus:border-accent/50 transition-all"
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Due Day (1-31)</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Due Day (1-31) *</label>
                     <input 
                       type="number"
                       min="1"
                       max="31"
+                      required
                       value={editingPayment.date}
                       onChange={(e) => setEditingPayment({ ...editingPayment, date: Number(e.target.value) })}
                       className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-6 text-xl font-bold font-mono outline-none focus:border-accent/50 transition-all"

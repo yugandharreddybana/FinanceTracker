@@ -19,14 +19,30 @@ import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { SignupPage } from './components/SignupPage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
-import { FinanceProvider } from './context/FinanceContext';
+import { SettingsPage } from './components/SettingsPage';
+import { InvestmentPage } from './components/InvestmentPage';
+import { ForecastingPage } from './components/ForecastingPage';
+import { TaxEnginePage } from './components/TaxEnginePage';
+import { ReportBuilderPage } from './components/ReportBuilderPage';
+import { AuditLogPage } from './components/AuditLogPage';
+import { FamilyPage } from './components/FamilyPage';
+import { FinanceProvider, useFinance } from './context/FinanceContext';
 import { AnimatePresence, motion } from 'motion/react';
-import { Sparkles, X, Bell, Command, Search } from 'lucide-react';
+import { Sparkles, X, Bell, Command, Search, WifiOff } from 'lucide-react';
 import { CommandPalette } from './components/CommandPalette';
 import { NotificationCenter, Notification } from './components/NotificationCenter';
 import { AlertCircle, TrendingUp, Wallet, Calendar } from 'lucide-react';
 
 export default function App() {
+  return (
+    <FinanceProvider>
+      <MainApp />
+    </FinanceProvider>
+  );
+}
+
+function MainApp() {
+  const { userProfile, isOffline } = useFinance();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isLoggedIn, setIsLoggedIn] = useState(true);
   const [authView, setAuthView] = useState<'landing' | 'login' | 'signup' | 'forgot-password'>('landing');
@@ -127,13 +143,19 @@ export default function App() {
       case 'insights': return <AIInsightsPage key="insights" />;
       case 'income': return <IncomeAnalyticsPage key="income" />;
       case 'review': return <MonthlyReview key="review" />;
+      case 'investments': return <InvestmentPage key="investments" />;
+      case 'forecasting': return <ForecastingPage key="forecasting" />;
+      case 'tax': return <TaxEnginePage key="tax" />;
+      case 'reports': return <ReportBuilderPage key="reports" />;
+      case 'audit': return <AuditLogPage key="audit" />;
+      case 'family': return <FamilyPage key="family" />;
+      case 'settings': return <SettingsPage key="settings" />;
       default: return <Dashboard key="dashboard" setActiveTab={setActiveTab} />;
     }
   };
 
   return (
-    <FinanceProvider>
-      <div className="min-h-screen bg-background text-white selection:bg-accent/30">
+    <div className="min-h-screen bg-background text-white selection:bg-accent/30">
         <AnimatePresence mode="wait">
           {!isLoggedIn ? (
             authView === 'landing' ? (
@@ -187,6 +209,12 @@ export default function App() {
                   </div>
 
                   <div className="flex items-center gap-6">
+                    {isOffline && (
+                      <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-negative/10 border border-negative/20 text-negative">
+                        <WifiOff className="w-4 h-4" />
+                        <span className="text-[10px] font-bold uppercase tracking-widest">Offline Mode</span>
+                      </div>
+                    )}
                     <button 
                       onClick={() => setIsNotificationsOpen(true)}
                       className="relative p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group"
@@ -198,12 +226,12 @@ export default function App() {
                     </button>
                     <div className="flex items-center gap-3 pl-6 border-l border-white/5">
                       <div className="text-right">
-                        <p className="text-xs font-bold">Yugandhar Reddy</p>
-                        <p className="text-[10px] font-bold text-accent uppercase tracking-widest">Pro Member</p>
+                        <p className="text-xs font-bold">{userProfile.name}</p>
+                        <p className="text-[10px] font-bold text-accent uppercase tracking-widest">{userProfile.role}</p>
                       </div>
                       <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-accent to-positive p-[1px]">
                         <div className="w-full h-full rounded-[15px] bg-background flex items-center justify-center text-xs font-bold">
-                          YR
+                          {userProfile.name.split(' ').map(n => n[0]).join('')}
                         </div>
                       </div>
                     </div>
@@ -310,6 +338,5 @@ export default function App() {
           )}
         </AnimatePresence>
       </div>
-    </FinanceProvider>
   );
 }

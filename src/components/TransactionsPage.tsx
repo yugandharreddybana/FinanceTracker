@@ -9,6 +9,7 @@ export const TransactionsPage: React.FC = () => {
   const { 
     transactions, 
     deleteTransaction, 
+    bulkDeleteTransactions,
     updateTransaction, 
     bulkUpdateTransactions,
     categorizeTransactions, 
@@ -36,6 +37,7 @@ export const TransactionsPage: React.FC = () => {
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Transaction>>({});
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
   const [filter, setFilter] = useState('All Time');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
@@ -114,6 +116,15 @@ export const TransactionsPage: React.FC = () => {
   const handleDelete = (id: string) => {
     deleteTransaction(id);
     setDeleteConfirmId(null);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    setIsBulkUpdating(true);
+    await bulkDeleteTransactions(selectedIds);
+    setSelectedIds([]);
+    setIsBulkDeleteConfirmOpen(false);
+    setIsBulkUpdating(false);
   };
 
   const exportCSV = () => {
@@ -320,7 +331,7 @@ export const TransactionsPage: React.FC = () => {
 
                 <div className="space-y-5">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Start Date</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Start Date *</label>
                     <div className="relative">
                       <input 
                         type="date" 
@@ -332,7 +343,7 @@ export const TransactionsPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">End Date</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">End Date *</label>
                     <div className="relative">
                       <input 
                         type="date" 
@@ -782,6 +793,17 @@ export const TransactionsPage: React.FC = () => {
                 </button>
 
                 <button 
+                  onClick={() => setIsBulkDeleteConfirmOpen(true)}
+                  disabled={isBulkUpdating}
+                  className="px-4 py-2 bg-negative/10 border border-negative/30 text-negative rounded-xl text-xs font-bold hover:bg-negative/20 transition-all disabled:opacity-50 flex items-center gap-2"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete</span>
+                </button>
+
+                <div className="w-px h-6 bg-white/10 mx-1" />
+
+                <button 
                   onClick={() => setSelectedIds([])}
                   className="p-2 text-white/20 hover:text-negative transition-colors"
                 >
@@ -811,7 +833,7 @@ export const TransactionsPage: React.FC = () => {
               className="relative glass-card p-8 max-w-md w-full border-negative/30"
             >
               <h3 className="text-2xl font-bold mb-4">Delete Transaction?</h3>
-              <p className="text-white/60 mb-8">This action cannot be undone. Are you sure you want to remove this transaction from your history?</p>
+              <p className="text-white/60 mb-8">This action cannot be undone. Are you sure you want to remove this transaction from your history? Your account balance will be updated accordingly.</p>
               <div className="flex gap-4">
                 <button 
                   onClick={() => setDeleteConfirmId(null)}
@@ -824,6 +846,51 @@ export const TransactionsPage: React.FC = () => {
                   className="flex-1 py-3 rounded-xl bg-negative text-white font-bold hover:bg-negative/80 transition-all shadow-lg"
                 >
                   Delete
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Bulk Delete Confirmation Modal */}
+      <AnimatePresence>
+        {isBulkDeleteConfirmOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsBulkDeleteConfirmOpen(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative glass-card p-8 max-w-md w-full border-negative/30 shadow-2xl"
+            >
+              <div className="w-16 h-16 rounded-full bg-negative/20 flex items-center justify-center text-negative mb-6 mx-auto">
+                <Trash2 className="w-8 h-8" />
+              </div>
+              <h3 className="text-2xl font-bold mb-4 text-center">Delete {selectedIds.length} Transactions?</h3>
+              <p className="text-white/60 mb-8 text-center text-sm leading-relaxed">
+                You are about to delete {selectedIds.length} transactions permanently. 
+                Your bank account balances and net worth will be updated automatically to remain synced. 
+                This action is irreversible.
+              </p>
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setIsBulkDeleteConfirmOpen(false)}
+                  className="flex-1 py-3 rounded-xl bg-white/5 font-bold hover:bg-white/10 transition-all text-sm uppercase tracking-widest text-white/40"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleBulkDelete}
+                  className="flex-2 py-3 rounded-xl bg-negative text-white font-bold hover:bg-negative/80 transition-all shadow-lg shadow-negative/20 text-sm uppercase tracking-widest"
+                >
+                  Yes, Delete All
                 </button>
               </div>
             </motion.div>
@@ -887,9 +954,10 @@ export const TransactionsPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Date</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Date *</label>
                     <input 
                       type="date"
+                      required
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-all text-white"
                       value={newTransactionForm.date}
                       onChange={e => setNewTransactionForm({ ...newTransactionForm, date: e.target.value })}
@@ -898,9 +966,10 @@ export const TransactionsPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Merchant / Description</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Merchant / Description *</label>
                   <input 
                     type="text"
+                    required
                     placeholder="e.g. Starbucks, Amazon, Salary"
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-all text-white"
                     value={newTransactionForm.merchant}
@@ -910,11 +979,12 @@ export const TransactionsPage: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Amount</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Amount *</label>
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 font-bold">$</span>
                       <input 
                         type="number"
+                        required
                         placeholder="0.00"
                         className="w-full bg-white/5 border border-white/10 rounded-xl pl-8 pr-4 py-3 text-sm outline-none focus:border-accent transition-all font-mono text-white"
                         value={newTransactionForm.amount || ''}

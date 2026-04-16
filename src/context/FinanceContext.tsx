@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { Transaction, SavingsGoal, RecurringPayment, Loan, Budget, BankAccount, IncomeSource } from '../types';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import { Transaction, SavingsGoal, RecurringPayment, Loan, Budget, BankAccount, IncomeSource, UserProfile, Investment, AuditLog, FamilyAccount } from '../types';
 import { financeApi } from '../services/api';
+import { currencyService } from '../services/currencyService';
 
 interface FinanceContextType {
   transactions: Transaction[];
@@ -10,14 +11,21 @@ interface FinanceContextType {
   budgets: Budget[];
   accounts: BankAccount[];
   incomeSources: IncomeSource[];
+  investments: Investment[];
+  auditLogs: AuditLog[];
+  familyAccount: FamilyAccount | null;
+  userProfile: UserProfile;
+  updateUserProfile: (updates: Partial<UserProfile>) => void;
   spendingDataByCurrency: Record<string, { name: string; value: number; color: string }[]>;
   isLoading: boolean;
   addTransactions: (input: string) => Promise<void>;
   addManualTransaction: (transaction: Partial<Transaction>) => Promise<void>;
   analyzeFile: (file: File, type: 'bill' | 'statement') => Promise<void>;
   deleteTransaction: (id: string) => void;
+  bulkDeleteTransactions: (ids: string[]) => Promise<void>;
   addSavingsGoal: (goal: SavingsGoal) => void;
-  updateSavingsGoal: (id: string, current: number) => void;
+  updateSavingsGoal: (id: string, updates: Partial<SavingsGoal>) => void;
+  deleteSavingsGoal: (id: string) => void;
   addRecurringPayment: (payment: RecurringPayment) => void;
   updateRecurringPayment: (id: string, updates: Partial<RecurringPayment>) => void;
   deleteRecurringPayment: (id: string) => void;
@@ -35,6 +43,12 @@ interface FinanceContextType {
   addIncomeSource: (income: IncomeSource) => void;
   updateIncomeSource: (id: string, updates: Partial<IncomeSource>) => void;
   deleteIncomeSource: (id: string) => void;
+  addInvestment: (investment: Investment) => void;
+  updateInvestment: (id: string, updates: Partial<Investment>) => void;
+  deleteInvestment: (id: string) => void;
+  createFamily: (name: string) => void;
+  joinFamily: (familyId: string) => void;
+  addLog: (action: string, details: string, entityType: string, entityId: string) => void;
   transferToSavings: (amount: number, goalId: string, accountId: string) => void;
   categorizeTransactions: () => Promise<void>;
   confirmCategory: (id: string, category: string) => void;
@@ -42,6 +56,7 @@ interface FinanceContextType {
   isCategorizing: boolean;
   isAddTransactionModalOpen: boolean;
   setIsAddTransactionModalOpen: (isOpen: boolean) => void;
+  isOffline: boolean;
   netWorthByCurrency: Record<string, {
     total: number;
     assets: number;
@@ -56,6 +71,9 @@ interface FinanceContextType {
     budgetAdherence: number;
     overallScore: number;
   }>;
+  customCategories: { name: string; color: string; icon: string }[];
+  addCategory: (category: { name: string; color: string; icon: string }) => void;
+  deleteCategory: (name: string) => void;
 }
 
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
@@ -78,9 +96,115 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([]);
+  const [investments, setInvestments] = useState<Investment[]>([
+    {
+      id: '1',
+      symbol: 'BTC',
+      name: 'Bitcoin',
+      type: 'Crypto',
+      quantity: 0.5,
+      averagePrice: 45000,
+      currentPrice: 65432.10,
+      currency: 'USD',
+      lastUpdated: new Date().toISOString()
+    },
+    {
+      id: '2',
+      symbol: 'AAPL',
+      name: 'Apple Inc.',
+      type: 'Stock',
+      quantity: 10,
+      averagePrice: 150,
+      currentPrice: 185.92,
+      currency: 'USD',
+      lastUpdated: new Date().toISOString()
+    }
+  ]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [familyAccount, setFamilyAccount] = useState<FamilyAccount | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile>({
+    name: 'Yugandhar Reddy',
+    email: 'yugandharreddybana@gmail.com',
+    role: 'Pro Member',
+    preferences: {
+      theme: 'dark',
+      currency: 'USD',
+      language: 'English (US)',
+      notifications: true
+    }
+  });
   const [suggestions, setSuggestions] = useState<Record<string, { category: string; confidence: number }[]>>({});
   const [isCategorizing, setIsCategorizing] = useState(false);
   const [isAddTransactionModalOpen, setIsAddTransactionModalOpen] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [customCategories, setCustomCategories] = useState<{ name: string; color: string; icon: string }[]>([
+    { name: 'Housing', color: '#7C6EFA', icon: '🏠' },
+    { name: 'Food & Drink', color: '#22D3A5', icon: '🍱' },
+    { name: 'Transport', color: '#F43F5E', icon: '🚗' },
+    { name: 'Entertainment', color: '#F59E0B', icon: '🎬' },
+    { name: 'Shopping', color: '#8E9299', icon: '🛍️' },
+    { name: 'Electronics', color: '#3B82F6', icon: '💻' },
+    { name: 'Utilities', color: '#10B981', icon: '⚡' },
+    { name: 'Health', color: '#EF4444', icon: '🏥' },
+    { name: 'Education', color: '#6366F1', icon: '🎓' },
+  ]);
+  const isInitialMount = useRef(true);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+
+  // Offline detection
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Persistence
+  useEffect(() => {
+    const savedData = localStorage.getItem('arta_finance_data');
+    if (savedData) {
+      try {
+        const parsed = JSON.parse(savedData);
+        if (parsed.transactions) setTransactions(parsed.transactions);
+        if (parsed.savingsGoals) setSavingsGoals(parsed.savingsGoals);
+        if (parsed.recurringPayments) setRecurringPayments(parsed.recurringPayments);
+        if (parsed.loans) setLoans(parsed.loans);
+        if (parsed.budgets) setBudgets(parsed.budgets);
+        if (parsed.accounts) setAccounts(parsed.accounts);
+        if (parsed.incomeSources) setIncomeSources(parsed.incomeSources);
+        if (parsed.investments) setInvestments(parsed.investments);
+        if (parsed.userProfile) setUserProfile(parsed.userProfile);
+        if (parsed.customCategories) setCustomCategories(parsed.customCategories);
+      } catch (e) {
+        console.error('Failed to load persisted data:', e);
+      }
+    }
+    setIsDataLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isDataLoaded) return;
+    
+    const dataToSave = {
+      transactions,
+      savingsGoals,
+      recurringPayments,
+      loans,
+      budgets,
+      accounts,
+      incomeSources,
+      investments,
+      userProfile,
+      customCategories
+    };
+    localStorage.setItem('arta_finance_data', JSON.stringify(dataToSave));
+  }, [transactions, savingsGoals, recurringPayments, loans, budgets, accounts, incomeSources, investments, userProfile, customCategories, isDataLoaded]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Initial data fetch
@@ -112,10 +236,63 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     fetchData();
   }, []);
 
+  const addLog = useCallback((action: string, details: string, entityType: string, entityId: string) => {
+    const newLog: AuditLog = {
+      id: Math.random().toString(36).substr(2, 9),
+      timestamp: new Date().toISOString(),
+      userId: 'user-1',
+      userName: userProfile.name,
+      action,
+      details,
+      entityType,
+      entityId
+    };
+    setAuditLogs(prev => [newLog, ...prev]);
+  }, [userProfile.name]);
+
+  const addInvestment = useCallback((investment: Investment) => {
+    setInvestments(prev => [...prev, investment]);
+    addLog('CREATE', `Added investment ${investment.symbol}`, 'Investment', investment.id);
+  }, [addLog]);
+
+  const updateInvestment = useCallback((id: string, updates: Partial<Investment>) => {
+    setInvestments(prev => prev.map(inv => inv.id === id ? { ...inv, ...updates } : inv));
+    addLog('UPDATE', `Updated investment ${id}`, 'Investment', id);
+  }, [addLog]);
+
+  const deleteInvestment = useCallback((id: string) => {
+    setInvestments(prev => prev.filter(inv => inv.id !== id));
+    addLog('DELETE', `Deleted investment ${id}`, 'Investment', id);
+  }, [addLog]);
+
+  const createFamily = useCallback((name: string) => {
+    const newFamily: FamilyAccount = {
+      id: 'fam-' + Math.random().toString(36).substr(2, 9),
+      name,
+      members: [{ uid: 'user-1', name: userProfile.name, role: 'Admin' }],
+      sharedBudgets: [],
+      sharedAccounts: []
+    };
+    setFamilyAccount(newFamily);
+    setUserProfile(prev => ({ ...prev, familyId: newFamily.id }));
+    addLog('CREATE', `Created family ${name}`, 'Family', newFamily.id);
+  }, [userProfile.name, addLog]);
+
+  const joinFamily = useCallback((familyId: string) => {
+    // In a real app, this would fetch the family from Firestore
+    setUserProfile(prev => ({ ...prev, familyId }));
+    addLog('JOIN', `Joined family ${familyId}`, 'Family', familyId);
+  }, [addLog]);
+
   const netWorthByCurrency = React.useMemo(() => {
     const result: Record<string, { total: number; assets: number; liabilities: number; change: number }> = {};
     
-    const currencies = Array.from(new Set([...accounts.map(a => a.currency || 'USD'), ...loans.map(l => l.currency || 'USD')]));
+    const currencies = Array.from(new Set([
+      ...accounts.map(a => a.currency || 'USD'), 
+      ...loans.map(l => l.currency || 'USD'),
+      ...investments.map(i => i.currency || 'USD')
+    ]));
+    
     currencies.forEach(c => {
       result[c] = { total: 0, assets: 0, liabilities: 0, change: 12.4 };
     });
@@ -125,16 +302,27 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (a.type !== 'Credit') {
         result[curr].assets += a.balance;
         result[curr].total += a.balance;
+      } else {
+        result[curr].liabilities += a.balance;
+        result[curr].total -= a.balance;
       }
+    });
+
+    investments.forEach(i => {
+      const curr = i.currency || 'USD';
+      const value = i.quantity * i.currentPrice;
+      result[curr].assets += value;
+      result[curr].total += value;
     });
 
     loans.forEach(l => {
       const curr = l.currency || 'USD';
       result[curr].liabilities += l.remainingAmount;
+      result[curr].total -= l.remainingAmount;
     });
 
     return result;
-  }, [accounts, loans]);
+  }, [accounts, loans, investments]);
 
   const monthlyTrends = React.useMemo(() => {
     const last6Months = Array.from({ length: 6 }).map((_, i) => {
@@ -233,12 +421,12 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       result[curr] = Object.entries(totals).map(([name, value]) => ({
         name,
         value,
-        color: CATEGORY_COLORS[name] || '#6B7280'
+        color: customCategories.find(c => c.name === name)?.color || CATEGORY_COLORS[name] || '#6B7280'
       })).sort((a, b) => b.value - a.value);
     });
     
     return result;
-  }, [transactions]);
+  }, [transactions, customCategories]);
 
   const transferToSavings = useCallback(async (amount: number, goalId: string, accountId: string) => {
     const goal = savingsGoals.find(g => g.id === goalId);
@@ -299,7 +487,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       Return as a JSON array of objects. Each object MUST have an "intent" field: "TRANSACTION" | "SAVINGS_GOAL" | "RECURRING_PAYMENT" | "LOAN" | "SAVINGS_TRANSFER".`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.0-flash",
         contents: [{ parts: [{ text: prompt }] }],
         config: {
           responseMimeType: "application/json",
@@ -451,7 +639,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         : "Analyze this bank statement and extract all transactions (merchant, amount, date, category). Return as a JSON array of transactions with a confidence score (0-1) for each.";
 
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.0-flash",
         contents: [
           {
             parts: [
@@ -523,6 +711,18 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         aiTag: transaction.aiTag || 'Manual Entry'
       });
       setTransactions(prev => [newTx, ...prev]);
+
+      // Update account balance
+      if (newTx.account) {
+        setAccounts(prev => prev.map(acc => {
+          if (acc.name === newTx.account || acc.id === newTx.account) {
+            return { ...acc, balance: acc.balance + newTx.amount };
+          }
+          return acc;
+        }));
+      }
+
+      addLog('CREATE', `Added transaction: ${newTx.merchant}`, 'Transaction', newTx.id);
     } catch (error) {
       console.error('Failed to add manual transaction:', error);
       throw error;
@@ -531,28 +731,84 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const deleteTransaction = useCallback(async (id: string) => {
     try {
+      const txToDelete = transactions.find(t => t.id === id);
       await financeApi.deleteTransaction(id);
       setTransactions(prev => prev.filter(t => t.id !== id));
+
+      // Update account balance
+      if (txToDelete && txToDelete.account) {
+        setAccounts(prev => prev.map(acc => {
+          if (acc.name === txToDelete.account || acc.id === txToDelete.account) {
+            return { ...acc, balance: acc.balance - txToDelete.amount };
+          }
+          return acc;
+        }));
+      }
+
+      addLog('DELETE', `Deleted transaction: ${txToDelete?.merchant || id}`, 'Transaction', id);
     } catch (error) {
       console.error('Failed to delete transaction:', error);
     }
-  }, []);
+  }, [transactions]);
+
+  const bulkDeleteTransactions = useCallback(async (ids: string[]) => {
+    try {
+      const txsToDelete = transactions.filter(t => ids.includes(t.id));
+      // First call API to ensure it's deleted on server
+      await financeApi.bulkDeleteTransactions(ids);
+      
+      // Update local state: transactions
+      setTransactions(prev => prev.filter(t => !ids.includes(t.id)));
+
+      // Update local state: account balances
+      setAccounts(prevAccs => {
+        let updatedAccs = [...prevAccs];
+        txsToDelete.forEach(tx => {
+          if (tx.account) {
+            updatedAccs = updatedAccs.map(acc => {
+              if (acc.name === tx.account || acc.id === tx.account) {
+                return { ...acc, balance: acc.balance - tx.amount };
+              }
+              return acc;
+            });
+          }
+        });
+        return updatedAccs;
+      });
+
+      addLog('DELETE', `Bulk deleted ${ids.length} transactions`, 'Transaction', ids.join(','));
+    } catch (error) {
+      console.error('Failed to bulk delete transactions:', error);
+    }
+  }, [transactions]);
 
   const addSavingsGoal = useCallback(async (goal: SavingsGoal) => {
     try {
       const newGoal = await financeApi.createSavingsGoal(goal);
       setSavingsGoals(prev => [newGoal, ...prev]);
+      addLog('CREATE', `Added savings goal: ${newGoal.name}`, 'SavingsGoal', newGoal.id);
     } catch (error) {
       console.error('Failed to add savings goal:', error);
     }
   }, []);
 
-  const updateSavingsGoal = useCallback(async (id: string, current: number) => {
+  const updateSavingsGoal = useCallback(async (id: string, updates: Partial<SavingsGoal>) => {
     try {
-      const updated = await financeApi.updateSavingsGoal(id, { current });
+      const updated = await financeApi.updateSavingsGoal(id, updates);
       setSavingsGoals(prev => prev.map(g => g.id === id ? updated : g));
+      addLog('UPDATE', `Updated savings goal: ${id}`, 'SavingsGoal', id);
     } catch (error) {
       console.error('Failed to update savings goal:', error);
+    }
+  }, []);
+
+  const deleteSavingsGoal = useCallback(async (id: string) => {
+    try {
+      await financeApi.deleteSavingsGoal(id);
+      setSavingsGoals(prev => prev.filter(g => g.id !== id));
+      addLog('DELETE', `Deleted savings goal: ${id}`, 'SavingsGoal', id);
+    } catch (error) {
+      console.error('Failed to delete savings goal:', error);
     }
   }, []);
 
@@ -560,6 +816,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       const newPayment = await financeApi.createRecurringPayment(payment);
       setRecurringPayments(prev => [newPayment, ...prev]);
+      addLog('CREATE', `Added recurring payment: ${newPayment.name}`, 'RecurringPayment', newPayment.id);
     } catch (error) {
       console.error('Failed to add recurring payment:', error);
     }
@@ -569,6 +826,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       const updated = await financeApi.updateRecurringPayment(id, updates);
       setRecurringPayments(prev => prev.map(p => p.id === id ? updated : p));
+      addLog('UPDATE', `Updated recurring payment: ${id}`, 'RecurringPayment', id);
     } catch (error) {
       console.error('Failed to update recurring payment:', error);
     }
@@ -578,6 +836,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       await financeApi.deleteRecurringPayment(id);
       setRecurringPayments(prev => prev.filter(p => p.id !== id));
+      addLog('DELETE', `Deleted recurring payment: ${id}`, 'RecurringPayment', id);
     } catch (error) {
       console.error('Failed to delete recurring payment:', error);
     }
@@ -587,6 +846,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       const updated = await financeApi.updateTransaction(id, updates);
       setTransactions(prev => prev.map(t => t.id === id ? updated : t));
+      addLog('UPDATE', `Updated transaction: ${id}`, 'Transaction', id);
     } catch (error) {
       console.error('Failed to update transaction:', error);
     }
@@ -596,6 +856,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       await financeApi.bulkUpdateTransactions(ids, updates);
       setTransactions(prev => prev.map(t => ids.includes(t.id) ? { ...t, ...updates } : t));
+      addLog('UPDATE', `Bulk updated ${ids.length} transactions`, 'Transaction', ids.join(','));
     } catch (error) {
       console.error('Failed to bulk update transactions:', error);
     }
@@ -605,6 +866,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       const newLoan = await financeApi.createLoan(loan);
       setLoans(prev => [newLoan, ...prev]);
+      addLog('CREATE', `Added loan: ${newLoan.name}`, 'Loan', newLoan.id);
     } catch (error) {
       console.error('Failed to add loan:', error);
     }
@@ -614,6 +876,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       const updated = await financeApi.updateLoan(id, updates);
       setLoans(prev => prev.map(l => l.id === id ? updated : l));
+      addLog('UPDATE', `Updated loan: ${id}`, 'Loan', id);
     } catch (error) {
       console.error('Failed to update loan:', error);
     }
@@ -623,6 +886,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       await financeApi.deleteLoan(id);
       setLoans(prev => prev.filter(l => l.id !== id));
+      addLog('DELETE', `Deleted loan: ${id}`, 'Loan', id);
     } catch (error) {
       console.error('Failed to delete loan:', error);
     }
@@ -632,6 +896,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       const newBudget = await financeApi.createBudget(budget);
       setBudgets(prev => [newBudget, ...prev]);
+      addLog('CREATE', `Added budget: ${newBudget.category}`, 'Budget', newBudget.id);
     } catch (error) {
       console.error('Failed to add budget:', error);
     }
@@ -641,6 +906,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       const updated = await financeApi.updateBudget(id, updates);
       setBudgets(prev => prev.map(b => b.id === id ? updated : b));
+      addLog('UPDATE', `Updated budget: ${id}`, 'Budget', id);
     } catch (error) {
       console.error('Failed to update budget:', error);
     }
@@ -650,6 +916,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       await financeApi.deleteBudget(id);
       setBudgets(prev => prev.filter(b => b.id !== id));
+      addLog('DELETE', `Deleted budget: ${id}`, 'Budget', id);
     } catch (error) {
       console.error('Failed to delete budget:', error);
     }
@@ -659,6 +926,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       const newAccount = await financeApi.createAccount(account);
       setAccounts(prev => [newAccount, ...prev]);
+      addLog('CREATE', `Added account: ${newAccount.name}`, 'Account', newAccount.id);
     } catch (error) {
       console.error('Failed to add account:', error);
     }
@@ -668,6 +936,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       const updated = await financeApi.updateAccount(id, updates);
       setAccounts(prev => prev.map(a => a.id === id ? updated : a));
+      addLog('UPDATE', `Updated account: ${id}`, 'Account', id);
     } catch (error) {
       console.error('Failed to update account:', error);
     }
@@ -677,6 +946,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       await financeApi.deleteAccount(id);
       setAccounts(prev => prev.filter(a => a.id !== id));
+      addLog('DELETE', `Deleted account: ${id}`, 'Account', id);
     } catch (error) {
       console.error('Failed to delete account:', error);
     }
@@ -686,6 +956,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       const newIncome = await financeApi.createIncomeSource(income);
       setIncomeSources(prev => [newIncome, ...prev]);
+      addLog('CREATE', `Added income source: ${newIncome.source}`, 'IncomeSource', newIncome.id);
     } catch (error) {
       console.error('Failed to add income source:', error);
     }
@@ -695,6 +966,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       const updated = await financeApi.updateIncomeSource(id, updates);
       setIncomeSources(prev => prev.map(i => i.id === id ? updated : i));
+      addLog('UPDATE', `Updated income source: ${id}`, 'IncomeSource', id);
     } catch (error) {
       console.error('Failed to update income source:', error);
     }
@@ -704,10 +976,26 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       await financeApi.deleteIncomeSource(id);
       setIncomeSources(prev => prev.filter(i => i.id !== id));
+      addLog('DELETE', `Deleted income source: ${id}`, 'IncomeSource', id);
     } catch (error) {
       console.error('Failed to delete income source:', error);
     }
   }, []);
+
+  const updateUserProfile = useCallback((updates: Partial<UserProfile>) => {
+    setUserProfile(prev => {
+      const newUserProfile = {
+        ...prev,
+        ...updates,
+        preferences: {
+          ...prev.preferences,
+          ...(updates.preferences || {})
+        }
+      };
+      addLog('UPDATE', 'Updated user profile', 'UserProfile', 'user-1');
+      return newUserProfile;
+    });
+  }, [addLog]);
 
   const categorizeTransactions = useCallback(async () => {
     const targets = transactions.filter(t => t.category === 'Uncategorized' || (t.confidence && t.confidence < 0.8));
@@ -723,7 +1011,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       Return as a JSON object where keys are transaction IDs and values are arrays of objects with "category" and "confidence" (0-1), providing up to 3 best fits.`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.0-flash",
         contents: [{ parts: [{ text: prompt }] }],
         config: {
           responseMimeType: "application/json",
@@ -762,6 +1050,16 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   }, []);
 
+  const addCategory = useCallback((category: { name: string; color: string; icon: string }) => {
+    setCustomCategories(prev => [...prev, category]);
+    addLog('CREATE', `Added category: ${category.name}`, 'Category', category.name);
+  }, [addLog]);
+
+  const deleteCategory = useCallback((name: string) => {
+    setCustomCategories(prev => prev.filter(c => c.name !== name));
+    addLog('DELETE', `Deleted category: ${name}`, 'Category', name);
+  }, [addLog]);
+
   return (
     <FinanceContext.Provider value={{ 
       transactions, 
@@ -771,16 +1069,23 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       budgets,
       accounts,
       incomeSources,
+      investments,
+      auditLogs,
+      familyAccount,
+      userProfile,
+      updateUserProfile,
       spendingDataByCurrency, 
       isLoading,
       addTransactions, 
       addManualTransaction,
       analyzeFile, 
       deleteTransaction,
+      bulkDeleteTransactions,
       updateTransaction,
       bulkUpdateTransactions,
       addSavingsGoal,
       updateSavingsGoal,
+      deleteSavingsGoal,
       addRecurringPayment,
       updateRecurringPayment,
       deleteRecurringPayment,
@@ -796,6 +1101,12 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addIncomeSource,
       updateIncomeSource,
       deleteIncomeSource,
+      addInvestment,
+      updateInvestment,
+      deleteInvestment,
+      createFamily,
+      joinFamily,
+      addLog,
       transferToSavings,
       categorizeTransactions,
       confirmCategory,
@@ -803,9 +1114,13 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       isCategorizing,
       isAddTransactionModalOpen,
       setIsAddTransactionModalOpen,
+      isOffline,
       healthMetricsByCurrency,
       netWorthByCurrency,
-      monthlyTrends
+      monthlyTrends,
+      customCategories,
+      addCategory,
+      deleteCategory
     }}>
       {children}
     </FinanceContext.Provider>

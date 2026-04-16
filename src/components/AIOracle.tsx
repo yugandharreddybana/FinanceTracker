@@ -52,7 +52,7 @@ export const AIOracle: React.FC = () => {
         historyRef.current.push(userContent);
 
         let response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
+          model: "gemini-2.0-flash",
           contents: historyRef.current,
           config: {
             systemInstruction,
@@ -80,7 +80,7 @@ export const AIOracle: React.FC = () => {
           historyRef.current.push(toolContent);
 
           response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: "gemini-2.0-flash",
             contents: historyRef.current,
             config: {
               systemInstruction,
@@ -143,7 +143,7 @@ export const AIOracle: React.FC = () => {
       historyRef.current.push(userContent);
 
       let response = await aiRef.current.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.0-flash",
         contents: historyRef.current,
         config: {
           systemInstruction,
@@ -172,7 +172,7 @@ export const AIOracle: React.FC = () => {
         historyRef.current.push(toolContent);
 
         response = await aiRef.current.models.generateContent({
-          model: "gemini-3-flash-preview",
+          model: "gemini-2.0-flash",
           contents: historyRef.current,
           config: {
             systemInstruction,

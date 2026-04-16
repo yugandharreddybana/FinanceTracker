@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, AlertCircle, TrendingUp, Award, Lightbulb, BarChart, Send, Mic, MicOff, MessageSquare, X, Loader2, Volume2, VolumeX } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { GoogleGenAI } from "@google/genai";
 import { MCPClient } from '../services/mcpClient';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useFinance } from '../context/FinanceContext';
+import { financeApi } from '../services/api';
 
 interface Insight {
   id: string;
@@ -36,7 +36,6 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
   ]);
 
   const mcpClientRef = useRef<MCPClient | null>(null);
-  const aiRef = useRef<any>(null);
   const historyRef = useRef<any[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -55,9 +54,6 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
         await mcp.connect();
         mcpClientRef.current = mcp;
 
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-        aiRef.current = ai;
-        
         generateInitialInsights();
       } catch (err) {
         console.error("Failed to initialize AI Insights:", err);
@@ -72,26 +68,10 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
   }, []);
 
   const generateInitialInsights = async () => {
-    if (!aiRef.current || !mcpClientRef.current) return;
     setIsGeneratingInsights(true);
     try {
-      const transactions = await mcpClientRef.current.callTool('get_transactions', {});
-      
-      const prompt = `Based on these transactions: ${transactions}, generate 4 personalized financial insights. 
-      ${selectedBank !== 'ALL' ? `Focus specifically on transactions related to the account: ${selectedBank}.` : ''}
-      Return them as a JSON array of objects with fields: id (string), type ('ALERT' | 'WIN' | 'TIP' | 'TREND'), title (string), description (string), date (string like '2h ago').
-      Focus on spending patterns, potential savings, and wealth building.`;
-
-      const result = await aiRef.current.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt
-      });
-      
-      const text = result.text;
-      if (!text) throw new Error("No text returned from AI");
-      
-      const cleanedText = text.replace(/```json|```/g, '').trim();
-      const parsedInsights = JSON.parse(cleanedText);
+      const transactions = await mcpClientRef.current?.callTool('get_transactions', {}) || [];
+      const parsedInsights = await financeApi.getAIInsights(transactions, selectedBank);
       setInsights(parsedInsights);
     } catch (err) {
       console.error("Failed to generate insights:", err);
@@ -109,69 +89,15 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
     setIsLoading(true);
 
     try {
-      if (!aiRef.current || !mcpClientRef.current) throw new Error("AI not initialized");
-
-      const systemInstruction = "You are the Arta Oracle, a premium financial AI. You have access to real-time transaction data via MCP tools. Use these tools to provide accurate, data-driven insights. Always be professional, insightful, and proactive. When asked for insights, use the tools to analyze spending patterns.";
+      const transactions = await mcpClientRef.current?.callTool('get_transactions', {}) || [];
+      const response = await financeApi.sendAIChat(userMessage, historyRef.current, transactions);
       
-      // Get tools from MCP
-      const mcpTools = await mcpClientRef.current.listTools();
-      const functionDeclarations = mcpTools.map(tool => ({
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.inputSchema
-      }));
-
-      const userContent = { role: 'user', parts: [{ text: userMessage }] };
-      historyRef.current.push(userContent);
-
-      let response = await aiRef.current.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: historyRef.current,
-        config: {
-          systemInstruction,
-          tools: [{ functionDeclarations }]
-        }
-      });
-      
-      // Handle potential tool calls (MCP loop)
-      let functionCalls = response.functionCalls;
-      while (functionCalls) {
-        // Add AI's function call to history
-        historyRef.current.push(response.candidates[0].content);
-
-        const toolResults = await Promise.all(functionCalls.map(async (call: any) => {
-          const result = await mcpClientRef.current?.callTool(call.name, call.args);
-          return {
-            functionResponse: {
-              name: call.name,
-              response: { content: result }
-            }
-          };
-        }));
-
-        // Add tool results to history
-        const toolContent = { role: 'user', parts: toolResults };
-        historyRef.current.push(toolContent);
-
-        response = await aiRef.current.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: historyRef.current,
-          config: {
-            systemInstruction,
-            tools: [{ functionDeclarations }]
-          }
-        });
-        functionCalls = response.functionCalls;
-      }
-
-      // Add final AI response to history
-      const finalContent = response.candidates[0].content;
-      historyRef.current.push(finalContent);
-      const aiText = response.text || "I've processed your request.";
-      setMessages(prev => [...prev, { role: 'ai', content: aiText }]);
+      setMessages(prev => [...prev, { role: 'ai', content: response.content }]);
+      historyRef.current.push({ role: 'user', content: userMessage });
+      historyRef.current.push({ role: 'ai', content: response.content });
 
       if (isVoiceMode) {
-        speakMessage(aiText);
+        speakMessage(response.content);
       }
     } catch (err) {
       console.error("Oracle Error:", err);

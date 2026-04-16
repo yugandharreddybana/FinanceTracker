@@ -17,7 +17,13 @@ import {
   Leaf,
   Tags,
   BarChart3,
-  Cpu
+  Cpu,
+  Coins,
+  BrainCircuit,
+  Shield,
+  Layout,
+  History,
+  Users
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -39,6 +45,12 @@ const NAV_ITEMS = [
   { id: 'health', label: 'Health Score', icon: Activity },
   { id: 'carbon', label: 'Carbon Footprint', icon: Leaf },
   { id: 'categories', label: 'Categories', icon: Tags },
+  { id: 'investments', label: 'Investments', icon: Coins },
+  { id: 'forecasting', label: 'Forecasting', icon: BrainCircuit },
+  { id: 'tax', label: 'Tax Engine', icon: Shield },
+  { id: 'reports', label: 'Reports', icon: Layout },
+  { id: 'family', label: 'Family', icon: Users },
+  { id: 'audit', label: 'Audit Logs', icon: History },
   { id: 'insights', label: 'AI Insights', icon: Sparkles },
   { id: 'income', label: 'Income Analytics', icon: BarChart3 },
   { id: 'review', label: 'Monthly Review', icon: CalendarRange },
@@ -54,7 +66,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLog
       animate={{ width: isExpanded ? 240 : 80 }}
       onMouseEnter={() => setIsExpanded(true)}
       onMouseLeave={() => setIsExpanded(false)}
-      className="fixed left-0 top-0 h-screen bg-card/40 backdrop-blur-3xl border-r border-white/5 z-50 flex flex-col py-8 overflow-visible transition-all duration-500 ease-[0.22, 1, 0.36, 1]"
+      className="fixed left-0 top-0 h-screen glass-card border-r border-white/5 z-50 flex flex-col py-8 overflow-visible transition-all duration-500 ease-[0.22, 1, 0.36, 1]"
     >
       <div className="px-6 mb-12 flex items-center gap-4">
         <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center shrink-0 violet-glow relative group/logo">
@@ -171,8 +183,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLog
           )}
         </AnimatePresence>
 
-        <button className="w-full flex items-center gap-4 p-3.5 rounded-2xl text-white/40 hover:text-white hover:bg-white/5 transition-all group">
-          <Settings className="w-5 h-5 shrink-0 group-hover:rotate-45 transition-transform duration-500" />
+        <button 
+          onClick={() => setActiveTab('settings')}
+          className={cn(
+            "w-full flex items-center gap-4 p-3.5 rounded-2xl transition-all group",
+            activeTab === 'settings' ? "bg-accent/10 text-accent shadow-[inset_0_0_20px_rgba(124,110,250,0.05)]" : "text-white/40 hover:text-white hover:bg-white/5"
+          )}
+        >
+          <Settings className={cn(
+            "w-5 h-5 shrink-0 transition-transform duration-500",
+            activeTab === 'settings' ? "rotate-45 text-accent" : "group-hover:rotate-45"
+          )} />
           <AnimatePresence>
             {isExpanded && (
               <motion.span

@@ -3,33 +3,36 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import cors from "cors";
 import dotenv from "dotenv";
-import { createProxyMiddleware } from 'http-proxy-middleware';
+import { financeRouter } from "./server/routes/finance.ts";
+import { aiRouter } from "./server/routes/ai.ts";
+import { investmentRouter } from "./server/routes/investment.ts";
 
 dotenv.config();
 
 async function startServer() {
   const app = express();
-  const PORT = 4000;
-  const BACKEND_PORT = 8080;
+  const PORT = 3000;
 
   app.use(cors());
+  app.use(express.json());
 
-  // Proxy API routes to Java Backend: mount on /api to preserve path prefixes
-  app.use('/api', createProxyMiddleware({
-    target: `http://localhost:${BACKEND_PORT}`,
-    changeOrigin: true,
-    pathRewrite: {
-      '^/': '/api/' // rewrite root of proxy to /api/ since express strips the mount point
-    },
-    ws: true // Handle SSE/Websockets
-  }));
+  // API routes
+  app.use("/api/finance", financeRouter);
+  app.use("/api/ai", aiRouter);
+  app.use("/api/investment", investmentRouter);
 
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });
 
-  // Serve static files in production
-  if (process.env.NODE_ENV === "production") {
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
@@ -38,8 +41,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Node Proxy Server (Port 4000) -> Java Backend (Port 8080)`);
-    console.log(`Health check: http://localhost:${PORT}/api/health`);
+    console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 

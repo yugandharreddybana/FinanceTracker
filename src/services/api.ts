@@ -39,6 +39,14 @@ export const financeApi = {
     const res = await fetch(`${API_BASE}/transactions/${id}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Failed to delete transaction');
   },
+  bulkDeleteTransactions: async (ids: string[]): Promise<void> => {
+    const res = await fetch(`${API_BASE}/transactions/bulk-delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+    if (!res.ok) throw new Error('Failed to bulk delete transactions');
+  },
 
   // Accounts
   getAccounts: async (): Promise<BankAccount[]> => {
@@ -212,5 +220,25 @@ export const financeApi = {
   deleteIncomeSource: async (id: string): Promise<void> => {
     const res = await fetch(`${API_BASE}/income-sources/${id}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Failed to delete income source');
+  },
+
+  // AI Insights
+  getAIInsights: async (transactions: any[], selectedBank: string): Promise<any[]> => {
+    const res = await fetch('/api/ai/insights', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactions, selectedBank }),
+    });
+    if (!res.ok) throw new Error('Failed to fetch AI insights');
+    return res.json();
+  },
+  sendAIChat: async (message: string, history: any[], transactions: any[]): Promise<{ content: string }> => {
+    const res = await fetch('/api/ai/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, history, transactions }),
+    });
+    if (!res.ok) throw new Error('Failed to send AI chat');
+    return res.json();
   },
 };

@@ -41,6 +41,13 @@ export interface BankAccount {
   color: string;
   lastSynced: string;
   currency?: string;
+  // Credit Card specific
+  creditLimit?: number;
+  dueDate?: string;
+  apr?: number;
+  minPayment?: number;
+  cardNetwork?: 'Visa' | 'Mastercard' | 'Amex' | 'Discover';
+  cardNumberLast4?: string;
 }
 
 export interface Budget {
@@ -112,4 +119,53 @@ export interface Insight {
   title: string;
   description: string;
   date: string;
+}
+
+export interface UserProfile {
+  name: string;
+  email: string;
+  role: string;
+  avatar?: string;
+  preferences: {
+    theme: 'dark' | 'light' | 'glass';
+    currency: string;
+    language: string;
+    notifications: boolean;
+  };
+  familyId?: string;
+}
+
+export interface Investment {
+  id: string;
+  symbol: string;
+  name: string;
+  type: 'Stock' | 'Crypto' | 'ETF';
+  quantity: number;
+  averagePrice: number;
+  currentPrice: number;
+  currency: string;
+  lastUpdated: string;
+}
+
+export interface AuditLog {
+  id: string;
+  timestamp: string;
+  userId: string;
+  userName: string;
+  action: string;
+  details: string;
+  entityType: string;
+  entityId: string;
+}
+
+export interface FamilyAccount {
+  id: string;
+  name: string;
+  members: {
+    uid: string;
+    name: string;
+    role: 'Admin' | 'Member';
+  }[];
+  sharedBudgets: string[]; // Budget IDs
+  sharedAccounts: string[]; // BankAccount IDs
 }

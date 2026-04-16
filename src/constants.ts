@@ -34,7 +34,22 @@ export const MOCK_HEALTH: FinancialHealth = {
 export const MOCK_ACCOUNTS: BankAccount[] = [
   { id: '1', name: 'Main Current', type: 'Current', balance: 4250.42, bank: 'Revolut', color: '#7C6EFA', lastSynced: '2 mins ago', currency: 'USD' },
   { id: '2', name: 'Savings Vault', type: 'Savings', balance: 18400.00, bank: 'Marcus', color: '#22D3A5', lastSynced: '1 hour ago', currency: 'USD' },
-  { id: '3', name: 'Platinum Card', type: 'Credit', balance: -1240.00, bank: 'Amex', color: '#F43F5E', lastSynced: '5 mins ago', currency: 'EUR' },
+  { 
+    id: '3', 
+    name: 'Platinum Card', 
+    type: 'Credit', 
+    balance: -1240.00, 
+    bank: 'Amex', 
+    color: '#F43F5E', 
+    lastSynced: '5 mins ago', 
+    currency: 'EUR',
+    creditLimit: 15000,
+    dueDate: '2024-04-25',
+    apr: 18.99,
+    minPayment: 35.00,
+    cardNetwork: 'Amex',
+    cardNumberLast4: '1007'
+  },
 ];
 
 export const MOCK_BUDGETS: Budget[] = [

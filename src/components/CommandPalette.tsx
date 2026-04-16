@@ -19,6 +19,7 @@ const ACTIONS = [
   { id: 'health', title: 'Health Score', icon: Sparkles, category: 'Intelligence', shortcut: 'G H' },
   { id: 'income', title: 'Income Analytics', icon: TrendingUp, category: 'Analytics', shortcut: 'G Y' },
   { id: 'recurring', title: 'Recurring Payments', icon: Calendar, category: 'Management', shortcut: 'G R' },
+  { id: 'settings', title: 'Settings', icon: Settings, category: 'System', shortcut: 'G S' },
 ];
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onNavigate }) => {
@@ -75,7 +76,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
             initial={{ opacity: 0, scale: 0.95, y: -20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: -20 }}
-            className="relative w-full max-w-2xl bg-[#0F0F19]/90 border border-white/10 rounded-3xl overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.5)] backdrop-blur-2xl"
+            className="relative w-full max-w-2xl glass-card rounded-3xl overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.5)]"
           >
             <div className="flex items-center gap-4 p-6 border-b border-white/5">
               <Search className="w-6 h-6 text-accent" />

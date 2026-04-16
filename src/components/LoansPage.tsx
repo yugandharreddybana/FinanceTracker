@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, TrendingDown, X, Landmark, Calculator, ArrowLeftRight, ChevronRight, Calendar, CreditCard, Info, AlertCircle } from 'lucide-react';
+import { Plus, TrendingDown, X, Landmark, Calculator, ArrowLeftRight, ChevronRight, Calendar, CreditCard, Info, AlertCircle, Edit2, Trash2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useFinance } from '../context/FinanceContext';
 import { Loan } from '../types';
@@ -49,13 +49,14 @@ const generateAmortizationSchedule = (loan: Loan) => {
 
 export const LoansPage: React.FC = () => {
   const [isAddingLoan, setIsAddingLoan] = useState(false);
+  const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [selectedLoanForSchedule, setSelectedLoanForSchedule] = useState<Loan | null>(null);
   const [selectedLoanForPayment, setSelectedLoanForPayment] = useState<Loan | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   
-  const { loans, addLoan, updateLoan, addTransactions } = useFinance();
+  const { loans, addLoan, updateLoan, deleteLoan, addTransactions } = useFinance();
 
   const [loanForm, setLoanForm] = useState({
     name: '',
@@ -145,8 +146,7 @@ export const LoansPage: React.FC = () => {
     const rate = parseFloat(loanForm.interestRate) || 0;
     const emi = calculateEMI(principal, rate, tenure);
 
-    const newLoan = {
-      id: `loan-${Date.now()}`,
+    const loanData = {
       name: loanForm.name || 'New Loan',
       totalAmount: principal,
       remainingAmount: principal,
@@ -157,11 +157,40 @@ export const LoansPage: React.FC = () => {
       endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000 * tenure).toISOString().split('T')[0],
       category: loanForm.category,
       color: '#F43F5E',
-      payments: []
+      payments: editingLoan ? editingLoan.payments : []
     };
-    addLoan(newLoan);
+
+    if (editingLoan) {
+      updateLoan(editingLoan.id, loanData);
+    } else {
+      addLoan({
+        id: `loan-${Date.now()}`,
+        ...loanData
+      });
+    }
+    
     setIsAddingLoan(false);
+    setEditingLoan(null);
     setLoanForm({ name: '', totalAmount: '', monthlyEMI: '', interestRate: '', category: 'Personal', tenureYears: '5' });
+  };
+
+  const startEdit = (loan: Loan) => {
+    setEditingLoan(loan);
+    setLoanForm({
+      name: loan.name,
+      totalAmount: loan.totalAmount.toString(),
+      monthlyEMI: loan.monthlyEMI.toString(),
+      interestRate: loan.interestRate.toString(),
+      category: loan.category,
+      tenureYears: loan.tenureYears.toString()
+    });
+    setIsAddingLoan(true);
+  };
+
+  const handleDelete = (id: string) => {
+    if (window.confirm('Are you sure you want to delete this loan?')) {
+      deleteLoan(id);
+    }
   };
 
   return (
@@ -223,11 +252,27 @@ export const LoansPage: React.FC = () => {
                     <p className="text-[10px] text-white/30 uppercase tracking-[0.2em] font-bold">{loan.category}</p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest mb-1">Monthly EMI</p>
-                  <p className="text-2xl font-bold font-mono text-negative tracking-tighter">
-                    {loan.monthlyEMI.toLocaleString('en-US', { style: 'currency', currency: loan.currency || 'USD' })}
-                  </p>
+                <div className="flex items-center gap-4">
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button 
+                      onClick={() => startEdit(loan)}
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-all"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(loan.id)}
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-negative/20 text-white/40 hover:text-negative transition-all"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest mb-1">Monthly EMI</p>
+                    <p className="text-2xl font-bold font-mono text-negative tracking-tighter">
+                      {loan.monthlyEMI.toLocaleString('en-US', { style: 'currency', currency: loan.currency || 'USD' })}
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -327,20 +372,21 @@ export const LoansPage: React.FC = () => {
               <div className="p-8 border-b border-white/5 bg-negative/5 flex justify-between items-center">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-2xl bg-negative/20 flex items-center justify-center">
-                    <TrendingDown className="w-6 h-6 text-negative" />
+                    {editingLoan ? <Edit2 className="w-6 h-6 text-negative" /> : <TrendingDown className="w-6 h-6 text-negative" />}
                   </div>
-                  <h3 className="text-2xl font-bold tracking-tight">Add New Loan</h3>
+                  <h3 className="text-2xl font-bold tracking-tight">{editingLoan ? 'Edit Loan' : 'Add New Loan'}</h3>
                 </div>
-                <button onClick={() => setIsAddingLoan(false)} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
+                <button onClick={() => { setIsAddingLoan(false); setEditingLoan(null); }} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
                   <X className="w-6 h-6 text-white/20 hover:text-white" />
                 </button>
               </div>
 
               <div className="p-8 space-y-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Loan Name</label>
+                  <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Loan Name *</label>
                   <input 
                     type="text" 
+                    required
                     placeholder="e.g. Car Loan"
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-negative transition-all"
                     value={loanForm.name}
@@ -349,9 +395,10 @@ export const LoansPage: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Total Amount</label>
+                    <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Total Amount *</label>
                     <input 
                       type="number" 
+                      required
                       placeholder="0.00"
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-negative transition-all"
                       value={loanForm.totalAmount}
@@ -371,9 +418,10 @@ export const LoansPage: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Interest Rate (%)</label>
+                    <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Interest Rate (%) *</label>
                     <input 
                       type="number" 
+                      required
                       placeholder="5.0"
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-negative transition-all"
                       value={loanForm.interestRate}
@@ -407,7 +455,11 @@ export const LoansPage: React.FC = () => {
 
                 <div className="flex gap-4 pt-4">
                   <button 
-                    onClick={() => setIsAddingLoan(false)}
+                    onClick={() => {
+                      setIsAddingLoan(false);
+                      setEditingLoan(null);
+                      setLoanForm({ name: '', totalAmount: '', monthlyEMI: '', interestRate: '', category: 'Personal', tenureYears: '5' });
+                    }}
                     className="flex-1 py-4 rounded-2xl bg-white/5 font-bold hover:bg-white/10 transition-all text-white/40"
                   >
                     Cancel
@@ -416,7 +468,7 @@ export const LoansPage: React.FC = () => {
                     onClick={handleAddLoan}
                     className="flex-[2] py-4 rounded-2xl bg-negative text-white font-bold hover:bg-negative/80 transition-all shadow-lg"
                   >
-                    Add Loan
+                    {editingLoan ? 'Update Loan' : 'Add Loan'}
                   </button>
                 </div>
               </div>
