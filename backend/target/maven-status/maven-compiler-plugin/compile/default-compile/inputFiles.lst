@@ -1,5 +1,6 @@
 F:\Projects\FinanceTracker\backend\src\main\java\com\financetracker\config\GlobalExceptionHandler.java
 F:\Projects\FinanceTracker\backend\src\main\java\com\financetracker\config\seeder\CurrencySeeder.java
+F:\Projects\FinanceTracker\backend\src\main\java\com\financetracker\config\seeder\IndexInitializer.java
 F:\Projects\FinanceTracker\backend\src\main\java\com\financetracker\config\seeder\UserSeeder.java
 F:\Projects\FinanceTracker\backend\src\main\java\com\financetracker\config\WebConfig.java
 F:\Projects\FinanceTracker\backend\src\main\java\com\financetracker\controller\AuditLogController.java

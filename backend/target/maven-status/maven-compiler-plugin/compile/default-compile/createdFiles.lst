@@ -39,6 +39,7 @@ com\financetracker\model\FamilyAccount.class
 com\financetracker\model\IncomeSource.class
 com\financetracker\service\FamilyAccountService.class
 com\financetracker\model\AuditLog.class
+com\financetracker\config\seeder\IndexInitializer.class
 com\financetracker\model\FamilyAccount$FamilyAccountBuilder.class
 com\financetracker\repository\SavingsGoalRepository.class
 com\financetracker\model\FamilyAccount$FamilyMember.class
