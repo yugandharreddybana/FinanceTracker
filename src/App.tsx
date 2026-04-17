@@ -307,7 +307,7 @@ function MainApp() {
                       <div className="absolute inset-0 flex items-center justify-center bg-accent/5">
                         <div className="text-center">
                           <Sparkles className="w-20 h-20 text-accent mx-auto mb-6 animate-pulse" />
-                          <h2 className="text-4xl font-bold mb-4 tracking-tighter font-display">Arta Finance Demo</h2>
+                          <h2 className="text-4xl font-bold mb-4 tracking-tighter font-display">Yugi Finance Tracker Demo</h2>
                           <p className="text-white/40 font-medium max-w-md mx-auto">
                             Experience the future of wealth intelligence. Our neural engine is processing your request...
                           </p>

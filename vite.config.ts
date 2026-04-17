@@ -14,8 +14,8 @@ export default defineConfig(({mode}) => {
         registerType: 'autoUpdate',
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
         manifest: {
-          name: 'Arta Finance',
-          short_name: 'Arta',
+          name: 'Yugi Finance Tracker',
+          short_name: 'Yugi',
           description: 'Advanced AI Financial Intelligence Platform',
           theme_color: '#050508',
           icons: [

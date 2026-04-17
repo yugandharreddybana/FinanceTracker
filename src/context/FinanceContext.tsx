@@ -167,7 +167,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Persistence
   useEffect(() => {
-    const savedData = localStorage.getItem('arta_finance_data');
+    const savedData = localStorage.getItem('yugi_finance_data');
     if (savedData) {
       try {
         const parsed = JSON.parse(savedData);
@@ -203,7 +203,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       userProfile,
       customCategories
     };
-    localStorage.setItem('arta_finance_data', JSON.stringify(dataToSave));
+    localStorage.setItem('yugi_finance_data', JSON.stringify(dataToSave));
   }, [transactions, savingsGoals, recurringPayments, loans, budgets, accounts, incomeSources, investments, userProfile, customCategories, isDataLoaded]);
   const [isLoading, setIsLoading] = useState(true);
 

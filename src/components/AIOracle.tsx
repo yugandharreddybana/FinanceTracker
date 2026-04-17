@@ -12,7 +12,7 @@ export const AIOracle: React.FC = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [messages, setMessages] = useState<{ role: 'user' | 'ai', content: string }[]>([
-    { role: 'ai', content: "Greetings. I am the Arta Oracle. I've connected to your real-time transaction stream via MCP. How may I assist your journey today?" }
+    { role: 'ai', content: "Greetings. I am the Yugi Oracle. I've connected to your real-time transaction stream via MCP. How may I assist your journey today?" }
   ]);
 
   const mcpClientRef = useRef<MCPClient | null>(null);
@@ -50,7 +50,7 @@ export const AIOracle: React.FC = () => {
 
         // Proactive initial analysis
         setIsLoading(true);
-        const systemInstruction = "You are the Arta Oracle, a premium financial AI. You have access to real-time transaction data via MCP tools. Use these tools to provide accurate, data-driven insights. Always be professional, insightful, and proactive.";
+        const systemInstruction = "You are the Yugi Oracle, a premium financial AI. You have access to real-time transaction data via MCP tools. Use these tools to provide accurate, data-driven insights. Always be professional, insightful, and proactive.";
         const initialAnalysisPrompt = "Perform a quick proactive analysis of my recent transactions and give me one high-impact insight or suggestion.";
         
         const userContent = { role: 'user', parts: [{ text: initialAnalysisPrompt }] };
@@ -134,7 +134,7 @@ export const AIOracle: React.FC = () => {
     try {
       if (!aiRef.current || !mcpClientRef.current) throw new Error("AI not initialized");
 
-      const systemInstruction = "You are the Arta Oracle, a premium financial AI. You have access to real-time transaction data via MCP tools. Use these tools to provide accurate, data-driven insights. Always be professional, insightful, and proactive.";
+      const systemInstruction = "You are the Yugi Oracle, a premium financial AI. You have access to real-time transaction data via MCP tools. Use these tools to provide accurate, data-driven insights. Always be professional, insightful, and proactive.";
       
       // Get tools from MCP
       const mcpTools = await mcpClientRef.current.listTools();

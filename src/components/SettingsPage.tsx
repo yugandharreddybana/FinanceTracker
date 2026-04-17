@@ -175,7 +175,7 @@ export const SettingsPage: React.FC = () => {
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
-    const a    = Object.assign(document.createElement('a'), { href: url, download: `arta_backup_${new Date().toISOString().split('T')[0]}.json` });
+    const a    = Object.assign(document.createElement('a'), { href: url, download: `yugi_backup_${new Date().toISOString().split('T')[0]}.json` });
     a.click(); URL.revokeObjectURL(url);
   }, [userProfile, transactions, accounts, budgets, investments, savingsGoals, recurringPayments, loans, incomeSources]);
 
@@ -200,7 +200,7 @@ export const SettingsPage: React.FC = () => {
   const handleDeleteAccount = () => {
     const confirmed = window.prompt('Type "DELETE" to permanently erase all data and accounts:');
     if (confirmed === 'DELETE') {
-      localStorage.removeItem('arta_finance_data');
+      localStorage.removeItem('yugi_finance_data');
       alert('Account data cleared. Redirecting…');
       window.location.href = '/login';
     }
@@ -382,7 +382,7 @@ export const SettingsPage: React.FC = () => {
           </Section>
 
           {/* NOTIFICATIONS */}
-          <Section sectionRef={notificationsRef} title="Notifications" description="Choose which alerts Arta sends you" icon={Bell}>
+          <Section sectionRef={notificationsRef} title="Notifications" description="Choose which alerts Yugi sends you" icon={Bell}>
             <div className="space-y-4">
               {([
                 { key: 'global'    as const, title: 'All Notifications',  desc: 'Master toggle — disabling mutes everything below',        value: notifications.global },
@@ -549,7 +549,7 @@ export const SettingsPage: React.FC = () => {
                 <AlertCircle className="w-5 h-5 text-negative shrink-0 mt-0.5" />
                 <div>
                   <p className="text-sm font-bold text-negative mb-1">Data Privacy</p>
-                  <p className="text-xs text-white/40 leading-relaxed">All data lives on this device and in your Supabase instance. Arta never shares or sells your financial information. You own your data — export and delete at any time.</p>
+                  <p className="text-xs text-white/40 leading-relaxed">All data lives on this device and in your Supabase instance. Yugi Finance Tracker never shares or sells your financial information. You own your data — export and delete at any time.</p>
                 </div>
               </div>
             </div>

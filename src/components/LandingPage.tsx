@@ -16,7 +16,7 @@ const FEATURES = [
   {
     icon: Zap,
     title: 'Smart Add',
-    desc: 'Add transactions, goals, or loans using natural language. Just type what happened — Arta parses and categorises automatically.',
+    desc: 'Add transactions, goals, or loans using natural language. Just type what happened — Yugi parses and categorises automatically.',
     color: 'text-accent bg-accent/10',
     tag: 'AI-Powered',
   },
@@ -116,7 +116,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLogin,
             <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center violet-glow">
               <Sparkles className="w-6 h-6 text-white" />
             </div>
-            <span className="font-display font-bold text-2xl tracking-tighter">Arta</span>
+            <span className="font-display font-bold text-2xl tracking-tighter">Yugi Finance Tracker</span>
           </div>
           <div className="flex items-center gap-8">
             <button onClick={onLogin} className="text-sm font-bold text-white/60 hover:text-white transition-colors">Login</button>
@@ -158,7 +158,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLogin,
             transition={{ delay: 0.2 }}
             className="text-xl text-white/40 max-w-2xl mx-auto mb-12 font-medium leading-relaxed"
           >
-            Arta combines AI-powered insights, Indian market intelligence, carbon tracking, 
+            Yugi Finance Tracker combines AI-powered insights, Indian market intelligence, carbon tracking, 
             tax calculations, and family finance management — all in one unified terminal.
           </motion.p>
 
@@ -226,7 +226,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLogin,
             Built for the modern <span className="text-accent">Indian investor.</span>
           </h2>
           <p className="text-white/40 mt-4 max-w-xl mx-auto font-medium">
-            From NSE investments to carbon tracking — Arta covers every dimension of your financial life.
+            From NSE investments to carbon tracking — Yugi Finance Tracker covers every dimension of your financial life.
           </p>
         </motion.div>
 
@@ -343,7 +343,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLogin,
               Ready to take control?
             </h2>
             <p className="text-white/40 mb-10 font-medium leading-relaxed">
-              Join thousands of Indians who use Arta to grow wealth, eliminate wasteful spending, 
+              Join thousands of Indians who use Yugi Finance Tracker to grow wealth, eliminate wasteful spending, 
               and make every financial decision with confidence.
             </p>
             <button
@@ -364,7 +364,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLogin,
             <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
               <Sparkles className="w-5 h-5 text-white" />
             </div>
-            <span className="font-display font-bold text-xl tracking-tighter">Arta</span>
+            <span className="font-display font-bold text-xl tracking-tighter">Yugi Finance Tracker</span>
           </div>
           <div className="flex gap-10 text-sm font-bold text-white/20">
             <a href="#" className="hover:text-white transition-colors">Privacy</a>
@@ -372,7 +372,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLogin,
             <a href="#" className="hover:text-white transition-colors">Security</a>
             <a href="#" className="hover:text-white transition-colors">Contact</a>
           </div>
-          <p className="text-xs font-bold text-white/10 uppercase tracking-widest">© 2025 Arta Finance Neural Engine</p>
+          <p className="text-xs font-bold text-white/10 uppercase tracking-widest">© 2025 Yugi Finance Tracker Neural Engine</p>
         </div>
       </footer>
     </div>

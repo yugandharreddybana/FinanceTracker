@@ -81,8 +81,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLog
               exit={{ opacity: 0, x: -10 }}
               className="flex flex-col"
             >
-              <span className="font-display font-bold text-xl tracking-tight whitespace-nowrap">Arta</span>
-              <span className="text-[10px] font-bold text-accent uppercase tracking-[0.3em] -mt-1">Finance</span>
+              <span className="font-display font-bold text-xl tracking-tight whitespace-nowrap">Yugi</span>
+              <span className="text-[10px] font-bold text-accent uppercase tracking-[0.3em] -mt-1">Finance Tracker</span>
             </motion.div>
           )}
         </AnimatePresence>

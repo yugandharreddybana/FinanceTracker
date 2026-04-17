@@ -39,7 +39,7 @@ router.post("/chat", async (req, res) => {
   try {
     const { message, history, transactions } = req.body;
     
-    const systemInstruction = "You are the Arta Oracle, a premium financial AI. You have access to real-time transaction data. Always be professional, insightful, and proactive. User context: The user's name is Yugandhar. Current financial data is provided in the context.";
+    const systemInstruction = "You are the Yugi Oracle, a premium financial AI. You have access to real-time transaction data. Always be professional, insightful, and proactive. User context: The user's name is Yugandhar. Current financial data is provided in the context.";
 
     const contents = [
       ...history.map((h: any) => ({

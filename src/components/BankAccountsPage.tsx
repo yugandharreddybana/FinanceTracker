@@ -637,7 +637,7 @@ export const BankAccountsPage: React.FC = () => {
                   <div>
                     <h3 className="text-2xl font-bold tracking-tight">{editingAccount ? 'Edit Account' : 'Secure Connection'}</h3>
                     <p className="text-[10px] text-accent font-bold uppercase tracking-widest">
-                      {editingAccount ? `Updating ${editingAccount.name}` : 'Powered by Arta Open Banking'}
+                      {editingAccount ? `Updating ${editingAccount.name}` : 'Powered by Yugi Open Banking'}
                     </p>
                   </div>
                 </div>

@@ -176,7 +176,7 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-12 gap-6">
           <div>
             <h1 className="text-5xl font-bold tracking-tighter mb-3 font-display">Financial Intelligence</h1>
-            <p className="text-white/40 font-medium">Personalized guidance powered by Arta's neural engine</p>
+            <p className="text-white/40 font-medium">Personalized guidance powered by Yugi's neural engine</p>
           </div>
           <div className="flex items-center gap-4">
             <select 
@@ -284,7 +284,7 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
                 <Sparkles className="w-6 h-6 text-accent animate-pulse" />
               </div>
               <div>
-                <span className="font-bold tracking-tight text-lg">Arta Oracle</span>
+                <span className="font-bold tracking-tight text-lg">Yugi Oracle</span>
                 <p className="text-[10px] text-accent font-bold uppercase tracking-widest">Neural Engine v4.2</p>
               </div>
             </div>
