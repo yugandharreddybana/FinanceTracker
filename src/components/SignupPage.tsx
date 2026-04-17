@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { Sparkles, Mail, Lock, User, ArrowRight, Loader2, AlertCircle, ShieldCheck } from 'lucide-react';
 
 interface SignupPageProps {
-  onSignup: () => void;
+  onSignup: (name: string, email: string) => void;
   onSwitchToLogin: () => void;
   onBackToHome: () => void;
 }
@@ -38,7 +38,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onSwitchToLogi
     // Simulate API call
     setTimeout(() => {
       setIsLoading(false);
-      onSignup();
+      onSignup(name, email);
     }, 1500);
   };
 

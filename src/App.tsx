@@ -117,7 +117,14 @@ function MainApp() {
     };
   }, [isLoggedIn]);
 
-  const handleLogin = () => {
+  const handleLogin = (email: string) => {
+    updateUserProfile({ email, name: email.split('@')[0] });
+    setIsLoggedIn(true);
+    setActiveTab('dashboard');
+  };
+
+  const handleSignup = (name: string, email: string) => {
+    updateUserProfile({ name, email });
     setIsLoggedIn(true);
     setActiveTab('dashboard');
   };
@@ -176,7 +183,7 @@ function MainApp() {
             ) : authView === 'signup' ? (
               <SignupPage 
                 key="signup" 
-                onSignup={handleLogin} 
+                onSignup={handleSignup} 
                 onSwitchToLogin={() => setAuthView('login')}
                 onBackToHome={() => setAuthView('landing')}
               />

@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { Sparkles, Mail, Lock, ArrowRight, Loader2, AlertCircle, Fingerprint } from 'lucide-react';
 
 interface LoginPageProps {
-  onLogin: () => void;
+  onLogin: (email: string) => void;
   onSwitchToSignup: () => void;
   onForgotPassword: () => void;
   onBackToHome: () => void;
@@ -20,7 +20,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
     setIsBiometricLoading(true);
     setTimeout(() => {
       setIsBiometricLoading(false);
-      onLogin();
+      onLogin(email || 'yugandharreddybana@outlook.com');
     }, 2000);
   };
 
@@ -42,7 +42,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
     // Simulate API call
     setTimeout(() => {
       setIsLoading(false);
-      onLogin();
+      onLogin(email);
     }, 1500);
   };
 
