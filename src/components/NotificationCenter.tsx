@@ -64,7 +64,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                 >
                   Clear All
                 </button>
-                <button onClick={onClose} className="p-1 hover:bg-white/5 rounded-lg transition-colors">
+                <button aria-label="Close notifications" onClick={onClose} className="p-1 hover:bg-white/5 rounded-lg transition-colors">
                   <X className="w-4 h-4 text-white/20" />
                 </button>
               </div>

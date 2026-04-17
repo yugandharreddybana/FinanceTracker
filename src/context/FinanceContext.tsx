@@ -99,24 +99,24 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [investments, setInvestments] = useState<Investment[]>([
     {
       id: '1',
-      symbol: 'BTC',
-      name: 'Bitcoin',
-      type: 'Crypto',
-      quantity: 0.5,
-      averagePrice: 45000,
-      currentPrice: 65432.10,
-      currency: 'USD',
+      symbol: 'RELIANCE',
+      name: 'Reliance Industries',
+      type: 'Stock',
+      quantity: 10,
+      averagePrice: 2650,
+      currentPrice: 2921.45,
+      currency: 'INR',
       lastUpdated: new Date().toISOString()
     },
     {
       id: '2',
-      symbol: 'AAPL',
-      name: 'Apple Inc.',
+      symbol: 'TCS',
+      name: 'Tata Consultancy Services',
       type: 'Stock',
-      quantity: 10,
-      averagePrice: 150,
-      currentPrice: 185.92,
-      currency: 'USD',
+      quantity: 5,
+      averagePrice: 3500,
+      currentPrice: 3712.80,
+      currency: 'INR',
       lastUpdated: new Date().toISOString()
     }
   ]);
@@ -128,7 +128,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     role: 'Pro Member',
     preferences: {
       theme: 'dark',
-      currency: 'USD',
+      currency: 'INR',
       language: 'English (US)',
       notifications: true
     }
@@ -287,18 +287,18 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const netWorthByCurrency = React.useMemo(() => {
     const result: Record<string, { total: number; assets: number; liabilities: number; change: number }> = {};
     
+    // Net worth only includes bank accounts and loans - NOT investments
     const currencies = Array.from(new Set([
-      ...accounts.map(a => a.currency || 'USD'), 
-      ...loans.map(l => l.currency || 'USD'),
-      ...investments.map(i => i.currency || 'USD')
+      ...accounts.map(a => a.currency || 'INR'), 
+      ...loans.map(l => l.currency || 'INR')
     ]));
     
     currencies.forEach(c => {
-      result[c] = { total: 0, assets: 0, liabilities: 0, change: 12.4 };
+      result[c] = { total: 0, assets: 0, liabilities: 0, change: 0 };
     });
 
     accounts.forEach(a => {
-      const curr = a.currency || 'USD';
+      const curr = a.currency || 'INR';
       if (a.type !== 'Credit') {
         result[curr].assets += a.balance;
         result[curr].total += a.balance;
@@ -308,21 +308,39 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
     });
 
-    investments.forEach(i => {
-      const curr = i.currency || 'USD';
-      const value = i.quantity * i.currentPrice;
-      result[curr].assets += value;
-      result[curr].total += value;
-    });
+    // Investments are NOT included in net worth per user requirement
 
     loans.forEach(l => {
-      const curr = l.currency || 'USD';
+      const curr = l.currency || 'INR';
       result[curr].liabilities += l.remainingAmount;
       result[curr].total -= l.remainingAmount;
     });
 
+    // Calculate actual change based on income vs expenses this month
+    const thisMonth = new Date().getMonth();
+    const thisYear = new Date().getFullYear();
+    const monthlyIncome = transactions
+      .filter(t => {
+        const d = new Date(t.date);
+        return d.getMonth() === thisMonth && d.getFullYear() === thisYear && t.type === 'income';
+      })
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    const monthlyExpenses = transactions
+      .filter(t => {
+        const d = new Date(t.date);
+        return d.getMonth() === thisMonth && d.getFullYear() === thisYear && t.type === 'expense';
+      })
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    
+    Object.keys(result).forEach(c => {
+      const total = result[c].total;
+      if (total > 0) {
+        result[c].change = parseFloat(((monthlyIncome - monthlyExpenses) / total * 100).toFixed(1)) || 0;
+      }
+    });
+
     return result;
-  }, [accounts, loans, investments]);
+  }, [accounts, loans, transactions]);
 
   const monthlyTrends = React.useMemo(() => {
     const last6Months = Array.from({ length: 6 }).map((_, i) => {
@@ -334,16 +352,16 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return last6Months.map(month => {
       const monthData: { month: string; [currency: string]: number | string } = { month };
       
-      const currencies = Array.from(new Set(transactions.map(t => t.currency || 'USD')));
+      const currencies = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
       currencies.forEach(curr => {
         const amount = transactions
           .filter(t => {
             const tDate = new Date(t.date);
-            return tDate.toLocaleString('default', { month: 'short' }) === month && t.type === 'expense' && (t.currency || 'USD') === curr;
+            return tDate.toLocaleString('default', { month: 'short' }) === month && t.type === 'expense' && (t.currency || 'INR') === curr;
           })
           .reduce((acc, t) => acc + Math.abs(t.amount), 0);
         
-        monthData[curr] = amount || Math.random() * 2000 + 1000; // Fallback to mock if no data
+        monthData[curr] = amount; // Show 0 if no data instead of fake numbers
       });
 
       return monthData;
@@ -353,23 +371,23 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const healthMetricsByCurrency = React.useMemo(() => {
     const result: Record<string, { savingsRate: number; debtRatio: number; emergencyFund: number; budgetAdherence: number; overallScore: number }> = {};
     
-    const currencies = Array.from(new Set(transactions.map(t => t.currency || 'USD')));
+    const currencies = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
     
     currencies.forEach(curr => {
-      const currBudgets = budgets.filter(b => (b.currency || 'USD') === curr);
+      const currBudgets = budgets.filter(b => (b.currency || 'INR') === curr);
       const totalBudget = currBudgets.reduce((acc, b) => acc + b.limit, 0);
       const totalSpent = currBudgets.reduce((acc, b) => acc + b.spent, 0);
       const budgetAdherence = totalBudget > 0 ? Math.max(0, 1 - (totalSpent / totalBudget)) : 1;
 
       const monthlyIncome = transactions
-        .filter(t => t.type === 'income' && (t.currency || 'USD') === curr)
-        .reduce((acc, t) => acc + t.amount, 0) || 5000;
+        .filter(t => t.type === 'income' && (t.currency || 'INR') === curr)
+        .reduce((acc, t) => acc + t.amount, 0);
       
       const monthlyExpenses = transactions
-        .filter(t => t.type === 'expense' && (t.currency || 'USD') === curr)
-        .reduce((acc, t) => acc + Math.abs(t.amount), 0) || 3000;
+        .filter(t => t.type === 'expense' && (t.currency || 'INR') === curr)
+        .reduce((acc, t) => acc + Math.abs(t.amount), 0);
 
-      const savingsRate = (monthlyIncome - monthlyExpenses) / monthlyIncome;
+      const savingsRate = monthlyIncome > 0 ? (monthlyIncome - monthlyExpenses) / monthlyIncome : 0;
       
       const nw = netWorthByCurrency[curr] || { assets: 0, liabilities: 0 };
       const debtRatio = nw.assets > 0 ? nw.liabilities / nw.assets : 0;
@@ -399,7 +417,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Sync transactions to server for MCP tools
   React.useEffect(() => {
-    fetch('/api/sync-transactions', {
+    fetch('http://localhost:4000/api/finance/sync-transactions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ transactions })
@@ -408,12 +426,12 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const spendingDataByCurrency = React.useMemo(() => {
     const result: Record<string, { name: string, value: number, color: string }[]> = {};
-    const currencies = Array.from(new Set(transactions.map(t => t.currency || 'USD')));
+    const currencies = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
     
     currencies.forEach(curr => {
       const totals: Record<string, number> = {};
       transactions.forEach(t => {
-        if (t.type === 'expense' && (t.currency || 'USD') === curr) {
+        if (t.type === 'expense' && (t.currency || 'INR') === curr) {
           const cat = t.category || 'Uncategorized';
           totals[cat] = (totals[cat] || 0) + Math.abs(t.amount);
         }
@@ -527,7 +545,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       });
 
-      const results = JSON.parse(response.text);
+      const results = JSON.parse(response.text ?? '[]');
       if (!Array.isArray(results)) throw new Error("AI returned invalid format");
       
       const today = new Date();
@@ -667,7 +685,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       });
 
-      const results = JSON.parse(response.text);
+      const results = JSON.parse(response.text ?? '[]');
       if (!Array.isArray(results)) throw new Error("AI returned invalid format");
 
       const today = new Date();
@@ -1032,7 +1050,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       });
 
-      const newSuggestions = JSON.parse(response.text);
+      const newSuggestions = JSON.parse(response.text ?? '{}');
       setSuggestions(prev => ({ ...prev, ...newSuggestions }));
     } catch (error) {
       console.error("Categorization error:", error);

@@ -134,6 +134,7 @@ export const SmartAdd: React.FC<{ setActiveTab: (tab: string) => void }> = ({ se
                   </div>
                 </div>
                 <button 
+                  title="Close"
                   onClick={() => setIsAdding(false)}
                   className="p-2 hover:bg-white/5 rounded-xl transition-colors text-white/20 hover:text-white"
                 >

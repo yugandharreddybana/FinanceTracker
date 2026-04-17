@@ -10,7 +10,7 @@ interface AIInsightCardProps {
 export const AIInsightCard: React.FC<AIInsightCardProps> = ({ setActiveTab }) => {
   const [isDismissed, setIsDismissed] = useState(false);
   const { budgets, healthMetricsByCurrency } = useFinance();
-  const healthMetrics = healthMetricsByCurrency['USD'] || Object.values(healthMetricsByCurrency)[0] || { savingsRate: 0, budgetAdherence: 0 };
+  const healthMetrics = healthMetricsByCurrency['INR'] || Object.values(healthMetricsByCurrency)[0] || { savingsRate: 0, budgetAdherence: 0 };
 
   if (isDismissed) return null;
 
@@ -90,3 +90,5 @@ export const AIInsightCard: React.FC<AIInsightCardProps> = ({ setActiveTab }) =>
     </AnimatePresence>
   );
 };
+
+

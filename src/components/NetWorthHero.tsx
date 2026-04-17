@@ -5,13 +5,21 @@ import { useFinance } from '../context/FinanceContext';
 import { cn } from '../lib/utils';
 
 export const NetWorthHero: React.FC = () => {
-  const { netWorthByCurrency } = useFinance();
+  const { netWorthByCurrency, savingsGoals } = useFinance();
   const currencies = Object.keys(netWorthByCurrency);
-  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'USD');
+  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
   
   const netWorth = netWorthByCurrency[selectedCurrency] || { total: 0, assets: 0, liabilities: 0, change: 0 };
   
-  const formattedTotal = Math.floor(netWorth.total).toLocaleString('en-US', { style: 'currency', currency: selectedCurrency }).split('.')[0];
+  // Use the largest savings goal as the net worth target, or fallback to a reasonable multiple
+  const topGoal = savingsGoals.length > 0 
+    ? savingsGoals.reduce((max, g) => g.target > max.target ? g : max, savingsGoals[0])
+    : null;
+  const goalAmount = topGoal ? topGoal.target : (netWorth.total > 0 ? Math.ceil(netWorth.total * 2 / 100000) * 100000 : 1000000);
+  const goalLabel = topGoal ? topGoal.name : `${selectedCurrency === 'INR' ? '₹' : '$'}${(goalAmount / 100000).toFixed(0)}L Goal`;
+  const goalProgress = goalAmount > 0 ? Math.min(100, (netWorth.total / goalAmount) * 100) : 0;
+  
+  const formattedTotal = Math.floor(netWorth.total).toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency }).split('.')[0];
   const decimal = (netWorth.total % 1).toFixed(2).substring(1);
 
   return (
@@ -51,6 +59,7 @@ export const NetWorthHero: React.FC = () => {
             {currencies.length > 1 && (
               <div className="relative">
                 <select
+                  title="Currency"
                   value={selectedCurrency}
                   onChange={(e) => setSelectedCurrency(e.target.value)}
                   className="appearance-none bg-white/5 border border-white/10 rounded-full px-3 py-1 text-xs font-bold text-white pr-8 focus:outline-none focus:ring-1 focus:ring-accent"
@@ -76,20 +85,20 @@ export const NetWorthHero: React.FC = () => {
             </div>
           </div>
           <p className="text-white/30 text-sm font-medium">
-            Assets: <span className="text-white">{netWorth.assets.toLocaleString('en-US', { style: 'currency', currency: selectedCurrency })}</span> • 
-            Liabilities: <span className="text-negative">{netWorth.liabilities.toLocaleString('en-US', { style: 'currency', currency: selectedCurrency })}</span>
+            Assets: <span className="text-white">{netWorth.assets.toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency })}</span> • 
+            Liabilities: <span className="text-negative">{netWorth.liabilities.toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency })}</span>
           </p>
         </div>
 
         <div className="w-full lg:w-1/3 space-y-6">
           <div className="flex justify-between text-[10px] font-bold text-white/30 uppercase tracking-[0.15em]">
-            <span>Progress to $250k Goal</span>
-            <span className="text-white">{Math.round((netWorth.total / 250000) * 100)}%</span>
+            <span>Progress to {goalLabel}</span>
+            <span className="text-white">{Math.round(goalProgress)}%</span>
           </div>
           <div className="h-6 w-full bg-white/5 rounded-full overflow-hidden relative border border-white/10 p-1">
             <motion.div
               initial={{ width: 0 }}
-              animate={{ width: `${Math.min(100, (netWorth.total / 250000) * 100)}%` }}
+              animate={{ width: `${goalProgress}%` }}
               transition={{ duration: 2.5, ease: [0.22, 1, 0.36, 1] }}
               className="h-full bg-gradient-to-r from-accent via-accent/80 to-accent rounded-full relative violet-glow"
             >

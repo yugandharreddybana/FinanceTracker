@@ -1,43 +1,83 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, TrendingUp, Coins, Globe, Plus, Search, Loader2 } from 'lucide-react';
+import { X, TrendingUp, Coins, Globe, Plus, Search, Loader2, Pencil } from 'lucide-react';
 import { Investment } from '../types';
-import { investmentService } from '../services/investmentService';
+import { investmentService, NSE_POPULAR_STOCKS, CRYPTO_ID_MAP } from '../services/investmentService';
 import { cn } from '../lib/utils';
 
 interface AddInvestmentModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAdd: (investment: Investment) => void;
+  investmentToEdit?: Investment | null;
+  onEdit?: (id: string, updates: Partial<Investment>) => void;
 }
 
-export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({ isOpen, onClose, onAdd }) => {
+export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
+  isOpen,
+  onClose,
+  onAdd,
+  investmentToEdit,
+  onEdit,
+}) => {
+  const isEditMode = !!investmentToEdit;
   const [type, setType] = useState<'Stock' | 'Crypto' | 'ETF'>('Stock');
   const [symbol, setSymbol] = useState('');
+  const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('');
   const [avgPrice, setAvgPrice] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [foundAsset, setFoundAsset] = useState<{ symbol: string; price: number } | null>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Pre-populate form when editing
+  useEffect(() => {
+    if (isOpen && investmentToEdit) {
+      setType(investmentToEdit.type);
+      setSymbol(investmentToEdit.symbol);
+      setName(investmentToEdit.name);
+      setQuantity(investmentToEdit.quantity.toString());
+      setAvgPrice(investmentToEdit.averagePrice.toString());
+      setFoundAsset({ symbol: investmentToEdit.symbol, price: investmentToEdit.currentPrice });
+    } else if (isOpen && !investmentToEdit) {
+      setType('Stock');
+      setSymbol('');
+      setName('');
+      setQuantity('');
+      setAvgPrice('');
+      setFoundAsset(null);
+    }
+  }, [isOpen, investmentToEdit]);
+
+  const filteredSuggestions = symbol.length > 0
+    ? NSE_POPULAR_STOCKS.filter(
+        s => s.symbol.startsWith(symbol.toUpperCase()) || s.name.toLowerCase().includes(symbol.toLowerCase())
+      ).slice(0, 5)
+    : NSE_POPULAR_STOCKS.slice(0, 6);
 
   const handleSearch = async () => {
     if (!symbol) return;
     setIsSearching(true);
     setFoundAsset(null);
+    setShowSuggestions(false);
     try {
       let priceData;
       if (type === 'Crypto') {
-        const results = await investmentService.getCryptoPrices([symbol.toLowerCase()]);
+        const cryptoId = CRYPTO_ID_MAP[symbol.toUpperCase()] ?? symbol.toLowerCase();
+        const results = await investmentService.getCryptoPrices([cryptoId]);
         const key = symbol.toUpperCase();
-        if (results[key]) {
-          priceData = results[key];
-        }
+        if (results[key]) priceData = results[key];
       } else {
         priceData = await investmentService.getStockPrice(symbol.toUpperCase());
       }
-      
+
       if (priceData) {
         setFoundAsset(priceData);
         if (!avgPrice) setAvgPrice(priceData.price.toString());
+        if (!name) {
+          const nseInfo = NSE_POPULAR_STOCKS.find(s => s.symbol === symbol.toUpperCase());
+          setName(nseInfo?.name || symbol.toUpperCase());
+        }
       }
     } catch (error) {
       console.error('Search failed:', error);
@@ -46,29 +86,43 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({ isOpen, 
     }
   };
 
+  const handleSuggestionSelect = (s: typeof NSE_POPULAR_STOCKS[number]) => {
+    setSymbol(s.symbol);
+    setName(s.name);
+    setType(s.type);
+    setShowSuggestions(false);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!symbol || !quantity || !avgPrice) return;
 
-    const newInvestment: Investment = {
-      id: Math.random().toString(36).substr(2, 9),
-      symbol: symbol.toUpperCase(),
-      name: foundAsset?.symbol || symbol.toUpperCase(),
-      type,
-      quantity: parseFloat(quantity),
-      averagePrice: parseFloat(avgPrice),
-      currentPrice: foundAsset?.price || parseFloat(avgPrice),
-      currency: 'USD',
-      lastUpdated: new Date().toISOString()
-    };
-
-    onAdd(newInvestment);
+    if (isEditMode && investmentToEdit && onEdit) {
+      onEdit(investmentToEdit.id, {
+        symbol: symbol.toUpperCase(),
+        name: name || symbol.toUpperCase(),
+        type,
+        quantity: parseFloat(quantity),
+        averagePrice: parseFloat(avgPrice),
+        currentPrice: foundAsset?.price || parseFloat(avgPrice),
+        currency: 'INR',
+        lastUpdated: new Date().toISOString(),
+      });
+    } else {
+      const newInvestment: Investment = {
+        id: Math.random().toString(36).substr(2, 9),
+        symbol: symbol.toUpperCase(),
+        name: name || symbol.toUpperCase(),
+        type,
+        quantity: parseFloat(quantity),
+        averagePrice: parseFloat(avgPrice),
+        currentPrice: foundAsset?.price || parseFloat(avgPrice),
+        currency: 'INR',
+        lastUpdated: new Date().toISOString(),
+      };
+      onAdd(newInvestment);
+    }
     onClose();
-    // Reset
-    setSymbol('');
-    setQuantity('');
-    setAvgPrice('');
-    setFoundAsset(null);
   };
 
   return (
@@ -96,14 +150,14 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({ isOpen, 
             <div className="flex items-center justify-between mb-10">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-2xl bg-accent/20 flex items-center justify-center text-accent violet-glow">
-                  <TrendingUp className="w-7 h-7" />
+                  {isEditMode ? <Pencil className="w-7 h-7" /> : <TrendingUp className="w-7 h-7" />}
                 </div>
                 <div>
-                  <h2 className="text-3xl font-bold tracking-tight">Add Asset</h2>
-                  <p className="text-white/40 text-sm">Expand your financial portfolio</p>
+                  <h2 className="text-3xl font-bold tracking-tight">{isEditMode ? 'Edit Asset' : 'Add Asset'}</h2>
+                  <p className="text-white/40 text-sm">{isEditMode ? 'Update your investment details' : 'Expand your financial portfolio'}</p>
                 </div>
               </div>
-              <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
+              <button onClick={onClose} aria-label="Close" className="p-2 hover:bg-white/5 rounded-xl transition-colors">
                 <X className="w-6 h-6 text-white/20" />
               </button>
             </div>
@@ -145,8 +199,13 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({ isOpen, 
                       <input
                         type="text"
                         value={symbol}
-                        onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-                        placeholder={type === 'Crypto' ? 'BTC, ETH, SOL...' : 'AAPL, TSLA, NVDA...'}
+                        onChange={(e) => {
+                          setSymbol(e.target.value.toUpperCase());
+                          setShowSuggestions(type !== 'Crypto' && e.target.value.length > 0);
+                        }}
+                        onFocus={() => setShowSuggestions(type !== 'Crypto')}
+                        onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                        placeholder={type === 'Crypto' ? 'BTC, ETH, SOL...' : 'RELIANCE, TCS, INFY...'}
                         className="w-full px-5 py-4 rounded-2xl bg-white/5 border border-white/10 outline-none focus:border-accent/50 transition-all font-mono text-lg"
                         required
                       />
@@ -158,6 +217,29 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({ isOpen, 
                         >
                           <div className="w-1.5 h-1.5 rounded-full bg-positive animate-pulse" />
                           <span className="text-[10px] font-bold text-positive uppercase tracking-widest">Verified</span>
+                        </motion.div>
+                      )}
+                      {/* NSE stock suggestions dropdown */}
+                      {showSuggestions && filteredSuggestions.length > 0 && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="absolute top-full left-0 right-0 mt-2 z-10 glass-card border border-white/10 rounded-2xl overflow-hidden shadow-2xl"
+                        >
+                          {filteredSuggestions.map((s) => (
+                            <button
+                              key={s.symbol}
+                              type="button"
+                              onMouseDown={() => handleSuggestionSelect(s)}
+                              className="w-full flex items-center justify-between px-5 py-3 hover:bg-white/5 transition-colors text-left"
+                            >
+                              <div>
+                                <span className="font-mono font-bold text-sm text-accent">{s.symbol}</span>
+                                <span className="text-xs text-white/40 ml-3">{s.name}</span>
+                              </div>
+                              <span className="text-[10px] font-bold text-white/30 uppercase">{s.type}</span>
+                            </button>
+                          ))}
                         </motion.div>
                       )}
                     </div>
@@ -183,7 +265,7 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({ isOpen, 
                       animate={{ opacity: 1, y: 0 }}
                       className="mt-2 text-[10px] font-bold text-accent uppercase tracking-widest"
                     >
-                      Current Market Price: ${foundAsset.price.toLocaleString()}
+                      Current Market Price: ₹{foundAsset.price.toLocaleString('en-IN')}
                     </motion.p>
                   )}
                 </div>
@@ -202,7 +284,7 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({ isOpen, 
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-3 block">Avg. Cost Basis (USD)</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-3 block">Avg. Cost Basis (₹)</label>
                     <input
                       type="number"
                       step="any"
@@ -220,8 +302,17 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({ isOpen, 
                 type="submit"
                 className="w-full py-5 rounded-2xl bg-accent text-white font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow flex items-center justify-center gap-3 text-lg group"
               >
-                <Plus className="w-6 h-6 group-hover:rotate-90 transition-transform duration-300" />
-                <span>Add to Portfolio</span>
+                {isEditMode ? (
+                  <>
+                    <Pencil className="w-6 h-6" />
+                    <span>Save Changes</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-6 h-6 group-hover:rotate-90 transition-transform duration-300" />
+                    <span>Add to Portfolio</span>
+                  </>
+                )}
               </button>
             </form>
           </motion.div>
@@ -230,3 +321,4 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({ isOpen, 
     </AnimatePresence>
   );
 };
+

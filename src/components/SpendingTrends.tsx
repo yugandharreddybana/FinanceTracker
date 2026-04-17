@@ -12,15 +12,11 @@ export const SpendingTrends: React.FC = () => {
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
 
-  const currencies = Array.from(new Set(transactions.map(t => t.currency || 'USD')));
+  const currencies = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
   
   const currencyColors: Record<string, string> = {
-    'USD': '#7C6EFA',
+    'INR': '#7C6EFA',
     'EUR': '#22D3A5',
-    'GBP': '#F43F5E',
-    'JPY': '#F59E0B',
-    'AUD': '#EC4899',
-    'CAD': '#06B6D4',
   };
 
   const filteredCurrencies = selectedCurrency === 'ALL' ? currencies : [selectedCurrency];
@@ -71,7 +67,7 @@ export const SpendingTrends: React.FC = () => {
           const amount = transactions
             .filter(t => {
               const tDate = new Date(t.date);
-              return tDate.getMonth() === d.getMonth() && tDate.getFullYear() === d.getFullYear() && t.type === 'expense' && (t.currency || 'USD') === curr;
+              return tDate.getMonth() === d.getMonth() && tDate.getFullYear() === d.getFullYear() && t.type === 'expense' && (t.currency || 'INR') === curr;
             })
             .reduce((acc, t) => acc + Math.abs(t.amount), 0);
             
@@ -91,7 +87,7 @@ export const SpendingTrends: React.FC = () => {
           const amount = transactions
             .filter(t => {
               const tDate = new Date(t.date);
-              return tDate.getDate() === d.getDate() && tDate.getMonth() === d.getMonth() && tDate.getFullYear() === d.getFullYear() && t.type === 'expense' && (t.currency || 'USD') === curr;
+              return tDate.getDate() === d.getDate() && tDate.getMonth() === d.getMonth() && tDate.getFullYear() === d.getFullYear() && t.type === 'expense' && (t.currency || 'INR') === curr;
             })
             .reduce((acc, t) => acc + Math.abs(t.amount), 0);
             
@@ -112,6 +108,7 @@ export const SpendingTrends: React.FC = () => {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <select 
+            title="Currency"
             value={selectedCurrency}
             onChange={(e) => setSelectedCurrency(e.target.value)}
             className="bg-white/5 border border-white/10 rounded-lg py-1.5 px-3 text-xs font-bold text-white/70 outline-none focus:border-accent/50 transition-all"
@@ -123,6 +120,7 @@ export const SpendingTrends: React.FC = () => {
           </select>
 
           <select 
+            title="Time range"
             value={timeRange}
             onChange={(e) => setTimeRange(e.target.value as TimeRange)}
             className="bg-white/5 border border-white/10 rounded-lg py-1.5 px-3 text-xs font-bold text-white/70 outline-none focus:border-accent/50 transition-all"
@@ -140,6 +138,8 @@ export const SpendingTrends: React.FC = () => {
         <div className="flex items-center gap-2 mb-6 self-end">
           <input 
             type="date" 
+            title="Start date"
+            placeholder="Start date"
             value={customStart}
             onChange={(e) => setCustomStart(e.target.value)}
             className="bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] text-white/70 outline-none"
@@ -147,6 +147,8 @@ export const SpendingTrends: React.FC = () => {
           <span className="text-white/30 text-[10px]">to</span>
           <input 
             type="date" 
+            title="End date"
+            placeholder="End date"
             value={customEnd}
             onChange={(e) => setCustomEnd(e.target.value)}
             className="bg-white/5 border border-white/10 rounded-lg py-1 px-2 text-[10px] text-white/70 outline-none"
@@ -189,7 +191,7 @@ export const SpendingTrends: React.FC = () => {
               itemStyle={{ color: '#7C6EFA' }}
               cursor={{ stroke: 'rgba(124, 110, 250, 0.2)', strokeWidth: 2 }}
               formatter={(value: number, name: string) => [
-                value.toLocaleString('en-US', { 
+                value.toLocaleString('en-IN', { 
                   style: 'currency', 
                   currency: name,
                   minimumFractionDigits: 0,

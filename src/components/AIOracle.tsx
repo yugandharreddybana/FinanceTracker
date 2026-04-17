@@ -27,12 +27,17 @@ export const AIOracle: React.FC = () => {
       
       try {
         // Initialize MCP Client
-        const mcp = new MCPClient('/api/finance/mcp/sse');
+        const mcp = new MCPClient('http://localhost:4000/api/finance/mcp/sse');
         await mcp.connect();
         mcpClientRef.current = mcp;
 
         // Initialize Gemini
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+        const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+          setMessages(prev => [...prev, { role: 'ai', content: "⚠️ Gemini API key not configured. Please set `VITE_GEMINI_API_KEY` in your `.env` file to enable AI Oracle." }]);
+          return;
+        }
+        const ai = new GoogleGenAI({ apiKey });
         aiRef.current = ai;
         
         // Get tools from MCP
@@ -63,7 +68,7 @@ export const AIOracle: React.FC = () => {
         let functionCalls = response.functionCalls;
         while (functionCalls) {
           // Add AI's function call to history
-          historyRef.current.push(response.candidates[0].content);
+          historyRef.current.push(response.candidates![0].content);
 
           const toolResults = await Promise.all(functionCalls.map(async (call: any) => {
             const result = await mcp.callTool(call.name, call.args);
@@ -91,7 +96,7 @@ export const AIOracle: React.FC = () => {
         }
 
         // Add final AI response to history
-        historyRef.current.push(response.candidates[0].content);
+        historyRef.current.push(response.candidates![0].content);
         setMessages(prev => [...prev, { role: 'ai', content: response.text || "I've connected to your financial stream." }]);
       } catch (err) {
         console.error("Failed to initialize AI Oracle:", err);
@@ -155,7 +160,7 @@ export const AIOracle: React.FC = () => {
       let functionCalls = response.functionCalls;
       while (functionCalls) {
         // Add AI's function call to history
-        historyRef.current.push(response.candidates[0].content);
+        historyRef.current.push(response.candidates![0].content);
 
         const toolResults = await Promise.all(functionCalls.map(async (call: any) => {
           const result = await mcpClientRef.current?.callTool(call.name, call.args);
@@ -183,7 +188,7 @@ export const AIOracle: React.FC = () => {
       }
 
       // Add final AI response to history
-      historyRef.current.push(response.candidates[0].content);
+      historyRef.current.push(response.candidates![0].content);
       setMessages(prev => [...prev, { role: 'ai', content: response.text || "I've processed your request." }]);
     } catch (err) {
       console.error("Oracle Error:", err);
@@ -232,7 +237,8 @@ export const AIOracle: React.FC = () => {
                   </div>
                 </div>
                 <button 
-                  onClick={() => setIsOpen(false)} 
+                  onClick={() => setIsOpen(false)}
+                  aria-label="Close"
                   className="w-10 h-10 flex items-center justify-center hover:bg-white/5 rounded-xl transition-colors group"
                 >
                   <X className="w-5 h-5 text-white/20 group-hover:text-white transition-colors" />

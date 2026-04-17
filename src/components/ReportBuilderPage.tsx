@@ -144,14 +144,17 @@ export const ReportBuilderPage: React.FC = () => {
                       <input 
                         type="text"
                         defaultValue={widget.title}
+                        title="Widget title"
+                        placeholder="Widget title"
                         className="bg-transparent border-none outline-none font-bold text-lg focus:text-accent transition-colors"
                       />
                     </div>
                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-all">
+                      <button aria-label="Widget settings" className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-all">
                         <Settings2 className="w-4 h-4" />
                       </button>
                       <button 
+                        aria-label="Remove widget"
                         onClick={() => removeWidget(widget.id)}
                         className="p-2 rounded-lg bg-white/5 hover:bg-negative/20 text-white/40 hover:text-negative transition-all"
                       >

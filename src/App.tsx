@@ -192,8 +192,8 @@ function MainApp() {
               <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
               
               <main className="pl-[80px] min-h-screen relative z-10 transition-all duration-500 ease-[0.22, 1, 0.36, 1]">
-                {/* Modern Header Bar */}
-                <header className="h-20 flex items-center justify-between px-10 border-b border-white/5 sticky top-0 bg-background/50 backdrop-blur-xl z-[90]">
+                {/* Fixed Header Bar */}
+                <header className="fixed top-0 left-[80px] right-0 h-20 flex items-center justify-between px-10 border-b border-white/5 bg-background/80 backdrop-blur-xl z-[90]">
                   <div className="flex items-center gap-4">
                     <button 
                       onClick={() => setIsCommandPaletteOpen(true)}
@@ -238,7 +238,7 @@ function MainApp() {
                   </div>
                 </header>
 
-                <div className="p-6 md:p-10 lg:p-12">
+                <div className="pt-20 p-6 md:p-10 lg:p-12 pb-40">
                   <AnimatePresence mode="wait">
                     {renderContent()}
                   </AnimatePresence>
@@ -312,14 +312,15 @@ function MainApp() {
                             Experience the future of wealth intelligence. Our neural engine is processing your request...
                           </p>
                           <div className="mt-10 flex justify-center gap-4">
-                            <div className="w-3 h-3 rounded-full bg-accent animate-bounce" style={{ animationDelay: '0ms' }} />
-                            <div className="w-3 h-3 rounded-full bg-accent animate-bounce" style={{ animationDelay: '200ms' }} />
-                            <div className="w-3 h-3 rounded-full bg-accent animate-bounce" style={{ animationDelay: '400ms' }} />
+                            <div className="w-3 h-3 rounded-full bg-accent animate-bounce [animation-delay:0ms]" />
+                            <div className="w-3 h-3 rounded-full bg-accent animate-bounce [animation-delay:200ms]" />
+                            <div className="w-3 h-3 rounded-full bg-accent animate-bounce [animation-delay:400ms]" />
                           </div>
                         </div>
                       </div>
                       <button 
                         onClick={() => setShowDemo(false)}
+                        title="Close demo"
                         className="absolute top-6 right-6 w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-all"
                       >
                         <X className="w-6 h-6" />

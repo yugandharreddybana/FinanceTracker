@@ -6,7 +6,7 @@ import { cn } from '../lib/utils';
 
 export const HealthScorePage: React.FC = () => {
   const { healthMetricsByCurrency } = useFinance();
-  const metrics = healthMetricsByCurrency['USD'] || Object.values(healthMetricsByCurrency)[0] || {
+  const metrics = healthMetricsByCurrency['INR'] || Object.values(healthMetricsByCurrency)[0] || {
     savingsRate: 0,
     debtRatio: 0,
     emergencyFund: 0,
@@ -155,3 +155,5 @@ export const HealthScorePage: React.FC = () => {
     </motion.div>
   );
 };
+
+

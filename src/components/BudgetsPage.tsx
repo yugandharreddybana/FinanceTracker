@@ -41,7 +41,7 @@ interface BudgetsPageProps {
 
 export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
   const { budgets, addBudget, updateBudget, deleteBudget, transactions, healthMetricsByCurrency } = useFinance();
-  const healthMetrics = healthMetricsByCurrency['USD'] || Object.values(healthMetricsByCurrency)[0] || { budgetAdherence: 0 };
+  const healthMetrics = healthMetricsByCurrency['INR'] || Object.values(healthMetricsByCurrency)[0] || { budgetAdherence: 0 };
   const [isAdding, setIsAdding] = React.useState(false);
   const [editingBudget, setEditingBudget] = React.useState<Budget | null>(null);
   const [formData, setFormData] = React.useState({ 
@@ -224,6 +224,8 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                     <div className="relative">
                       <input 
                         type="date"
+                        title="Due date"
+                        placeholder="Due date"
                         value={formData.dueDate}
                         onChange={(e) => setFormData(prev => ({ ...prev, dueDate: e.target.value }))}
                         className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all text-sm"
@@ -256,24 +258,26 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                     {PRESET_COLORS.map(color => (
                       <button
                         key={color}
+                        title={`Select color ${color}`}
                         onClick={() => setFormData(prev => ({ ...prev, color }))}
                         className={cn(
-                          "w-10 h-10 rounded-xl transition-all border-2",
+                          "w-10 h-10 rounded-xl transition-all border-2 [background-color:var(--bc)]",
                           formData.color === color ? "border-white scale-110 shadow-lg" : "border-transparent hover:scale-105"
                         )}
-                        style={{ backgroundColor: color }}
+                        style={{ '--bc': color } as React.CSSProperties}
                       />
                     ))}
                     <div className="relative">
                       <input 
                         type="color"
+                        title="Custom color"
                         value={formData.color}
                         onChange={(e) => setFormData(prev => ({ ...prev, color: e.target.value }))}
                         className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 cursor-pointer opacity-0 absolute inset-0"
                       />
                       <div 
-                        className="w-10 h-10 rounded-xl border-2 border-dashed border-white/20 flex items-center justify-center text-white/20"
-                        style={{ backgroundColor: PRESET_COLORS.includes(formData.color) ? 'transparent' : formData.color }}
+                        className="w-10 h-10 rounded-xl border-2 border-dashed border-white/20 flex items-center justify-center text-white/20 [background-color:var(--fc)]"
+                        style={{ '--fc': PRESET_COLORS.includes(formData.color) ? 'transparent' : formData.color } as React.CSSProperties}
                       >
                         {!PRESET_COLORS.includes(formData.color) ? null : <Plus className="w-4 h-4" />}
                       </div>
@@ -313,7 +317,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
             <div className="space-y-4 text-center lg:text-left">
               <p className="text-accent text-[10px] font-bold tracking-[0.3em] uppercase">Current Utilization</p>
               <h2 className="text-5xl font-bold font-mono tracking-tighter">
-                {totalSpent.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} <span className="text-white/20 text-2xl font-medium">/ {totalBudget.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</span>
+                {totalSpent.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })} <span className="text-white/20 text-2xl font-medium">/ {totalBudget.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</span>
               </h2>
               <div className="flex items-center gap-4 justify-center lg:justify-start">
                 <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-positive/10 border border-positive/20 text-positive text-[10px] font-bold uppercase tracking-widest">
@@ -424,7 +428,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                             <div className="glass-card p-4 border-accent/20 bg-card/90 backdrop-blur-xl">
                               <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">{data.category}</p>
                               <p className="text-lg font-bold font-mono text-white">
-                                {data.spent.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                                {data.spent.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
                               </p>
                               <p className="text-[10px] text-accent font-bold uppercase tracking-widest mt-1">
                                 {Math.round((data.spent / totalSpent) * 100)}% of total
@@ -442,7 +446,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
               <div className="w-full md:w-1/2 grid grid-cols-2 gap-4">
                 {budgets.map((budget) => (
                   <div key={budget.id} className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: budget.color }} />
+                    <div className="w-3 h-3 rounded-full [background-color:var(--bc)]" style={{ '--bc': budget.color } as React.CSSProperties} />
                     <div className="min-w-0">
                       <p className="text-[10px] font-bold text-white truncate">{budget.category}</p>
                       <p className="text-[10px] font-mono text-white/40">
@@ -545,12 +549,8 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                 <div className="flex justify-between items-start mb-8">
                   <div className="flex items-center gap-4">
                     <div 
-                      className="w-12 h-12 rounded-2xl flex items-center justify-center border transition-all group-hover:scale-110 shadow-lg"
-                      style={{ 
-                        backgroundColor: `${budget.color}15`, 
-                        borderColor: isOver ? '#F43F5E' : `${budget.color}30`,
-                        color: isOver ? '#F43F5E' : budget.color 
-                      }}
+                      className="w-12 h-12 rounded-2xl flex items-center justify-center border transition-all group-hover:scale-110 shadow-lg [background-color:var(--bbg)] [border-color:var(--bbd)] [color:var(--btx)]"
+                      style={{ '--bbg': `${budget.color}15`, '--bbd': isOver ? '#F43F5E' : `${budget.color}30`, '--btx': isOver ? '#F43F5E' : budget.color } as React.CSSProperties}
                     >
                       {CATEGORY_ICONS[budget.category] || <span className="text-xl">{budget.emoji}</span>}
                     </div>
@@ -570,12 +570,14 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                   <div className="flex flex-col items-end gap-2">
                     <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button 
+                        title="Edit budget"
                         onClick={(e) => startEdit(e, budget)}
                         className="p-1.5 rounded-lg bg-white/5 hover:bg-accent/20 text-white/40 hover:text-accent transition-all"
                       >
                         <Plus className="w-3.5 h-3.5 rotate-45" />
                       </button>
                       <button 
+                        title="Delete budget"
                         onClick={(e) => {
                           e.stopPropagation();
                           deleteBudget(budget.id);
@@ -585,7 +587,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                         <AlertCircle className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                    <p className="text-2xl font-bold font-mono tracking-tighter">{budget.limit.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</p>
+                    <p className="text-2xl font-bold font-mono tracking-tighter">{budget.limit.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</p>
                   </div>
                 </div>
 
@@ -613,18 +615,18 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                 <div className="space-y-4 mb-8">
                   <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
                     <div className="flex flex-col gap-1">
-                      <span className="text-white/40">Spent: <span className="text-white font-mono text-xs ml-1">{budget.spent.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</span></span>
+                      <span className="text-white/40">Spent: <span className="text-white font-mono text-xs ml-1">{budget.spent.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</span></span>
                       {budget.rolloverAmount && budget.rolloverAmount !== 0 && (
                         <span className={cn(budget.rolloverAmount > 0 ? "text-positive" : "text-negative")}>
-                          Rollover: <span className="font-mono text-xs ml-1">{budget.rolloverAmount > 0 ? '+' : ''}{budget.rolloverAmount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</span>
+                          Rollover: <span className="font-mono text-xs ml-1">{budget.rolloverAmount > 0 ? '+' : ''}{budget.rolloverAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</span>
                         </span>
                       )}
                       {budget.perTransactionLimit && (
-                        <span className="text-accent">Tx Limit: <span className="font-mono text-xs ml-1">{budget.perTransactionLimit.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</span></span>
+                        <span className="text-accent">Tx Limit: <span className="font-mono text-xs ml-1">{budget.perTransactionLimit.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</span></span>
                       )}
                     </div>
                     <span className={cn(isOver ? "text-negative font-bold" : "text-white/40")}>
-                      {isOver ? `-${Math.round(budget.spent - effectiveLimit).toLocaleString('en-US', { style: 'currency', currency: 'USD' })} over` : `${Math.round(effectiveLimit - budget.spent).toLocaleString('en-US', { style: 'currency', currency: 'USD' })} left`}
+                      {isOver ? `-${Math.round(budget.spent - effectiveLimit).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })} over` : `${Math.round(effectiveLimit - budget.spent).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })} left`}
                     </span>
                   </div>
                   <div className="h-2.5 w-full bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5">
@@ -820,3 +822,5 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
     </motion.div>
   );
 };
+
+

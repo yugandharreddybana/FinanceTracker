@@ -104,7 +104,7 @@ export const FamilyPage: React.FC = () => {
             <UserPlus className="w-4 h-4" />
             <span>Invite Member</span>
           </button>
-          <button className="p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all">
+          <button aria-label="Settings" className="p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all">
             <Settings className="w-5 h-5 text-white/40" />
           </button>
         </div>
@@ -129,7 +129,7 @@ export const FamilyPage: React.FC = () => {
                   </div>
                 </div>
                 {member.role !== 'Admin' && (
-                  <button className="p-2 text-white/20 hover:text-negative transition-colors">
+                  <button aria-label="Remove member" className="p-2 text-white/20 hover:text-negative transition-colors">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 )}
@@ -200,7 +200,9 @@ export const FamilyPage: React.FC = () => {
                       <span className="text-white/40">${b.spent} / ${b.limit}</span>
                     </div>
                     <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                      <div className="h-full bg-positive" style={{ width: `${(b.spent/b.limit)*100}%` }} />
+                      <svg className="w-full h-full" viewBox="0 0 100 1" preserveAspectRatio="none" aria-hidden="true">
+                        <rect x="0" y="0" width={(b.spent / b.limit) * 100} height="1" fill="var(--color-positive, #22D3A5)" />
+                      </svg>
                     </div>
                   </div>
                 ))}

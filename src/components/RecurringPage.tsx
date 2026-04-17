@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFinance } from '../context/FinanceContext';
 import { cn } from '../lib/utils';
+import DeleteModal from './DeleteModal';
 import { 
   Calendar, 
   AlertTriangle, 
@@ -35,6 +36,7 @@ export const RecurringPage: React.FC = () => {
   const [viewingDetails, setViewingDetails] = useState<RecurringPayment | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [isAuditing, setIsAuditing] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [newPayment, setNewPayment] = useState<Partial<RecurringPayment>>({
     name: '',
     amount: 0,
@@ -213,8 +215,8 @@ export const RecurringPage: React.FC = () => {
             {recurringPayments.map((item) => (
               <div 
                 key={item.id}
-                style={{ left: `${((item.date - 1) / 30) * 100}%` }}
-                className="absolute group cursor-pointer z-10"
+                style={{ '--rl': `${((item.date - 1) / 30) * 100}%` } as React.CSSProperties}
+                className="absolute group cursor-pointer z-10 [left:var(--rl)]"
                 onClick={() => setViewingDetails(item)}
               >
                 <motion.div 
@@ -378,7 +380,7 @@ export const RecurringPage: React.FC = () => {
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button 
-                        onClick={() => deleteRecurringPayment(item.id)}
+                        onClick={() => setDeleteConfirmId(item.id)}
                         className="p-2.5 rounded-xl bg-white/5 hover:bg-negative/20 hover:text-negative transition-colors text-white/40"
                         title="Delete"
                       >
@@ -484,12 +486,13 @@ export const RecurringPage: React.FC = () => {
                 </div>
                 <div className="flex gap-2">
                   <button 
+                    title="Add HBO Max"
                     onClick={() => handleAddDetected('HBO Max', 14.99)}
                     className="p-2 rounded-lg bg-amber-500 text-black hover:bg-amber-400 transition-colors"
                   >
                     <Plus className="w-4 h-4" />
                   </button>
-                  <button className="p-2 rounded-lg bg-white/5 text-white/40 hover:text-white transition-colors">
+                  <button title="Dismiss" className="p-2 rounded-lg bg-white/5 text-white/40 hover:text-white transition-colors">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -500,6 +503,14 @@ export const RecurringPage: React.FC = () => {
       </div>
 
       {/* Add Modal */}
+      <DeleteModal 
+        isOpen={!!deleteConfirmId}
+        onClose={() => setDeleteConfirmId(null)}
+        onConfirm={() => { if (deleteConfirmId) deleteRecurringPayment(deleteConfirmId); }}
+        title="Delete Subscription?"
+        description="Are you sure you want to delete this recurring payment? This will stop tracking future instances, though past transactions will remain in your history."
+      />
+
       <AnimatePresence>
         {isAdding && (
           <div className="fixed inset-0 z-[300] flex items-center justify-center p-6">
@@ -527,6 +538,7 @@ export const RecurringPage: React.FC = () => {
                   </div>
                 </div>
                 <button 
+                  title="Close"
                   onClick={() => setIsAdding(false)}
                   className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-all"
                 >
@@ -554,6 +566,7 @@ export const RecurringPage: React.FC = () => {
                       type="number"
                       step="0.01"
                       required
+                      title="Amount"
                       value={newPayment.amount || ''}
                       onChange={(e) => setNewPayment({ ...newPayment, amount: Number(e.target.value) })}
                       placeholder="0.00"
@@ -567,6 +580,8 @@ export const RecurringPage: React.FC = () => {
                       min="1"
                       max="31"
                       required
+                      title="Due day"
+                      placeholder="e.g. 15"
                       value={newPayment.date}
                       onChange={(e) => setNewPayment({ ...newPayment, date: Number(e.target.value) })}
                       className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-6 text-xl font-bold font-mono outline-none focus:border-accent/50 transition-all"
@@ -577,6 +592,7 @@ export const RecurringPage: React.FC = () => {
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Category</label>
                   <select 
+                    title="Category"
                     value={newPayment.category}
                     onChange={(e) => setNewPayment({ ...newPayment, category: e.target.value })}
                     className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-6 outline-none focus:border-accent/50 transition-all font-bold text-sm appearance-none"
@@ -649,6 +665,7 @@ export const RecurringPage: React.FC = () => {
                   </div>
                 </div>
                 <button 
+                  title="Close"
                   onClick={() => setEditingPayment(null)}
                   className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-all"
                 >
@@ -664,6 +681,8 @@ export const RecurringPage: React.FC = () => {
                       type="number"
                       step="0.01"
                       required
+                      title="Amount"
+                      placeholder="0.00"
                       value={editingPayment.amount}
                       onChange={(e) => setEditingPayment({ ...editingPayment, amount: Number(e.target.value) })}
                       className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-6 text-xl font-bold font-mono outline-none focus:border-accent/50 transition-all"
@@ -676,6 +695,8 @@ export const RecurringPage: React.FC = () => {
                       min="1"
                       max="31"
                       required
+                      title="Due day"
+                      placeholder="e.g. 15"
                       value={editingPayment.date}
                       onChange={(e) => setEditingPayment({ ...editingPayment, date: Number(e.target.value) })}
                       className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-6 text-xl font-bold font-mono outline-none focus:border-accent/50 transition-all"
@@ -686,6 +707,7 @@ export const RecurringPage: React.FC = () => {
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Category</label>
                   <select 
+                    title="Category"
                     value={editingPayment.category}
                     onChange={(e) => setEditingPayment({ ...editingPayment, category: e.target.value })}
                     className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-6 outline-none focus:border-accent/50 transition-all font-bold text-sm appearance-none"

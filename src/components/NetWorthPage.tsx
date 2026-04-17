@@ -7,7 +7,7 @@ import { useFinance } from '../context/FinanceContext';
 export const NetWorthPage: React.FC = () => {
   const { netWorthByCurrency, accounts, loans } = useFinance();
   const currencies = Object.keys(netWorthByCurrency);
-  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'USD');
+  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
   
   const netWorth = netWorthByCurrency[selectedCurrency] || { total: 0, assets: 0, liabilities: 0, change: 0 };
   
@@ -24,15 +24,15 @@ export const NetWorthPage: React.FC = () => {
   }, [netWorth]);
 
   const assetBreakdown = accounts
-    .filter(a => a.type !== 'Credit' && (a.currency || 'USD') === selectedCurrency)
+    .filter(a => a.type !== 'Credit' && (a.currency || 'INR') === selectedCurrency)
     .map(a => ({ name: a.name, value: a.balance, color: a.color }));
 
   const liabilityBreakdown = [
-    ...accounts.filter(a => a.type === 'Credit' && (a.currency || 'USD') === selectedCurrency).map(a => ({ name: a.name, value: Math.abs(a.balance), color: a.color })),
-    ...loans.filter(l => (l.currency || 'USD') === selectedCurrency).map(l => ({ name: l.name, value: l.remainingAmount, color: l.color }))
+    ...accounts.filter(a => a.type === 'Credit' && (a.currency || 'INR') === selectedCurrency).map(a => ({ name: a.name, value: Math.abs(a.balance), color: a.color })),
+    ...loans.filter(l => (l.currency || 'INR') === selectedCurrency).map(l => ({ name: l.name, value: l.remainingAmount, color: l.color }))
   ];
 
-  const formattedTotal = Math.floor(netWorth.total).toLocaleString('en-US', { style: 'currency', currency: selectedCurrency }).split('.')[0];
+  const formattedTotal = Math.floor(netWorth.total).toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency }).split('.')[0];
   const decimal = (netWorth.total % 1).toFixed(2).substring(1);
 
   return (
@@ -52,6 +52,7 @@ export const NetWorthPage: React.FC = () => {
             <select
               value={selectedCurrency}
               onChange={(e) => setSelectedCurrency(e.target.value)}
+              aria-label="Select currency"
               className="appearance-none bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm font-bold text-white pr-10 focus:outline-none focus:ring-1 focus:ring-accent"
             >
               {currencies.map(c => (
@@ -115,23 +116,23 @@ export const NetWorthPage: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
         <div className="glass-card p-8">
           <h3 className="text-lg font-bold mb-8">Assets Breakdown</h3>
-          <div className="h-4 w-full bg-white/5 rounded-full overflow-hidden flex mb-8">
-            {assetBreakdown.map(a => (
-              <div 
-                key={a.name}
-                style={{ width: `${(a.value / (netWorth.assets || 1)) * 100}%`, backgroundColor: a.color }}
-                className="h-full"
-              />
-            ))}
+          <div className="h-4 w-full bg-white/5 rounded-full overflow-hidden mb-8">
+            <svg className="w-full h-full" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true">
+              {assetBreakdown.map((a, i) => {
+                const x = assetBreakdown.slice(0, i).reduce((sum, b) => sum + (b.value / (netWorth.assets || 1)) * 100, 0);
+                const w = (a.value / (netWorth.assets || 1)) * 100;
+                return <rect key={a.name} x={x} y="0" width={w} height="4" fill={a.color} />;
+              })}
+            </svg>
           </div>
           <div className="space-y-4">
             {assetBreakdown.map(a => (
               <div key={a.name} className="flex justify-between items-center">
                 <div className="flex items-center gap-3">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: a.color }} />
+                  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" className="shrink-0"><circle cx="6" cy="6" r="6" fill={a.color} /></svg>
                   <span className="text-sm font-medium">{a.name}</span>
                 </div>
-                <span className="font-mono font-bold">{a.value.toLocaleString('en-US', { style: 'currency', currency: selectedCurrency })}</span>
+                <span className="font-mono font-bold">{a.value.toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency })}</span>
               </div>
             ))}
           </div>
@@ -139,23 +140,23 @@ export const NetWorthPage: React.FC = () => {
 
         <div className="glass-card p-8">
           <h3 className="text-lg font-bold mb-8">Liabilities Breakdown</h3>
-          <div className="h-4 w-full bg-white/5 rounded-full overflow-hidden flex mb-8">
-            {liabilityBreakdown.map(l => (
-              <div 
-                key={l.name}
-                style={{ width: `${(l.value / (netWorth.liabilities || 1)) * 100}%`, backgroundColor: l.color }}
-                className="h-full"
-              />
-            ))}
+          <div className="h-4 w-full bg-white/5 rounded-full overflow-hidden mb-8">
+            <svg className="w-full h-full" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true">
+              {liabilityBreakdown.map((l, i) => {
+                const x = liabilityBreakdown.slice(0, i).reduce((sum, b) => sum + (b.value / (netWorth.liabilities || 1)) * 100, 0);
+                const w = (l.value / (netWorth.liabilities || 1)) * 100;
+                return <rect key={l.name} x={x} y="0" width={w} height="4" fill={l.color} />;
+              })}
+            </svg>
           </div>
           <div className="space-y-4">
             {liabilityBreakdown.map(l => (
               <div key={l.name} className="flex justify-between items-center">
                 <div className="flex items-center gap-3">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: l.color }} />
+                  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" className="shrink-0"><circle cx="6" cy="6" r="6" fill={l.color} /></svg>
                   <span className="text-sm font-medium">{l.name}</span>
                 </div>
-                <span className="font-mono font-bold">{l.value.toLocaleString('en-US', { style: 'currency', currency: selectedCurrency })}</span>
+                <span className="font-mono font-bold">{l.value.toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency })}</span>
               </div>
             ))}
           </div>

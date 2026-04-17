@@ -9,7 +9,7 @@ const CustomTooltip = ({ active, payload, currency }: any) => {
       <div className="glass-card p-4 border-accent/20 bg-card/90 backdrop-blur-xl shadow-2xl">
         <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Day {payload[0].payload.day}</p>
         <div className="space-y-1">
-          <p className="text-lg font-bold font-mono text-white">{payload[0].value.toLocaleString('en-US', { style: 'currency', currency })}</p>
+          <p className="text-lg font-bold font-mono text-white">{payload[0].value.toLocaleString('en-IN', { style: 'currency', currency })}</p>
           <p className="text-[10px] text-positive font-bold uppercase tracking-tighter">Projected Balance</p>
         </div>
       </div>
@@ -21,7 +21,7 @@ const CustomTooltip = ({ active, payload, currency }: any) => {
 export const CashFlowForecast: React.FC = () => {
   const { netWorthByCurrency, recurringPayments } = useFinance();
   const currencies = Object.keys(netWorthByCurrency);
-  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'USD');
+  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
   
   const netWorth = netWorthByCurrency[selectedCurrency] || { assets: 0 };
 
@@ -32,7 +32,7 @@ export const CashFlowForecast: React.FC = () => {
     for (let i = 1; i <= 30; i++) {
       // Check for recurring payments on this day
       const paymentsToday = recurringPayments
-        .filter(p => p.date === i && (p.currency || 'USD') === selectedCurrency)
+        .filter(p => p.date === i && (p.currency || 'INR') === selectedCurrency)
         .reduce((acc, p) => acc + p.amount, 0);
       
       currentBalance -= paymentsToday;
@@ -61,6 +61,7 @@ export const CashFlowForecast: React.FC = () => {
           {currencies.length > 1 && (
             <div className="relative">
               <select
+                title="Currency"
                 value={selectedCurrency}
                 onChange={(e) => setSelectedCurrency(e.target.value)}
                 className="appearance-none bg-white/5 border border-white/10 rounded-full px-3 py-1 text-xs font-bold text-white pr-8 focus:outline-none focus:ring-1 focus:ring-accent"

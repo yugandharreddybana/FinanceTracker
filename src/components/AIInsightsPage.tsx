@@ -180,6 +180,7 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
           </div>
           <div className="flex items-center gap-4">
             <select 
+              title="Filter by account"
               value={selectedBank}
               onChange={(e) => setSelectedBank(e.target.value)}
               className="bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-xs font-bold text-white/70 outline-none focus:border-accent/50 transition-all"
@@ -294,6 +295,7 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
               </div>
               {compact && (
                 <button 
+                  title="Close"
                   onClick={onClose}
                   className="p-2 rounded-xl hover:bg-white/5 text-white/40 hover:text-white transition-all"
                 >

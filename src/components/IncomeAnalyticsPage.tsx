@@ -6,13 +6,14 @@ import { TrendingUp, ArrowUpRight, Calendar, DollarSign, Briefcase, ChevronDown,
 import { cn } from '../lib/utils';
 import { IncomeSource } from '../types';
 import { MOCK_INCOME_TRENDS } from '../constants';
+import DeleteModal from './DeleteModal';
 
 const CustomTooltip = ({ active, payload, currency }: any) => {
   if (active && payload && payload.length) {
     return (
       <div className="glass-card p-3 border-accent/20 bg-card/90 backdrop-blur-xl">
         <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">{payload[0].payload.source || payload[0].payload.month}</p>
-        <p className="text-sm font-bold font-mono text-white">{payload[0].value.toLocaleString('en-US', { style: 'currency', currency: currency || 'USD' })}</p>
+        <p className="text-sm font-bold font-mono text-white">{payload[0].value.toLocaleString('en-IN', { style: 'currency', currency: currency || 'INR' })}</p>
       </div>
     );
   }
@@ -21,20 +22,21 @@ const CustomTooltip = ({ active, payload, currency }: any) => {
 
 export const IncomeAnalyticsPage: React.FC = () => {
   const { incomeSources, updateIncomeSource, deleteIncomeSource, addIncomeSource } = useFinance();
-  const currencies = Array.from(new Set(incomeSources.map(i => i.currency || 'USD')));
-  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'USD');
+  const currencies = Array.from(new Set(incomeSources.map(i => i.currency || 'INR')));
+  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
   const [editingIncome, setEditingIncome] = useState<IncomeSource | null>(null);
   const [isAdding, setIsAdding] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [newIncome, setNewIncome] = useState<Partial<IncomeSource>>({
     source: '',
     amount: 0,
     frequency: 'Monthly',
     color: '#7C6EFA',
-    currency: 'USD',
+    currency: 'INR',
     date: new Date().toISOString().split('T')[0]
   });
 
-  const filteredIncome = incomeSources.filter(i => (i.currency || 'USD') === selectedCurrency);
+  const filteredIncome = incomeSources.filter(i => (i.currency || 'INR') === selectedCurrency);
   const totalIncome = filteredIncome.reduce((acc, curr) => acc + curr.amount, 0);
 
   const handleUpdate = (e: React.FormEvent) => {
@@ -58,7 +60,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
         amount: 0,
         frequency: 'Monthly',
         color: '#7C6EFA',
-        currency: 'USD',
+        currency: 'INR',
         date: new Date().toISOString().split('T')[0]
       });
     }
@@ -89,6 +91,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
               <select
                 value={selectedCurrency}
                 onChange={(e) => setSelectedCurrency(e.target.value)}
+                aria-label="Select currency"
                 className="appearance-none bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm font-bold text-white pr-10 focus:outline-none focus:ring-1 focus:ring-accent"
               >
                 {currencies.map(c => (
@@ -189,7 +192,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
         <div className="space-y-6">
           <div className="glass-card p-8 bg-accent/5 border-accent/20">
             <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-2">Total Monthly Income</p>
-            <h4 className="text-4xl font-bold font-mono tracking-tighter mb-4">{totalIncome.toLocaleString('en-US', { style: 'currency', currency: selectedCurrency })}</h4>
+            <h4 className="text-4xl font-bold font-mono tracking-tighter mb-4">{totalIncome.toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency })}</h4>
             <div className="flex items-center gap-1 text-positive text-xs font-bold">
               <TrendingUp className="w-4 h-4" />
               <span>+15% vs last year</span>
@@ -202,23 +205,25 @@ export const IncomeAnalyticsPage: React.FC = () => {
               {filteredIncome.map(source => (
                 <div key={source.id} className="group flex justify-between items-center p-3 rounded-xl hover:bg-white/5 transition-all">
                   <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: source.color }} />
+                    <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true" className="shrink-0"><circle cx="4" cy="4" r="4" fill={source.color} /></svg>
                     <div>
                       <p className="text-sm font-bold">{source.source}</p>
                       <p className="text-[10px] text-white/30 uppercase font-mono">{source.frequency}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="font-mono font-bold text-sm">{source.amount.toLocaleString('en-US', { style: 'currency', currency: selectedCurrency })}</span>
+                    <span className="font-mono font-bold text-sm">{source.amount.toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency })}</span>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
                       <button 
+                        aria-label="Edit income source"
                         onClick={() => setEditingIncome(source)}
                         className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-colors"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
                       <button 
-                        onClick={() => deleteIncomeSource(source.id)}
+                        aria-label="Delete income source"
+                        onClick={() => setDeleteConfirmId(source.id)}
                         className="p-1.5 rounded-lg bg-white/5 hover:bg-negative/20 hover:text-negative text-white/40 transition-colors"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -263,6 +268,14 @@ export const IncomeAnalyticsPage: React.FC = () => {
       </div>
 
       {/* Add Modal */}
+      <DeleteModal 
+        isOpen={!!deleteConfirmId}
+        onClose={() => setDeleteConfirmId(null)}
+        onConfirm={() => { if (deleteConfirmId) deleteIncomeSource(deleteConfirmId); }}
+        title="Remove Income Source?"
+        description="Are you sure you want to remove this income source? It will no longer appear in your analytics and forecasts. Past entries will be preserved as untracked."
+      />
+
       <AnimatePresence>
         {isAdding && (
           <div className="fixed inset-0 z-[300] flex items-center justify-center p-6">
@@ -290,6 +303,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
                   </div>
                 </div>
                 <button 
+                  aria-label="Close"
                   onClick={() => setIsAdding(false)}
                   className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-all"
                 >
@@ -329,6 +343,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
                       value={newIncome.frequency}
                       required
                       onChange={(e) => setNewIncome({ ...newIncome, frequency: e.target.value })}
+                      aria-label="Frequency"
                       className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-6 outline-none focus:border-accent/50 transition-all font-bold text-sm appearance-none"
                     >
                       <option value="Monthly" className="bg-[#050508]">Monthly</option>
@@ -347,13 +362,17 @@ export const IncomeAnalyticsPage: React.FC = () => {
                       <button
                         key={color}
                         type="button"
+                        aria-label={`Color ${color}`}
                         onClick={() => setNewIncome({ ...newIncome, color })}
                         className={cn(
-                          "w-10 h-10 rounded-full border-2 transition-all",
+                          "w-10 h-10 rounded-full border-2 transition-all overflow-hidden",
                           newIncome.color === color ? "border-white scale-110" : "border-transparent"
                         )}
-                        style={{ backgroundColor: color }}
-                      />
+                      >
+                        <svg viewBox="0 0 10 10" className="w-full h-full" aria-hidden="true">
+                          <circle cx="5" cy="5" r="5" fill={color} />
+                        </svg>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -407,6 +426,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
                   </div>
                 </div>
                 <button 
+                  aria-label="Close"
                   onClick={() => setEditingIncome(null)}
                   className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-all"
                 >
@@ -420,6 +440,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
                   <input 
                     type="text"
                     required
+                    title="Source name"
                     value={editingIncome.source}
                     onChange={(e) => setEditingIncome({ ...editingIncome, source: e.target.value })}
                     className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-6 outline-none focus:border-accent/50 transition-all font-bold"
@@ -433,6 +454,8 @@ export const IncomeAnalyticsPage: React.FC = () => {
                       type="number"
                       step="0.01"
                       required
+                      title="Amount"
+                      placeholder="0.00"
                       value={editingIncome.amount}
                       onChange={(e) => setEditingIncome({ ...editingIncome, amount: Number(e.target.value) })}
                       className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-6 text-xl font-bold font-mono outline-none focus:border-accent/50 transition-all"
@@ -443,6 +466,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
                     <select 
                       value={editingIncome.frequency}
                       onChange={(e) => setEditingIncome({ ...editingIncome, frequency: e.target.value })}
+                      aria-label="Frequency"
                       className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-6 outline-none focus:border-accent/50 transition-all font-bold text-sm appearance-none"
                     >
                       <option value="Monthly" className="bg-[#050508]">Monthly</option>
@@ -461,13 +485,17 @@ export const IncomeAnalyticsPage: React.FC = () => {
                       <button
                         key={color}
                         type="button"
+                        aria-label={`Color ${color}`}
                         onClick={() => setEditingIncome({ ...editingIncome, color })}
                         className={cn(
-                          "w-10 h-10 rounded-full border-2 transition-all",
+                          "w-10 h-10 rounded-full border-2 transition-all overflow-hidden",
                           editingIncome.color === color ? "border-white scale-110" : "border-transparent"
                         )}
-                        style={{ backgroundColor: color }}
-                      />
+                      >
+                        <svg viewBox="0 0 10 10" className="w-full h-full" aria-hidden="true">
+                          <circle cx="5" cy="5" r="5" fill={color} />
+                        </svg>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -495,3 +523,5 @@ export const IncomeAnalyticsPage: React.FC = () => {
     </motion.div>
   );
 };
+
+

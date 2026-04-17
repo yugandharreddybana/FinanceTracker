@@ -6,7 +6,7 @@ import { useFinance } from '../context/FinanceContext';
 export const HealthScoreVitals: React.FC = () => {
   const { healthMetricsByCurrency } = useFinance();
   const currencies = Object.keys(healthMetricsByCurrency);
-  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'USD');
+  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
   
   const healthMetrics = healthMetricsByCurrency[selectedCurrency] || {
     savingsRate: 0,
@@ -42,6 +42,7 @@ export const HealthScoreVitals: React.FC = () => {
           {currencies.length > 1 && (
             <div className="relative">
               <select
+                title="Currency"
                 value={selectedCurrency}
                 onChange={(e) => setSelectedCurrency(e.target.value)}
                 className="appearance-none bg-white/5 border border-white/10 rounded-full px-3 py-1 text-xs font-bold text-white pr-8 focus:outline-none focus:ring-1 focus:ring-accent"

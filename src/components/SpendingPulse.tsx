@@ -9,7 +9,7 @@ const CustomTooltip = ({ active, payload, currency }: any) => {
     return (
       <div className="glass-card p-3 border-accent/20 bg-card/90 backdrop-blur-xl">
         <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">{payload[0].name}</p>
-        <p className="text-sm font-bold font-mono text-white">{payload[0].value.toLocaleString('en-US', { style: 'currency', currency: currency || 'USD' })}</p>
+        <p className="text-sm font-bold font-mono text-white">{payload[0].value.toLocaleString('en-IN', { style: 'currency', currency: currency || 'INR' })}</p>
       </div>
     );
   }
@@ -19,7 +19,7 @@ const CustomTooltip = ({ active, payload, currency }: any) => {
 export const SpendingPulse: React.FC = () => {
   const { spendingDataByCurrency } = useFinance();
   const currencies = Object.keys(spendingDataByCurrency);
-  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'USD');
+  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
   
   const spendingData = spendingDataByCurrency[selectedCurrency] || [];
 
@@ -34,6 +34,7 @@ export const SpendingPulse: React.FC = () => {
           {currencies.length > 1 && (
             <div className="relative">
               <select
+                title="Currency"
                 value={selectedCurrency}
                 onChange={(e) => setSelectedCurrency(e.target.value)}
                 className="appearance-none bg-white/5 border border-white/10 rounded-full px-3 py-1 text-xs font-bold text-white pr-8 focus:outline-none focus:ring-1 focus:ring-accent"
@@ -92,15 +93,15 @@ export const SpendingPulse: React.FC = () => {
         {spendingData.slice(0, 5).map((item) => (
           <div key={item.name} className="flex items-center justify-between group/item cursor-pointer">
             <div className="flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full shadow-[0_0_8px_currentColor]" style={{ backgroundColor: item.color, color: item.color }} />
+              <div className="w-2 h-2 rounded-full shadow-[0_0_8px_currentColor] [background-color:var(--ic)] [color:var(--ic)]" style={{ '--ic': item.color } as React.CSSProperties} />
               <span className="text-xs font-medium text-white/60 group-hover/item:text-white transition-colors">{item.name}</span>
             </div>
             <div className="flex items-center gap-4">
-              <span className="text-xs font-mono font-bold">{item.value.toLocaleString('en-US', { style: 'currency', currency: selectedCurrency })}</span>
+              <span className="text-xs font-mono font-bold">{item.value.toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency })}</span>
               <div className="w-12 h-1 bg-white/5 rounded-full overflow-hidden">
                 <div 
-                  className="h-full bg-white/20" 
-                  style={{ width: `${Math.min((item.value / 2000) * 100, 100)}%` }} 
+                  className="h-full bg-white/20 [width:var(--bw)]" 
+                  style={{ '--bw': `${Math.min((item.value / 2000) * 100, 100)}%` } as React.CSSProperties} 
                 />
               </div>
             </div>

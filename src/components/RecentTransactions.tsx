@@ -67,7 +67,7 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({ setActiv
               tx.amount > 0 ? "text-positive" : "text-white"
             )}>
               <div className="flex flex-col items-end">
-                <span>{tx.amount > 0 ? '+' : ''}{tx.amount.toLocaleString('en-US', { style: 'currency', currency: tx.currency || 'USD' })}</span>
+                <span>{tx.amount > 0 ? '+' : ''}{tx.amount.toLocaleString('en-IN', { style: 'currency', currency: tx.currency || 'INR' })}</span>
                 <span className="text-[8px] text-white/20 uppercase font-bold tracking-tighter">Confirmed</span>
               </div>
             </div>

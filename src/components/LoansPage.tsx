@@ -4,6 +4,7 @@ import { Plus, TrendingDown, X, Landmark, Calculator, ArrowLeftRight, ChevronRig
 import { cn } from '../lib/utils';
 import { useFinance } from '../context/FinanceContext';
 import { Loan } from '../types';
+import DeleteModal from './DeleteModal';
 
 const calculateEMI = (principal: number, annualRate: number, years: number) => {
   const r = annualRate / 12 / 100;
@@ -55,8 +56,9 @@ export const LoansPage: React.FC = () => {
   const [selectedLoanForSchedule, setSelectedLoanForSchedule] = useState<Loan | null>(null);
   const [selectedLoanForPayment, setSelectedLoanForPayment] = useState<Loan | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   
-  const { loans, addLoan, updateLoan, deleteLoan, addTransactions } = useFinance();
+  const { loans, addLoan, updateLoan, deleteLoan, addManualTransaction } = useFinance();
 
   const [loanForm, setLoanForm] = useState({
     name: '',
@@ -107,7 +109,14 @@ export const LoansPage: React.FC = () => {
     const updatedPayments = [...(loan.payments || []), newPayment];
     const newRemaining = Math.max(0, loan.remainingAmount - principal);
 
-    await addTransactions(`Loan Payment: ${amount} for ${loan.name}`);
+    await addManualTransaction({
+      merchant: `Loan Payment - ${loan.name}`,
+      amount: -amount,
+      type: 'expense',
+      category: 'Loan Payment',
+      date: new Date().toISOString().split('T')[0],
+      currency: loan.currency || 'INR'
+    });
     updateLoan(loan.id, { 
       remainingAmount: newRemaining,
       payments: updatedPayments
@@ -133,7 +142,14 @@ export const LoansPage: React.FC = () => {
     const updatedPayments = [...(loan.payments || []), newPayment];
     const newRemaining = Math.max(0, loan.remainingAmount - principal);
 
-    await addTransactions(`EMI Payment: ${amount} for ${loan.name}`);
+    await addManualTransaction({
+      merchant: `EMI Payment - ${loan.name}`,
+      amount: -amount,
+      type: 'expense',
+      category: 'Loan Payment',
+      date: new Date().toISOString().split('T')[0],
+      currency: loan.currency || 'INR'
+    });
     updateLoan(loan.id, { 
       remainingAmount: newRemaining,
       payments: updatedPayments
@@ -188,9 +204,7 @@ export const LoansPage: React.FC = () => {
   };
 
   const handleDelete = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this loan?')) {
-      deleteLoan(id);
-    }
+    setDeleteConfirmId(id);
   };
 
   return (
@@ -255,12 +269,14 @@ export const LoansPage: React.FC = () => {
                 <div className="flex items-center gap-4">
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button 
+                      title="Edit loan"
                       onClick={() => startEdit(loan)}
                       className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-all"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button 
+                      title="Delete loan"
                       onClick={() => handleDelete(loan.id)}
                       className="p-1.5 rounded-lg bg-white/5 hover:bg-negative/20 text-white/40 hover:text-negative transition-all"
                     >
@@ -270,7 +286,7 @@ export const LoansPage: React.FC = () => {
                   <div className="text-right">
                     <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest mb-1">Monthly EMI</p>
                     <p className="text-2xl font-bold font-mono text-negative tracking-tighter">
-                      {loan.monthlyEMI.toLocaleString('en-US', { style: 'currency', currency: loan.currency || 'USD' })}
+                      {loan.monthlyEMI.toLocaleString('en-IN', { style: 'currency', currency: loan.currency || 'INR' })}
                     </p>
                   </div>
                 </div>
@@ -297,7 +313,7 @@ export const LoansPage: React.FC = () => {
                 <div>
                   <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest mb-1">Remaining Principal</p>
                   <p className="text-lg font-bold font-mono tracking-tight">
-                    {loan.remainingAmount.toLocaleString('en-US', { style: 'currency', currency: loan.currency || 'USD' })}
+                    {loan.remainingAmount.toLocaleString('en-IN', { style: 'currency', currency: loan.currency || 'INR' })}
                   </p>
                 </div>
                 <div className="text-right">
@@ -353,6 +369,14 @@ export const LoansPage: React.FC = () => {
       </div>
 
       {/* Add Loan Modal */}
+      <DeleteModal 
+        isOpen={!!deleteConfirmId}
+        onClose={() => setDeleteConfirmId(null)}
+        onConfirm={() => { if (deleteConfirmId) deleteLoan(deleteConfirmId); }}
+        title="Delete Loan?"
+        description="Are you sure you want to delete this loan? This will remove all repayment history and amortization schedules associated with it. This action is irreversible."
+      />
+
       <AnimatePresence>
         {isAddingLoan && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
@@ -376,7 +400,7 @@ export const LoansPage: React.FC = () => {
                   </div>
                   <h3 className="text-2xl font-bold tracking-tight">{editingLoan ? 'Edit Loan' : 'Add New Loan'}</h3>
                 </div>
-                <button onClick={() => { setIsAddingLoan(false); setEditingLoan(null); }} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
+                <button title="Close" onClick={() => { setIsAddingLoan(false); setEditingLoan(null); }} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
                   <X className="w-6 h-6 text-white/20 hover:text-white" />
                 </button>
               </div>
@@ -431,6 +455,7 @@ export const LoansPage: React.FC = () => {
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Category</label>
                     <select 
+                      title="Category"
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-negative transition-all"
                       value={loanForm.category}
                       onChange={e => setLoanForm({...loanForm, category: e.target.value})}
@@ -447,7 +472,7 @@ export const LoansPage: React.FC = () => {
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Estimated EMI</span>
                     <span className="text-lg font-bold font-mono text-negative">
-                      {calculateEMI(parseFloat(loanForm.totalAmount) || 0, parseFloat(loanForm.interestRate) || 0, parseFloat(loanForm.tenureYears) || 5).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                      {calculateEMI(parseFloat(loanForm.totalAmount) || 0, parseFloat(loanForm.interestRate) || 0, parseFloat(loanForm.tenureYears) || 5).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
                     </span>
                   </div>
                   <p className="text-[8px] text-white/20 leading-relaxed">EMI is calculated based on standard reducing balance method. Actual bank rates may vary slightly.</p>
@@ -501,7 +526,7 @@ export const LoansPage: React.FC = () => {
                   </div>
                   <h3 className="text-2xl font-bold tracking-tight">Loan Estimator</h3>
                 </div>
-                <button onClick={() => setIsCalculatorOpen(false)} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
+                <button title="Close" onClick={() => setIsCalculatorOpen(false)} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
                   <X className="w-6 h-6 text-white/20 hover:text-white" />
                 </button>
               </div>
@@ -512,6 +537,8 @@ export const LoansPage: React.FC = () => {
                     <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Principal Amount</label>
                     <input 
                       type="number" 
+                      title="Principal amount"
+                      placeholder="e.g. 100000"
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-accent transition-all"
                       value={calcForm.principal}
                       onChange={e => setCalcForm({...calcForm, principal: e.target.value})}
@@ -521,6 +548,8 @@ export const LoansPage: React.FC = () => {
                     <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Interest Rate (%)</label>
                     <input 
                       type="number" 
+                      title="Interest rate"
+                      placeholder="e.g. 8.5"
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-accent transition-all"
                       value={calcForm.rate}
                       onChange={e => setCalcForm({...calcForm, rate: e.target.value})}
@@ -530,6 +559,8 @@ export const LoansPage: React.FC = () => {
                     <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Tenure (Years)</label>
                     <input 
                       type="number" 
+                      title="Tenure in years"
+                      placeholder="e.g. 5"
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-accent transition-all"
                       value={calcForm.years}
                       onChange={e => setCalcForm({...calcForm, years: e.target.value})}
@@ -542,20 +573,20 @@ export const LoansPage: React.FC = () => {
                     <div>
                       <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest mb-1">Monthly EMI</p>
                       <p className="text-3xl font-bold font-mono text-accent">
-                        {calcResults.emi.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                        {calcResults.emi.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
                       </p>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest mb-1">Total Interest</p>
                         <p className="text-lg font-bold font-mono text-negative">
-                          {calcResults.totalInterest.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                          {calcResults.totalInterest.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
                         </p>
                       </div>
                       <div>
                         <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest mb-1">Total Payment</p>
                         <p className="text-lg font-bold font-mono text-positive">
-                          {calcResults.totalRepayment.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                          {calcResults.totalRepayment.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
                         </p>
                       </div>
                     </div>
@@ -597,7 +628,7 @@ export const LoansPage: React.FC = () => {
                   </div>
                   <h3 className="text-2xl font-bold tracking-tight">Loan Comparison</h3>
                 </div>
-                <button onClick={() => setIsCompareOpen(false)} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
+                <button title="Close" onClick={() => setIsCompareOpen(false)} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
                   <X className="w-6 h-6 text-white/20 hover:text-white" />
                 </button>
               </div>
@@ -612,6 +643,7 @@ export const LoansPage: React.FC = () => {
                           <h4 className="font-bold text-accent">Option {idx + 1}</h4>
                           {compareList.length > 2 && (
                             <button 
+                              title="Remove option"
                               onClick={() => setCompareList(prev => prev.filter((_, i) => i !== idx))}
                               className="p-1 hover:bg-white/5 rounded text-white/20 hover:text-negative"
                             >
@@ -624,6 +656,8 @@ export const LoansPage: React.FC = () => {
                             <label className="text-[8px] font-bold text-white/20 uppercase tracking-widest">Principal</label>
                             <input 
                               type="number" 
+                              title="Principal"
+                              placeholder="e.g. 100000"
                               className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent"
                               value={item.principal}
                               onChange={e => {
@@ -637,6 +671,8 @@ export const LoansPage: React.FC = () => {
                             <label className="text-[8px] font-bold text-white/20 uppercase tracking-widest">Rate (%)</label>
                             <input 
                               type="number" 
+                              title="Interest rate"
+                              placeholder="e.g. 8.5"
                               className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent"
                               value={item.rate}
                               onChange={e => {
@@ -650,6 +686,8 @@ export const LoansPage: React.FC = () => {
                             <label className="text-[8px] font-bold text-white/20 uppercase tracking-widest">Years</label>
                             <input 
                               type="number" 
+                              title="Tenure in years"
+                              placeholder="e.g. 5"
                               className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-accent"
                               value={item.years}
                               onChange={e => {
@@ -680,7 +718,7 @@ export const LoansPage: React.FC = () => {
                         const emi = calculateEMI(parseFloat(item.principal) || 0, parseFloat(item.rate) || 0, parseFloat(item.years) || 0);
                         return (
                           <span key={idx} className="text-lg font-bold font-mono text-white">
-                            {emi.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                            {emi.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
                           </span>
                         );
                       })}
@@ -693,7 +731,7 @@ export const LoansPage: React.FC = () => {
                         const interest = total - (parseFloat(item.principal) || 0);
                         return (
                           <span key={idx} className="text-lg font-bold font-mono text-negative">
-                            {interest.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                            {interest.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
                           </span>
                         );
                       })}
@@ -705,7 +743,7 @@ export const LoansPage: React.FC = () => {
                         const total = emi * (parseFloat(item.years) || 0) * 12;
                         return (
                           <span key={idx} className="text-lg font-bold font-mono text-positive">
-                            {total.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                            {total.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
                           </span>
                         );
                       })}
@@ -742,7 +780,7 @@ export const LoansPage: React.FC = () => {
                   </div>
                   <h3 className="text-2xl font-bold tracking-tight">Make Payment</h3>
                 </div>
-                <button onClick={() => setSelectedLoanForPayment(null)} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
+                <button title="Close" onClick={() => setSelectedLoanForPayment(null)} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
                   <X className="w-6 h-6 text-white/20 hover:text-white" />
                 </button>
               </div>
@@ -754,6 +792,8 @@ export const LoansPage: React.FC = () => {
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 font-mono">$</span>
                     <input 
                       type="number" 
+                      title="Payment amount"
+                      placeholder="0.00"
                       className="w-full bg-white/5 border border-white/10 rounded-xl pl-8 pr-4 py-3 outline-none focus:border-accent transition-all font-mono text-lg"
                       value={paymentAmount}
                       onChange={e => setPaymentAmount(e.target.value)}
@@ -818,7 +858,7 @@ export const LoansPage: React.FC = () => {
                     <p className="text-xs text-white/40 font-medium">{selectedLoanForSchedule.name} • {selectedLoanForSchedule.interestRate}% APR</p>
                   </div>
                 </div>
-                <button onClick={() => setSelectedLoanForSchedule(null)} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
+                <button title="Close" onClick={() => setSelectedLoanForSchedule(null)} className="p-2 hover:bg-white/5 rounded-xl transition-colors">
                   <X className="w-6 h-6 text-white/20 hover:text-white" />
                 </button>
               </div>
@@ -851,16 +891,16 @@ export const LoansPage: React.FC = () => {
                           </span>
                         </td>
                         <td className="px-8 py-4 text-xs font-bold font-mono">
-                          {row.payment.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                          {row.payment.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
                         </td>
                         <td className="px-8 py-4 text-xs font-mono text-positive">
-                          {row.principal.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                          {row.principal.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
                         </td>
                         <td className="px-8 py-4 text-xs font-mono text-negative">
-                          {row.interest.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                          {row.interest.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
                         </td>
                         <td className="px-8 py-4 text-xs font-mono text-right">
-                          {row.balance.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                          {row.balance.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
                         </td>
                       </tr>
                     ))}
@@ -878,3 +918,5 @@ export const LoansPage: React.FC = () => {
     </motion.div>
   );
 };
+
+

@@ -47,6 +47,7 @@ export const TaxEnginePage: React.FC = () => {
           <select 
             value={taxYear}
             onChange={(e) => setTaxYear(e.target.value)}
+            aria-label="Tax year"
             className="px-6 py-3 rounded-2xl bg-white/5 border border-white/10 text-sm font-bold outline-none focus:border-accent/50 transition-all"
           >
             <option value="2024" className="bg-[#050508]">Tax Year 2024</option>
@@ -215,7 +216,7 @@ export const TaxEnginePage: React.FC = () => {
                 <p className="text-xs text-white/40">12 documents stored securely</p>
               </div>
             </div>
-            <button className="p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all">
+            <button aria-label="Open document vault" className="p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all">
               <ArrowRight className="w-5 h-5" />
             </button>
           </div>

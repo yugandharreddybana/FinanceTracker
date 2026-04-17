@@ -1,6 +1,6 @@
 import { Transaction, BankAccount, Budget, Loan, SavingsGoal, RecurringPayment, IncomeSource } from '../types';
 
-const API_BASE = '/api/finance';
+const API_BASE = `${(import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8080'}/api/finance`;
 
 export const financeApi = {
   // Transactions

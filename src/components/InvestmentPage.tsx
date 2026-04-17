@@ -3,25 +3,28 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   TrendingUp, TrendingDown, Plus, Search, Filter, 
   ArrowUpRight, ArrowDownRight, RefreshCw, Wallet,
-  PieChart, BarChart3, History, Shield, Globe, Coins
+  PieChart, BarChart3, History, Shield, Globe, Coins, Pencil, Trash2
 } from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
 import { investmentService, AssetPrice } from '../services/investmentService';
 import { currencyService } from '../services/currencyService';
 import { AddInvestmentModal } from './AddInvestmentModal';
 import { cn } from '../lib/utils';
+import DeleteModal from './DeleteModal';
 import { 
   ResponsiveContainer, PieChart as RePieChart, Pie, Cell, 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip 
 } from 'recharts';
 
 export const InvestmentPage: React.FC = () => {
-  const { investments, addInvestment, deleteInvestment, userProfile } = useFinance();
+  const { investments, addInvestment, updateInvestment, deleteInvestment, userProfile } = useFinance();
   const [prices, setPrices] = useState<Record<string, AssetPrice>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [filter, setFilter] = useState<'All' | 'Stock' | 'Crypto' | 'ETF'>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [editingInvestment, setEditingInvestment] = useState<typeof investments[number] | null>(null);
 
   const refreshPrices = async () => {
     setIsRefreshing(true);
@@ -96,6 +99,7 @@ export const InvestmentPage: React.FC = () => {
           <button 
             onClick={refreshPrices}
             disabled={isRefreshing}
+            aria-label="Refresh prices"
             className="p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group"
           >
             <RefreshCw className={cn("w-5 h-5 text-white/40 group-hover:text-white transition-all", isRefreshing && "animate-spin")} />
@@ -111,12 +115,22 @@ export const InvestmentPage: React.FC = () => {
       </div>
 
       <AddInvestmentModal 
-        isOpen={isAddModalOpen} 
-        onClose={() => setIsAddModalOpen(false)} 
-        onAdd={addInvestment} 
+        isOpen={isAddModalOpen || !!editingInvestment} 
+        onClose={() => { setIsAddModalOpen(false); setEditingInvestment(null); }} 
+        onAdd={addInvestment}
+        investmentToEdit={editingInvestment}
+        onEdit={updateInvestment}
       />
 
       {/* Portfolio Overview Cards */}
+      <DeleteModal 
+        isOpen={!!deleteConfirmId}
+        onClose={() => setDeleteConfirmId(null)}
+        onConfirm={() => { if (deleteConfirmId) { deleteInvestment(deleteConfirmId); setDeleteConfirmId(null); } }}
+        title="Remove Investment?"
+        description="Are you sure you want to remove this investment from your portfolio? This will permanently delete its tracking history and performance data. This action is irreversible."
+      />
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
@@ -286,12 +300,36 @@ export const InvestmentPage: React.FC = () => {
                       {currencyService.formatCurrency(currentVal, inv.currency)}
                     </td>
                     <td className="px-8 py-6">
-                      <div className={cn(
-                        "flex flex-col items-start gap-1 font-bold",
-                        profit >= 0 ? "text-positive" : "text-negative"
-                      )}>
-                        <span className="text-sm">{profit >= 0 ? '+' : ''}{currencyService.formatCurrency(profit, inv.currency)}</span>
-                        <span className="text-[10px] uppercase tracking-widest">{profit >= 0 ? '+' : ''}{profitPercent.toFixed(2)}%</span>
+                      <div className="flex items-center gap-4">
+                        <div className={cn(
+                          "flex flex-col items-start gap-1 font-bold",
+                          profit >= 0 ? "text-positive" : "text-negative"
+                        )}>
+                          <span className="text-sm">{profit >= 0 ? '+' : ''}{currencyService.formatCurrency(profit, inv.currency)}</span>
+                          <span className="text-[10px] uppercase tracking-widest">{profit >= 0 ? '+' : ''}{profitPercent.toFixed(2)}%</span>
+                        </div>
+                        <div className="flex items-center gap-1 ml-auto opacity-0 group-hover:opacity-100">
+                          <button 
+                            aria-label="Edit investment"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingInvestment(inv);
+                            }}
+                            className="p-2 rounded-lg bg-accent/5 hover:bg-accent/20 text-accent/40 hover:text-accent transition-all"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button 
+                            aria-label="Delete investment"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteConfirmId(inv.id);
+                            }}
+                            className="p-2 rounded-lg bg-negative/5 hover:bg-negative/20 text-negative/40 hover:text-negative transition-all"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </td>
                   </motion.tr>

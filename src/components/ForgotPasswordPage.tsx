@@ -49,6 +49,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBackTo
         <div className="text-center mb-10">
           <button 
             onClick={onBackToHome}
+            aria-label="Back to home"
             className="w-16 h-16 rounded-2xl bg-accent flex items-center justify-center mx-auto mb-6 violet-glow hover:scale-110 transition-transform"
           >
             <Sparkles className="w-8 h-8 text-white" />

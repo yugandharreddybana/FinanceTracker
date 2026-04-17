@@ -3,13 +3,15 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Tags, Plus, ChevronRight, X, BarChart3, PieChart, Sparkles, ChevronDown } from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
 import { cn } from '../lib/utils';
+import DeleteModal from './DeleteModal';
 
 export const CategoriesPage: React.FC = () => {
   const { spendingDataByCurrency, transactions, customCategories, addCategory, deleteCategory } = useFinance();
   const currencies = Object.keys(spendingDataByCurrency);
-  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'USD');
+  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [newCatColor, setNewCatColor] = useState('#7C6EFA');
   const [newCatIcon, setNewCatIcon] = useState('📦');
@@ -41,6 +43,7 @@ export const CategoriesPage: React.FC = () => {
           {currencies.length > 1 && (
             <div className="relative">
               <select
+                title="Currency"
                 value={selectedCurrency}
                 onChange={(e) => setSelectedCurrency(e.target.value)}
                 className="appearance-none bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm font-bold text-white pr-10 focus:outline-none focus:ring-1 focus:ring-accent"
@@ -88,7 +91,7 @@ export const CategoriesPage: React.FC = () => {
               </div>
               
               <h3 className="text-lg font-bold mb-1">{cat.name}</h3>
-              <p className="text-2xl font-bold font-mono tracking-tighter">{spending.toLocaleString('en-US', { style: 'currency', currency: selectedCurrency })}</p>
+              <p className="text-2xl font-bold font-mono tracking-tighter">{spending.toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency })}</p>
               
               <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
                 <ChevronRight className="w-5 h-5 text-white/40" />
@@ -105,6 +108,17 @@ export const CategoriesPage: React.FC = () => {
           <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">New Category</span>
         </div>
       </div>
+
+      <DeleteModal 
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={() => {
+          if (selectedCategory) deleteCategory(selectedCategory);
+          setSelectedCategory(null);
+        }}
+        title={`Delete ${selectedCategory} Category?`}
+        description={`Are you sure you want to delete the "${selectedCategory}" category? Transactions assigned to this category will not be deleted, but will be shown as uncategorized. This action is irreversible.`}
+      />
 
       <AnimatePresence>
         {isAddModalOpen && (
@@ -140,6 +154,7 @@ export const CategoriesPage: React.FC = () => {
                     <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2 block">Color</label>
                     <input
                       type="color"
+                      title="Category color"
                       value={newCatColor}
                       onChange={(e) => setNewCatColor(e.target.value)}
                       className="w-full h-12 rounded-xl bg-white/5 border border-white/10 outline-none cursor-pointer"
@@ -188,7 +203,7 @@ export const CategoriesPage: React.FC = () => {
                   </div>
                   <h2 className="text-3xl font-bold">{selectedCategory}</h2>
                 </div>
-                <button onClick={() => setSelectedCategory(null)} className="p-2 rounded-full hover:bg-white/5 transition-colors">
+                <button title="Close" onClick={() => setSelectedCategory(null)} className="p-2 rounded-full hover:bg-white/5 transition-colors">
                   <X className="w-6 h-6 text-white/40" />
                 </button>
               </div>
@@ -201,12 +216,7 @@ export const CategoriesPage: React.FC = () => {
                       Monthly Trend
                     </h3>
                     <button 
-                      onClick={() => {
-                        if (window.confirm(`Are you sure you want to delete the ${selectedCategory} category?`)) {
-                          deleteCategory(selectedCategory);
-                          setSelectedCategory(null);
-                        }
-                      }}
+                      onClick={() => setIsDeleteModalOpen(true)}
                       className="text-[10px] font-bold text-negative uppercase tracking-widest hover:underline"
                     >
                       Delete Category
@@ -258,7 +268,7 @@ export const CategoriesPage: React.FC = () => {
                     ].map(sub => (
                       <div key={sub.name} className="flex justify-between items-center">
                         <div className="flex items-center gap-3">
-                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: sub.color }} />
+                          <div className="w-2 h-2 rounded-full [background-color:var(--sc)]" style={{ '--sc': sub.color } as React.CSSProperties} />
                           <span className="text-sm font-medium">{sub.name}</span>
                         </div>
                         <span className="font-mono font-bold">${sub.value}</span>

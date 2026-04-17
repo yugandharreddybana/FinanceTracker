@@ -1,0 +1,37 @@
+package com.financetracker.controller;
+
+import com.financetracker.model.Loan;
+import com.financetracker.service.LoanService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/finance/loans")
+@RequiredArgsConstructor
+public class LoanController {
+    private final LoanService service;
+
+    @GetMapping
+    public List<Loan> getAll() {
+        return service.findAll();
+    }
+
+    @PostMapping
+    public ResponseEntity<Loan> create(@RequestBody Loan loan) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(loan));
+    }
+
+    @PutMapping("/{id}")
+    public Loan update(@PathVariable String id, @RequestBody Loan updates) {
+        return service.update(id, updates);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable String id) {
+        service.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+}

@@ -12,12 +12,12 @@ export const SavingsPage: React.FC = () => {
   const [fundingGoal, setFundingGoal] = React.useState<string | null>(null);
   const [fundAmount, setFundAmount] = React.useState('');
   const [selectedAccountId, setSelectedAccountId] = React.useState('');
-  const [newGoal, setNewGoal] = React.useState({ name: '', target: '', emoji: '🎯', deadline: '', currency: 'USD' });
+  const [newGoal, setNewGoal] = React.useState({ name: '', target: '', emoji: '🎯', deadline: '', currency: 'INR' });
 
-  const currencies = Array.from(new Set(savingsGoals.map(g => g.currency || 'USD')));
-  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'USD');
+  const currencies = Array.from(new Set(savingsGoals.map(g => g.currency || 'INR')));
+  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
 
-  const filteredGoals = savingsGoals.filter(g => (g.currency || 'USD') === selectedCurrency);
+  const filteredGoals = savingsGoals.filter(g => (g.currency || 'INR') === selectedCurrency);
 
   const handleAddGoal = () => {
     if (!newGoal.name || !newGoal.target) return;
@@ -27,7 +27,7 @@ export const SavingsPage: React.FC = () => {
       target: Number(newGoal.target),
       emoji: newGoal.emoji,
       deadline: newGoal.deadline || 'No deadline',
-      currency: newGoal.currency || 'USD'
+      currency: newGoal.currency || 'INR'
     };
 
     if (editingGoal) {
@@ -43,7 +43,7 @@ export const SavingsPage: React.FC = () => {
     
     setIsAdding(false);
     setEditingGoal(null);
-    setNewGoal({ name: '', target: '', emoji: '🎯', deadline: '', currency: 'USD' });
+    setNewGoal({ name: '', target: '', emoji: '🎯', deadline: '', currency: 'INR' });
   };
 
   const startEdit = (goal: SavingsGoal) => {
@@ -53,7 +53,7 @@ export const SavingsPage: React.FC = () => {
       target: goal.target.toString(),
       emoji: goal.emoji,
       deadline: goal.deadline,
-      currency: goal.currency || 'USD'
+      currency: goal.currency || 'INR'
     });
     setIsAdding(true);
   };
@@ -88,6 +88,7 @@ export const SavingsPage: React.FC = () => {
           {currencies.length > 1 && (
             <div className="relative">
               <select
+                title="Currency"
                 value={selectedCurrency}
                 onChange={(e) => setSelectedCurrency(e.target.value)}
                 className="appearance-none bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm font-bold text-white pr-10 focus:outline-none focus:ring-1 focus:ring-accent"
@@ -154,16 +155,13 @@ export const SavingsPage: React.FC = () => {
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Currency</label>
                   <select 
-                    value={newGoal.currency || 'USD'}
+                    title="Currency"
+                    value={newGoal.currency || 'INR'}
                     onChange={(e) => setNewGoal(prev => ({ ...prev, currency: e.target.value }))}
                     className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all"
                   >
-                    <option value="USD" className="bg-[#050508] text-white">USD ($)</option>
+                    <option value="INR" className="bg-[#050508] text-white">INR (₹)</option>
                     <option value="EUR" className="bg-[#050508] text-white">EUR (€)</option>
-                    <option value="GBP" className="bg-[#050508] text-white">GBP (£)</option>
-                    <option value="JPY" className="bg-[#050508] text-white">JPY (¥)</option>
-                    <option value="AUD" className="bg-[#050508] text-white">AUD ($)</option>
-                    <option value="CAD" className="bg-[#050508] text-white">CAD ($)</option>
                   </select>
                 </div>
                 <div className="flex gap-3">
@@ -171,7 +169,7 @@ export const SavingsPage: React.FC = () => {
                     onClick={() => {
                       setIsAdding(false);
                       setEditingGoal(null);
-                      setNewGoal({ name: '', target: '', emoji: '🎯', deadline: '', currency: 'USD' });
+                      setNewGoal({ name: '', target: '', emoji: '🎯', deadline: '', currency: 'INR' });
                     }}
                     className="flex-1 py-3 rounded-xl bg-white/5 border border-white/10 text-sm font-bold hover:bg-white/10 transition-all"
                   >
@@ -212,12 +210,14 @@ export const SavingsPage: React.FC = () => {
                 <div className="text-4xl">{goal.emoji}</div>
                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button 
+                    title="Edit goal"
                     onClick={() => startEdit(goal)}
                     className="p-2 rounded-lg bg-white/5 hover:bg-accent/20 text-white/40 hover:text-accent transition-all"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
                   <button 
+                    title="Delete goal"
                     onClick={() => handleDelete(goal.id)}
                     className="p-2 rounded-lg bg-white/5 hover:bg-negative/20 text-white/40 hover:text-negative transition-all"
                   >
@@ -230,10 +230,10 @@ export const SavingsPage: React.FC = () => {
               <div className="mb-8">
                 <div className="flex justify-between items-end mb-2">
                   <span className="text-3xl font-bold font-mono tracking-tighter">
-                    {goal.current.toLocaleString('en-US', { style: 'currency', currency: goal.currency || 'USD' })}
+                    {goal.current.toLocaleString('en-IN', { style: 'currency', currency: goal.currency || 'INR' })}
                   </span>
                   <span className="text-sm text-white/40 font-mono">
-                    of {goal.target.toLocaleString('en-US', { style: 'currency', currency: goal.currency || 'USD' })}
+                    of {goal.target.toLocaleString('en-IN', { style: 'currency', currency: goal.currency || 'INR' })}
                   </span>
                 </div>
                 <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
@@ -344,6 +344,7 @@ export const SavingsPage: React.FC = () => {
               <div className="flex justify-between items-center mb-8">
                 <h3 className="text-2xl font-bold tracking-tight">Add Funds</h3>
                 <button 
+                  title="Close"
                   onClick={() => setFundingGoal(null)}
                   className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-all"
                 >
@@ -368,6 +369,7 @@ export const SavingsPage: React.FC = () => {
                   <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">From Account *</label>
                   <div className="relative">
                     <select 
+                      title="From account"
                       value={selectedAccountId}
                       required
                       onChange={(e) => setSelectedAccountId(e.target.value)}
@@ -399,3 +401,4 @@ export const SavingsPage: React.FC = () => {
     </motion.div>
   );
 };
+

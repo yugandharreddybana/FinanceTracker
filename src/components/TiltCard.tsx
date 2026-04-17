@@ -60,11 +60,7 @@ export const TiltCard: React.FC<TiltCardProps> = ({ children, className, onClick
       )}
     >
       <div
-        style={{
-          transform: "translateZ(50px)",
-          transformStyle: "preserve-3d",
-        }}
-        className="w-full h-full"
+        className="w-full h-full [transform:translateZ(50px)] [transform-style:preserve-3d]"
       >
         {children}
       </div>
