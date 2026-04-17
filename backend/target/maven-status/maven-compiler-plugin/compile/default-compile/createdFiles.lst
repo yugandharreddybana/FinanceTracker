@@ -1,3 +1,4 @@
+com\financetracker\config\seeder\CurrencySeeder.class
 com\financetracker\controller\SavingsGoalController.class
 com\financetracker\model\RecurringPayment$RecurringPaymentBuilder.class
 com\financetracker\model\Transaction.class
@@ -33,6 +34,7 @@ com\financetracker\model\BankAccount$BankAccountBuilder.class
 com\financetracker\service\AuditLogService.class
 com\financetracker\config\WebConfig.class
 com\financetracker\service\InvestmentService.class
+com\financetracker\controller\package-info.class
 com\financetracker\model\FamilyAccount.class
 com\financetracker\model\IncomeSource.class
 com\financetracker\service\FamilyAccountService.class
@@ -45,6 +47,7 @@ com\financetracker\model\Investment$InvestmentBuilder.class
 com\financetracker\repository\FamilyAccountRepository.class
 com\financetracker\service\BudgetService.class
 com\financetracker\service\RecurringPaymentService.class
+com\financetracker\service\package-info.class
 com\financetracker\model\BankAccount.class
 com\financetracker\config\seeder\UserSeeder.class
 com\financetracker\model\UserProfile$UserProfileBuilder.class
