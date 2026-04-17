@@ -16,36 +16,9 @@ interface FinanceContextType {
   familyAccount: FamilyAccount | null;
   userProfile: UserProfile;
   updateUserProfile: (updates: Partial<UserProfile>) => void;
+  clearDataForNewUser: () => void;
+  refreshData: () => Promise<void>;
   spendingDataByCurrency: Record<string, { name: string; value: number; color: string }[]>;
-  isLoading: boolean;
-  addTransactions: (input: string) => Promise<void>;
-  addManualTransaction: (transaction: Partial<Transaction>) => Promise<void>;
-  analyzeFile: (file: File, type: 'bill' | 'statement') => Promise<void>;
-  deleteTransaction: (id: string) => void;
-  bulkDeleteTransactions: (ids: string[]) => Promise<void>;
-  addSavingsGoal: (goal: SavingsGoal) => void;
-  updateSavingsGoal: (id: string, updates: Partial<SavingsGoal>) => void;
-  deleteSavingsGoal: (id: string) => void;
-  addRecurringPayment: (payment: RecurringPayment) => void;
-  updateRecurringPayment: (id: string, updates: Partial<RecurringPayment>) => void;
-  deleteRecurringPayment: (id: string) => void;
-  updateTransaction: (id: string, updates: Partial<Transaction>) => void;
-  bulkUpdateTransactions: (ids: string[], updates: Partial<Transaction>) => Promise<void>;
-  addLoan: (loan: Loan) => void;
-  updateLoan: (id: string, updates: Partial<Loan>) => void;
-  deleteLoan: (id: string) => void;
-  addBudget: (budget: Budget) => void;
-  updateBudget: (id: string, updates: Partial<Budget>) => void;
-  deleteBudget: (id: string) => void;
-  addAccount: (account: BankAccount) => void;
-  updateAccount: (id: string, updates: Partial<BankAccount>) => void;
-  deleteAccount: (id: string) => void;
-  addIncomeSource: (income: IncomeSource) => void;
-  updateIncomeSource: (id: string, updates: Partial<IncomeSource>) => void;
-  deleteIncomeSource: (id: string) => void;
-  addInvestment: (investment: Investment) => void;
-  updateInvestment: (id: string, updates: Partial<Investment>) => void;
-  deleteInvestment: (id: string) => void;
   createFamily: (name: string) => void;
   joinFamily: (familyId: string) => void;
   addLog: (action: string, details: string, entityType: string, entityId: string) => void;
@@ -74,6 +47,35 @@ interface FinanceContextType {
   customCategories: { name: string; color: string; icon: string }[];
   addCategory: (category: { name: string; color: string; icon: string }) => void;
   deleteCategory: (name: string) => void;
+  isLoading: boolean;
+  addTransactions: (input: string) => Promise<void>;
+  addManualTransaction: (tx: Transaction) => void;
+  analyzeFile: (file: File, type: 'bill' | 'statement') => Promise<void>;
+  deleteTransaction: (id: string) => void;
+  bulkDeleteTransactions: (ids: string[]) => void;
+  updateTransaction: (id: string, updates: Partial<Transaction>) => void;
+  bulkUpdateTransactions: (ids: string[], updates: Partial<Transaction>) => void;
+  addSavingsGoal: (goal: SavingsGoal) => void;
+  updateSavingsGoal: (id: string, updates: Partial<SavingsGoal>) => void;
+  deleteSavingsGoal: (id: string) => void;
+  addRecurringPayment: (payment: RecurringPayment) => void;
+  updateRecurringPayment: (id: string, updates: Partial<RecurringPayment>) => void;
+  deleteRecurringPayment: (id: string) => void;
+  addLoan: (loan: Loan) => void;
+  updateLoan: (id: string, updates: Partial<Loan>) => void;
+  deleteLoan: (id: string) => void;
+  addBudget: (budget: Budget) => void;
+  updateBudget: (id: string, updates: Partial<Budget>) => void;
+  deleteBudget: (id: string) => void;
+  addAccount: (account: BankAccount) => void;
+  updateAccount: (id: string, updates: Partial<BankAccount>) => void;
+  deleteAccount: (id: string) => void;
+  addIncomeSource: (source: IncomeSource) => void;
+  updateIncomeSource: (id: string, updates: Partial<IncomeSource>) => void;
+  deleteIncomeSource: (id: string) => void;
+  addInvestment: (investment: Investment) => void;
+  updateInvestment: (id: string, updates: Partial<Investment>) => void;
+  deleteInvestment: (id: string) => void;
 }
 
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
@@ -123,9 +125,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [familyAccount, setFamilyAccount] = useState<FamilyAccount | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile>({
-    name: 'Yugandhar Reddy',
-    email: 'yugandharreddybana@gmail.com',
-    role: 'Pro Member',
+    name: 'Guest User',
+    email: 'guest@example.com',
+    role: 'Member',
     preferences: {
       theme: 'dark',
       currency: 'INR',
@@ -133,6 +135,20 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       notifications: true
     }
   });
+
+  const clearDataForNewUser = useCallback(() => {
+    setTransactions([]);
+    setSavingsGoals([]);
+    setRecurringPayments([]);
+    setLoans([]);
+    setBudgets([]);
+    setAccounts([]);
+    setIncomeSources([]);
+    setInvestments([]);
+    setAuditLogs([]);
+    setFamilyAccount(null);
+  }, []);
+
   const [suggestions, setSuggestions] = useState<Record<string, { category: string; confidence: number }[]>>({});
   const [isCategorizing, setIsCategorizing] = useState(false);
   const [isAddTransactionModalOpen, setIsAddTransactionModalOpen] = useState(false);
@@ -208,33 +224,35 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [isLoading, setIsLoading] = useState(true);
 
   // Initial data fetch
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [txs, goals, recs, lns, bdgts, accs, incs] = await Promise.all([
-          financeApi.getTransactions(),
-          financeApi.getSavingsGoals(),
-          financeApi.getRecurringPayments(),
-          financeApi.getLoans(),
-          financeApi.getBudgets(),
-          financeApi.getAccounts(),
-          financeApi.getIncomeSources()
-        ]);
-        setTransactions(txs);
-        setSavingsGoals(goals);
-        setRecurringPayments(recs);
-        setLoans(lns);
-        setBudgets(bdgts);
-        setAccounts(accs);
-        setIncomeSources(incs);
-      } catch (error) {
-        console.error('Failed to fetch initial data:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchData();
+  const refreshData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [txs, goals, recs, lns, bdgts, accs, incs] = await Promise.all([
+        financeApi.getTransactions(),
+        financeApi.getSavingsGoals(),
+        financeApi.getRecurringPayments(),
+        financeApi.getLoans(),
+        financeApi.getBudgets(),
+        financeApi.getAccounts(),
+        financeApi.getIncomeSources()
+      ]);
+      setTransactions(txs);
+      setSavingsGoals(goals);
+      setRecurringPayments(recs);
+      setLoans(lns);
+      setBudgets(bdgts);
+      setAccounts(accs);
+      setIncomeSources(incs);
+    } catch (error) {
+      console.error('Failed to fetch initial data:', error);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    refreshData();
+  }, [refreshData]);
 
   const addLog = useCallback((action: string, details: string, entityType: string, entityId: string) => {
     const newLog: AuditLog = {
@@ -1092,6 +1110,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       familyAccount,
       userProfile,
       updateUserProfile,
+      clearDataForNewUser,
+      refreshData,
       spendingDataByCurrency, 
       isLoading,
       addTransactions, 

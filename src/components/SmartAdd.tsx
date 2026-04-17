@@ -1,14 +1,20 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Sparkles, X, Send, Camera, FileText, Loader2, Mic, MicOff, Keyboard } from 'lucide-react';
+import { Plus, Sparkles, X, Send, Camera, FileText, Loader2, Mic, MicOff, Keyboard, ShieldAlert } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useFinance } from '../context/FinanceContext';
+import DeleteModal from './DeleteModal';
 
 export const SmartAdd: React.FC<{ setActiveTab: (tab: string) => void }> = ({ setActiveTab }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [naturalInput, setNaturalInput] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [errorModal, setErrorModal] = useState<{isOpen: boolean, title: string, message: string}>({
+    isOpen: false,
+    title: '',
+    message: ''
+  });
   const [analysisType, setAnalysisType] = useState<'text' | 'file'>('text');
   const { addTransactions, analyzeFile, setIsAddTransactionModalOpen } = useFinance();
 
@@ -20,7 +26,11 @@ export const SmartAdd: React.FC<{ setActiveTab: (tab: string) => void }> = ({ se
   const startListening = () => {
     const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
     if (!SpeechRecognition) {
-      alert("Speech recognition is not supported in this browser.");
+      setErrorModal({
+        isOpen: true,
+        title: 'Speech Not Supported',
+        message: 'Your current browser does not support the Web Speech API. Please try using a modern browser like Chrome or Edge.'
+      });
       return;
     }
 
@@ -234,6 +244,17 @@ export const SmartAdd: React.FC<{ setActiveTab: (tab: string) => void }> = ({ se
           </>
         )}
       </AnimatePresence>
+
+      <DeleteModal
+        isOpen={errorModal.isOpen}
+        onClose={() => setErrorModal(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={() => {}}
+        title={errorModal.title}
+        description={errorModal.message}
+        confirmLabel="Understood"
+        cancelLabel=""
+        isDestructive={false}
+      />
 
       <motion.button
         whileHover={{ scale: 1.05 }}

@@ -29,7 +29,8 @@ export const TransactionsPage: React.FC = () => {
     amount: 0,
     category: 'Others',
     type: 'expense',
-    account: accounts[0]?.name || 'Main Current'
+    account: accounts[0]?.name || 'Main Current',
+    status: 'pending'
   });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -90,7 +91,13 @@ export const TransactionsPage: React.FC = () => {
 
   const handleAddTransaction = async () => {
     if (!newTransactionForm.merchant || !newTransactionForm.amount) return;
-    await addManualTransaction(newTransactionForm);
+    
+    const transaction = {
+      ...newTransactionForm,
+      id: Math.random().toString(36).substr(2, 9),
+    } as Transaction;
+
+    await addManualTransaction(transaction);
     setIsAddTransactionModalOpen(false);
     setNewTransactionForm({
       date: new Date().toISOString().split('T')[0],
@@ -98,7 +105,8 @@ export const TransactionsPage: React.FC = () => {
       amount: 0,
       category: 'Others',
       type: 'expense',
-      account: accounts[0]?.name || 'Main Current'
+      account: accounts[0]?.name || 'Main Current',
+      status: 'pending'
     });
   };
 

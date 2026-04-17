@@ -46,6 +46,7 @@ com\financetracker\repository\FamilyAccountRepository.class
 com\financetracker\service\BudgetService.class
 com\financetracker\service\RecurringPaymentService.class
 com\financetracker\model\BankAccount.class
+com\financetracker\config\seeder\UserSeeder.class
 com\financetracker\model\UserProfile$UserProfileBuilder.class
 com\financetracker\repository\UserProfileRepository.class
 com\financetracker\model\Transaction$TransactionBuilder.class

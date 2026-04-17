@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useFinance } from '../context/FinanceContext';
+import DeleteModal from './DeleteModal';
 
 type SectionId = 'profile' | 'preferences' | 'notifications' | 'security' | 'billing' | 'data';
 
@@ -73,7 +74,26 @@ export const SettingsPage: React.FC = () => {
     userProfile, updateUserProfile,
     transactions, accounts, budgets, investments,
     savingsGoals, recurringPayments, loans, incomeSources,
+    clearDataForNewUser
   } = useFinance();
+
+  const [modalState, setModalState] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: (val?: string) => void;
+    requireConfirmText?: string;
+    isDestructive?: boolean;
+    confirmLabel?: string;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
+
+  const closeModal = () => setModalState(prev => ({ ...prev, isOpen: false }));
+  const openActionModal = (args: Omit<typeof modalState, 'isOpen'>) => setModalState({ ...args, isOpen: true });
 
   const profileRef       = useRef<HTMLElement>(null);
   const preferencesRef   = useRef<HTMLElement>(null);
@@ -115,6 +135,12 @@ export const SettingsPage: React.FC = () => {
   };
 
   const [profileForm, setProfileForm] = useState({ name: userProfile.name, email: userProfile.email });
+  
+  // Sync profile form when userProfile changes (e.g. after login)
+  useEffect(() => {
+    setProfileForm({ name: userProfile.name, email: userProfile.email });
+  }, [userProfile.name, userProfile.email]);
+
   const [theme,    setTheme]    = useState(userProfile.preferences.theme    || 'dark');
   const [currency, setCurrency] = useState(userProfile.preferences.currency || 'INR');
   const [language, setLanguage] = useState(userProfile.preferences.language || 'English (US)');
@@ -194,16 +220,20 @@ export const SettingsPage: React.FC = () => {
     reader.readAsText(file); e.target.value = '';
   };
 
-  const handleLogout = () => {
-    if (window.confirm('Logout and return to the login screen?')) window.location.href = '/login';
-  };
   const handleDeleteAccount = () => {
-    const confirmed = window.prompt('Type "DELETE" to permanently erase all data and accounts:');
-    if (confirmed === 'DELETE') {
-      localStorage.removeItem('yugi_finance_data');
-      alert('Account data cleared. Redirecting…');
-      window.location.href = '/login';
-    }
+    openActionModal({
+      title: 'Delete Entire Account?',
+      description: 'This will permanently erase all your transactions, bank accounts, and profile data. This action is irreversible!',
+      confirmLabel: 'Delete Everything',
+      requireConfirmText: 'DELETE',
+      isDestructive: true,
+      onConfirm: () => {
+        clearDataForNewUser();
+        // Also wipe local storage cache specifically
+        localStorage.removeItem('yugi_finance_data');
+        window.location.href = '/';
+      }
+    });
   };
 
   const navItems: { id: SectionId; label: string; icon: React.ElementType }[] = [
@@ -262,10 +292,6 @@ export const SettingsPage: React.FC = () => {
             </button>
           ))}
           <div className="pt-5 border-t border-white/5 mt-2 space-y-1">
-            <button onClick={handleLogout} title="Logout of current session"
-              className="w-full flex items-center gap-3 p-4 rounded-2xl text-negative hover:bg-negative/5 transition-all font-bold text-sm">
-              <LogOut className="w-5 h-5 shrink-0" /> <span>Logout</span>
-            </button>
             <button onClick={handleDeleteAccount} title="Permanently delete your account"
               className="w-full flex items-center gap-3 p-4 rounded-2xl text-negative/30 hover:text-negative hover:bg-negative/5 transition-all font-bold text-sm">
               <Trash2 className="w-5 h-5 shrink-0" /> <span>Delete Account</span>
@@ -482,7 +508,11 @@ export const SettingsPage: React.FC = () => {
                 <div className="text-center sm:text-right">
                   <p className="text-2xl font-bold font-mono tracking-tighter">₹4,999<span className="text-xs text-white/30 ml-1">/yr</span></p>
                   <button title="Manage subscription" className="text-xs font-bold text-accent uppercase tracking-widest hover:underline mt-1"
-                    onClick={() => alert('Billing portal — connect to Razorpay/Stripe in production.')}>
+                    onClick={() => openActionModal({
+                      title: 'Billing Portal',
+                      description: 'Directing you to the secure billing portal powered by Stripe and Razorpay. Here you can update your plan, view invoices, and manage payment methods.',
+                      onConfirm: () => {}
+                    })}>
                     Manage Plan
                   </button>
                 </div>
@@ -499,7 +529,11 @@ export const SettingsPage: React.FC = () => {
                 </div>
               </div>
               <button title="Update payment method" className="text-xs font-bold text-white/40 hover:text-accent transition-colors uppercase tracking-widest"
-                onClick={() => alert('Payment update — connect Razorpay/Stripe in production.')}>
+                onClick={() => openActionModal({
+                  title: 'Update Payment',
+                  description: 'You are now connecting to the secure payment processor to update your credit card or billing address.',
+                  onConfirm: () => {}
+                })}>
                 Update
               </button>
             </div>
@@ -557,6 +591,17 @@ export const SettingsPage: React.FC = () => {
 
         </div>
       </div>
+      
+      <DeleteModal
+        isOpen={modalState.isOpen}
+        onClose={closeModal}
+        onConfirm={modalState.onConfirm}
+        title={modalState.title}
+        description={modalState.description}
+        requireConfirmText={modalState.requireConfirmText}
+        isDestructive={modalState.isDestructive}
+        confirmLabel={modalState.confirmLabel}
+      />
     </motion.div>
   );
 };

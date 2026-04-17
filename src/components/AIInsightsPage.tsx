@@ -7,6 +7,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useFinance } from '../context/FinanceContext';
 import { financeApi } from '../services/api';
+import DeleteModal from './DeleteModal';
 
 interface Insight {
   id: string;
@@ -30,6 +31,11 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [errorModal, setErrorModal] = useState<{isOpen: boolean, title: string, message: string}>({
+    isOpen: false,
+    title: '',
+    message: ''
+  });
   const [insights, setInsights] = useState<Insight[]>([]);
   const [messages, setMessages] = useState<{ role: 'user' | 'ai', content: string }[]>([
     { role: 'ai', content: "Welcome back, Yugandhar. I'm analyzing your real-time financial stream. How can I help you optimize your wealth today?" }
@@ -109,13 +115,21 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
 
   const startListening = () => {
     if (window.self !== window.top) {
-      alert("Speech recognition is often blocked in preview environments. Please open the app in a new tab to use voice features.");
+      setErrorModal({
+        isOpen: true,
+        title: 'Preview Restriction',
+        message: 'Speech recognition is often blocked in iframe preview environments. Please open the app in a new browser tab to use voice features.'
+      });
       return;
     }
 
     const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
     if (!SpeechRecognition) {
-      alert("Speech recognition is not supported in this browser.");
+      setErrorModal({
+        isOpen: true,
+        title: 'Speech Not Supported',
+        message: 'Your current browser does not support the Web Speech API. Please try using a modern browser like Chrome or Edge.'
+      });
       return;
     }
 
@@ -419,6 +433,17 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
           </div>
         </div>
       </div>
+
+      <DeleteModal
+        isOpen={errorModal.isOpen}
+        onClose={() => setErrorModal(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={() => {}}
+        title={errorModal.title}
+        description={errorModal.message}
+        confirmLabel="Understood"
+        cancelLabel=""
+        isDestructive={false}
+      />
     </motion.div>
   );
 };

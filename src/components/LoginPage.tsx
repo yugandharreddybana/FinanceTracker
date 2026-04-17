@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
+import { Link } from 'react-router-dom';
 import { Sparkles, Mail, Lock, ArrowRight, Loader2, AlertCircle, Fingerprint } from 'lucide-react';
 
 interface LoginPageProps {
@@ -99,13 +100,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
             <div className="space-y-2">
               <div className="flex justify-between items-center ml-1">
                 <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Password</label>
-                <button 
-                  type="button" 
-                  onClick={onForgotPassword}
+                <Link 
+                  to="/forgot-password"
                   className="text-[10px] font-bold text-accent uppercase tracking-widest hover:text-white transition-colors"
                 >
                   Forgot?
-                </button>
+                </Link>
               </div>
               <div className="relative group">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-accent transition-colors" />
@@ -173,13 +173,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
 
           <div className="mt-8 pt-8 border-t border-white/5 text-center">
             <p className="text-sm text-white/30 font-medium">
-              New to Arta?{' '}
-              <button 
-                onClick={onSwitchToSignup}
+              New to Yugi?{' '}
+              <Link 
+                to="/signup"
                 className="text-accent font-bold hover:text-white transition-colors"
               >
                 Create an account
-              </button>
+              </Link>
             </p>
           </div>
         </div>

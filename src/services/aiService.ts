@@ -12,8 +12,31 @@ export interface TaxSuggestion {
   difficulty: 'easy' | 'medium' | 'hard';
 }
 
+export interface AIInsight {
+  id: string;
+  type: 'ALERT' | 'WIN' | 'TIP' | 'TREND';
+  title: string;
+  description: string;
+  date: string;
+}
+
 class AIService {
   private readonly baseUrl = '/api/ai';
+
+  async getInsights(transactions: any[], selectedBank: string = 'ALL'): Promise<AIInsight[]> {
+    try {
+      const res = await fetch(`${this.baseUrl}/insights`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactions, selectedBank }),
+      });
+      if (!res.ok) throw new Error('Insights request failed');
+      return res.json();
+    } catch (error) {
+      console.error('AI Insights error:', error);
+      return [];
+    }
+  }
 
   async getNetWorthForecast(currentNetWorth: number, monthlySavings: number, riskProfile: string): Promise<ForecastData[]> {
     try {

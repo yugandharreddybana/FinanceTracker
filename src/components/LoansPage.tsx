@@ -110,12 +110,15 @@ export const LoansPage: React.FC = () => {
     const newRemaining = Math.max(0, loan.remainingAmount - principal);
 
     await addManualTransaction({
+      id: Math.random().toString(36).substr(2, 9),
       merchant: `Loan Payment - ${loan.name}`,
       amount: -amount,
       type: 'expense',
       category: 'Loan Payment',
       date: new Date().toISOString().split('T')[0],
-      currency: loan.currency || 'INR'
+      currency: loan.currency || 'INR',
+      status: 'confirmed',
+      account: 'Main Current'
     });
     updateLoan(loan.id, { 
       remainingAmount: newRemaining,
@@ -143,12 +146,15 @@ export const LoansPage: React.FC = () => {
     const newRemaining = Math.max(0, loan.remainingAmount - principal);
 
     await addManualTransaction({
+      id: Math.random().toString(36).substr(2, 9),
       merchant: `EMI Payment - ${loan.name}`,
       amount: -amount,
       type: 'expense',
       category: 'Loan Payment',
       date: new Date().toISOString().split('T')[0],
-      currency: loan.currency || 'INR'
+      currency: loan.currency || 'INR',
+      status: 'confirmed',
+      account: 'Main Current'
     });
     updateLoan(loan.id, { 
       remainingAmount: newRemaining,

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
+import { Link } from 'react-router-dom';
 import { Sparkles, Mail, Lock, User, ArrowRight, Loader2, AlertCircle, ShieldCheck } from 'lucide-react';
 
 interface SignupPageProps {
@@ -146,12 +147,12 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onSwitchToLogi
           <div className="mt-8 pt-8 border-t border-white/5 text-center">
             <p className="text-sm text-white/30 font-medium">
               Already have an account?{' '}
-              <button 
-                onClick={onSwitchToLogin}
+              <Link 
+                to="/login"
                 className="text-accent font-bold hover:text-white transition-colors"
               >
                 Sign in
-              </button>
+              </Link>
             </p>
           </div>
         </div>
