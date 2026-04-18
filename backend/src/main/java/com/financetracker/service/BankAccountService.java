@@ -42,6 +42,7 @@ public class BankAccountService {
         if (updates.getMinPayment() != null) existing.setMinPayment(updates.getMinPayment());
         if (updates.getCardNetwork() != null) existing.setCardNetwork(updates.getCardNetwork());
         if (updates.getCardNumberLast4() != null) existing.setCardNumberLast4(updates.getCardNumberLast4());
+        if (updates.getIsJoint() != null) existing.setIsJoint(updates.getIsJoint());
         return repo.save(existing);
     }
 

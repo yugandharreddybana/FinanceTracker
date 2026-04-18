@@ -9,7 +9,7 @@ import {
   Pause, 
   Play, 
   Trash2, 
-  Edit2, 
+  Pencil, 
   ChevronDown, 
   Search, 
   Filter, 
@@ -27,7 +27,7 @@ import {
 import { RecurringPayment } from '../types';
 
 export const RecurringPage: React.FC = () => {
-  const { recurringPayments, updateRecurringPayment, deleteRecurringPayment, addRecurringPayment } = useFinance();
+  const { recurringPayments, updateRecurringPayment, deleteRecurringPayment, addRecurringPayment, accounts } = useFinance();
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'amount' | 'date' | 'status'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -37,10 +37,11 @@ export const RecurringPage: React.FC = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [isAuditing, setIsAuditing] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [newPayment, setNewPayment] = useState<Partial<RecurringPayment>>({
+  const [newPayment, setNewPayment] = useState<Partial<RecurringPayment> & { dueDate?: string }>({
     name: '',
     amount: 0,
     date: 1,
+    dueDate: '',
     category: 'Entertainment',
     frequency: 'Monthly',
     status: 'Active',
@@ -88,22 +89,27 @@ export const RecurringPage: React.FC = () => {
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (newPayment.name && newPayment.amount) {
+      const dayOfMonth = newPayment.dueDate ? new Date(newPayment.dueDate).getDate() : (newPayment.date || 1);
       addRecurringPayment({
         ...newPayment as RecurringPayment,
         id: `rec-${Date.now()}`,
+        date: dayOfMonth,
+        dueDate: newPayment.dueDate || undefined,
         history: []
       });
       setIsAdding(false);
-      setNewPayment({
-        name: '',
-        amount: 0,
-        date: 1,
-        category: 'Entertainment',
-        frequency: 'Monthly',
-        status: 'Active',
-        paymentMethod: '',
-        description: ''
-      });
+        setNewPayment({
+          name: '',
+          amount: 0,
+          date: 1,
+          dueDate: '',
+          category: 'Entertainment',
+          frequency: 'Monthly',
+          status: 'Active',
+          currency: userProfile.preferences.currency,
+          paymentMethod: '',
+          description: ''
+        });
     }
   };
 
@@ -229,7 +235,7 @@ export const RecurringPage: React.FC = () => {
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 opacity-0 group-hover:opacity-100 transition-all scale-95 group-hover:scale-100 pointer-events-none whitespace-nowrap glass-card p-3 text-[10px] font-bold z-20 border-accent/30">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-white">{item.name}</span>
-                    <span className="text-accent">${item.amount}</span>
+                    <span className="text-accent">{item.amount.toLocaleString(undefined, { style: 'currency', currency: item.currency || 'INR' })}</span>
                   </div>
                   <div className="text-white/40 font-mono">Day {item.date}</div>
                 </div>
@@ -247,16 +253,19 @@ export const RecurringPage: React.FC = () => {
           <div className="glass-card p-6 bg-accent/5 border-accent/20">
             <p className="text-[10px] font-bold text-accent uppercase tracking-[0.2em] mb-2">Monthly Commitment</p>
             <h2 className="text-4xl font-bold font-mono tracking-tighter mb-1">
-              ${totalMonthly.toLocaleString()}
+              {totalMonthly.toLocaleString(undefined, { style: 'currency', currency: userProfile.preferences.currency })}
             </h2>
             <p className="text-xs text-white/40">Across {recurringPayments.filter(p => p.status === 'Active').length} active subscriptions</p>
           </div>
           <div className="glass-card p-6 bg-amber-500/5 border-amber-500/20">
             <p className="text-[10px] font-bold text-amber-500 uppercase tracking-[0.2em] mb-2">Upcoming (7 Days)</p>
             <h2 className="text-4xl font-bold font-mono tracking-tighter mb-1 text-amber-500">
-              $94.00
+              {recurringPayments
+                .filter(p => p.status === 'Active' && p.date && p.date <= new Date().getDate() + 7 && p.date >= new Date().getDate())
+                .reduce((sum, p) => sum + p.amount, 0)
+                .toLocaleString(undefined, { style: 'currency', currency: userProfile.preferences.currency })}
             </h2>
-            <p className="text-xs text-white/40">3 payments scheduled this week</p>
+            <p className="text-xs text-white/40">{recurringPayments.filter(p => p.status === 'Active' && p.date && p.date <= new Date().getDate() + 7 && p.date >= new Date().getDate()).length} payments scheduled this week</p>
           </div>
         </div>
       </div>
@@ -355,7 +364,9 @@ export const RecurringPage: React.FC = () => {
 
                   <div className="flex items-center gap-8">
                     <div className="text-right">
-                      <p className="text-xl font-bold font-mono tracking-tighter">${item.amount}</p>
+                      <p className="text-xl font-bold font-mono tracking-tighter">
+                        {item.amount.toLocaleString(undefined, { style: 'currency', currency: item.currency || 'INR' })}
+                      </p>
                       <span className={cn(
                         "text-[10px] font-bold uppercase tracking-widest",
                         item.status === 'Active' ? "text-positive" : "text-white/20"
@@ -377,7 +388,7 @@ export const RecurringPage: React.FC = () => {
                         className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors text-white/40 hover:text-white"
                         title="Edit"
                       >
-                        <Edit2 className="w-4 h-4" />
+                        <Pencil className="w-4 h-4" />
                       </button>
                       <button 
                         onClick={() => setDeleteConfirmId(item.id)}
@@ -422,7 +433,7 @@ export const RecurringPage: React.FC = () => {
                     <span className="text-[10px] font-bold uppercase tracking-widest text-amber-500">Duplicate Alert</span>
                   </div>
                   <p className="text-xs font-medium mb-1">Potential duplicate found: Spotify & Apple Music.</p>
-                  <p className="text-[10px] text-white/40">You spend $20.98 on similar services. Consider consolidating.</p>
+                  <p className="text-[10px] text-white/40">You spend on similar services. Consider consolidating.</p>
                 </div>
 
                 <div className="p-4 rounded-xl bg-white/5 border border-white/5 hover:border-positive/30 transition-all cursor-pointer">
@@ -431,7 +442,7 @@ export const RecurringPage: React.FC = () => {
                     <span className="text-[10px] font-bold uppercase tracking-widest text-positive">Optimization</span>
                   </div>
                   <p className="text-xs font-medium mb-1">Switch to Annual Plan for Netflix.</p>
-                  <p className="text-[10px] text-white/40">Save $32.00/year by switching from monthly to annual billing.</p>
+                  <p className="text-[10px] text-white/40">Save by switching from monthly to annual billing.</p>
                 </div>
 
                 <div className="p-4 rounded-xl bg-white/5 border border-white/5 hover:border-accent/30 transition-all cursor-pointer">
@@ -440,7 +451,7 @@ export const RecurringPage: React.FC = () => {
                     <span className="text-[10px] font-bold uppercase tracking-widest text-accent">Unused Service</span>
                   </div>
                   <p className="text-xs font-medium mb-1">Gym membership unused for 45 days.</p>
-                  <p className="text-[10px] text-white/40">You could save $45.00/month by cancelling or pausing this.</p>
+                  <p className="text-[10px] text-white/40">You could save by cancelling or pausing this subscription.</p>
                 </div>
               </div>
               
@@ -481,7 +492,7 @@ export const RecurringPage: React.FC = () => {
                   <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-lg font-bold">H</div>
                   <div>
                     <h4 className="font-bold text-sm">HBO Max</h4>
-                    <p className="text-[10px] text-white/30">Detected 3x ($14.99)</p>
+                    <p className="text-[10px] text-white/30">Detected 3x ({(14.99).toLocaleString(undefined, { style: 'currency', currency: 'USD' })})</p>
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -492,7 +503,7 @@ export const RecurringPage: React.FC = () => {
                   >
                     <Plus className="w-4 h-4" />
                   </button>
-                  <button title="Dismiss" className="p-2 rounded-lg bg-white/5 text-white/40 hover:text-white transition-colors">
+                  <button title="Dismiss" onClick={() => { const el = document.getElementById('detected-hbo'); if (el) el.style.display = 'none'; }} className="p-2 rounded-lg bg-white/5 text-white/40 hover:text-white transition-colors">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -561,7 +572,7 @@ export const RecurringPage: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount ($) *</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount *</label>
                     <input 
                       type="number"
                       step="0.01"
@@ -574,16 +585,13 @@ export const RecurringPage: React.FC = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Due Day (1-31) *</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Due Date *</label>
                     <input 
-                      type="number"
-                      min="1"
-                      max="31"
+                      type="date"
                       required
-                      title="Due day"
-                      placeholder="e.g. 15"
-                      value={newPayment.date}
-                      onChange={(e) => setNewPayment({ ...newPayment, date: Number(e.target.value) })}
+                      title="Due date"
+                      value={newPayment.dueDate || ''}
+                      onChange={(e) => setNewPayment({ ...newPayment, dueDate: e.target.value, date: new Date(e.target.value).getDate() || 1 })}
                       className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-6 text-xl font-bold font-mono outline-none focus:border-accent/50 transition-all"
                     />
                   </div>
@@ -607,13 +615,32 @@ export const RecurringPage: React.FC = () => {
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Payment Method</label>
-                  <input 
-                    type="text"
+                  <select
+                    title="Payment method"
                     value={newPayment.paymentMethod || ''}
                     onChange={(e) => setNewPayment({ ...newPayment, paymentMethod: e.target.value })}
-                    placeholder="e.g. Amex Platinum"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-6 outline-none focus:border-accent/50 transition-all font-medium"
-                  />
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-6 outline-none focus:border-accent/50 transition-all font-bold text-sm appearance-none"
+                  >
+                    <option value="" className="bg-[#050508]">Select Account</option>
+                    {accounts.map(acc => (
+                      <option key={acc.id} value={acc.name} className="bg-[#050508]">{acc.name} ({acc.bank})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Currency</label>
+                  <select 
+                    title="Currency"
+                    value={newPayment.currency || userProfile.preferences.currency}
+                    onChange={(e) => setNewPayment({ ...newPayment, currency: e.target.value })}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-4 px-6 outline-none focus:border-accent/50 transition-all font-bold text-sm appearance-none"
+                  >
+                    <option value="INR" className="bg-[#050508]">INR (₹)</option>
+                    <option value="EUR" className="bg-[#050508]">EUR (€)</option>
+                    <option value="USD" className="bg-[#050508]">USD ($)</option>
+                    <option value="GBP" className="bg-[#050508]">GBP (£)</option>
+                  </select>
                 </div>
 
                 <div className="flex gap-4 pt-4">
@@ -657,7 +684,7 @@ export const RecurringPage: React.FC = () => {
               <div className="flex justify-between items-center mb-8">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-2xl bg-accent/20 flex items-center justify-center text-accent border border-accent/30">
-                    <Edit2 className="w-6 h-6" />
+                    <Pencil className="w-6 h-6" />
                   </div>
                   <div>
                     <h3 className="text-2xl font-bold tracking-tight">Edit Subscription</h3>
@@ -676,7 +703,7 @@ export const RecurringPage: React.FC = () => {
               <form onSubmit={handleUpdate} className="space-y-6">
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount ($) *</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount *</label>
                     <input 
                       type="number"
                       step="0.01"
@@ -852,7 +879,9 @@ export const RecurringPage: React.FC = () => {
                             <p className="text-[10px] text-white/30 uppercase font-bold tracking-widest">{entry.status}</p>
                           </div>
                         </div>
-                        <span className="text-sm font-bold font-mono">${entry.amount}</span>
+                        <span className="text-sm font-bold font-mono">
+                          {entry.amount.toLocaleString(undefined, { style: 'currency', currency: viewingDetails.currency || 'INR' })}
+                        </span>
                       </div>
                     )) || (
                       <div className="text-center py-8 bg-white/2 rounded-xl border border-dashed border-white/10">
@@ -872,7 +901,7 @@ export const RecurringPage: React.FC = () => {
                   onClick={() => { setEditingPayment(viewingDetails); setViewingDetails(null); }}
                   className="flex-1 py-4 rounded-xl bg-white/5 border border-white/10 text-sm font-bold uppercase tracking-widest hover:bg-white/10 transition-all flex items-center justify-center gap-2"
                 >
-                  <Edit2 className="w-4 h-4" />
+                  <Pencil className="w-4 h-4" />
                   Edit Subscription
                 </button>
                 <button 

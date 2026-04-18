@@ -29,6 +29,8 @@ public class RecurringPayment {
     @JsonProperty("date")
     private Integer dayOfMonth;
 
+    private String dueDate;
+
     private String category;
     private String frequency;
     private String status;

@@ -26,6 +26,7 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('');
   const [avgPrice, setAvgPrice] = useState('');
+  const [currency, setCurrency] = useState('INR');
   const [isSearching, setIsSearching] = useState(false);
   const [foundAsset, setFoundAsset] = useState<{ symbol: string; price: number } | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -45,6 +46,7 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
       setName('');
       setQuantity('');
       setAvgPrice('');
+      setCurrency('INR');
       setFoundAsset(null);
     }
   }, [isOpen, investmentToEdit]);
@@ -105,7 +107,7 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
         quantity: parseFloat(quantity),
         averagePrice: parseFloat(avgPrice),
         currentPrice: foundAsset?.price || parseFloat(avgPrice),
-        currency: 'INR',
+        currency: currency,
         lastUpdated: new Date().toISOString(),
       });
     } else {
@@ -117,7 +119,7 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
         quantity: parseFloat(quantity),
         averagePrice: parseFloat(avgPrice),
         currentPrice: foundAsset?.price || parseFloat(avgPrice),
-        currency: 'INR',
+        currency: currency,
         lastUpdated: new Date().toISOString(),
       };
       onAdd(newInvestment);
@@ -265,7 +267,7 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
                       animate={{ opacity: 1, y: 0 }}
                       className="mt-2 text-[10px] font-bold text-accent uppercase tracking-widest"
                     >
-                      Current Market Price: ₹{foundAsset.price.toLocaleString('en-IN')}
+                      Current Market Price: {foundAsset.price.toLocaleString(undefined, { style: 'currency', currency: currency })}
                     </motion.p>
                   )}
                 </div>
@@ -284,7 +286,7 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-3 block">Avg. Cost Basis (₹)</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-3 block">Avg. Cost Basis ({currency === 'INR' ? '₹' : currency})</label>
                     <input
                       type="number"
                       step="any"
@@ -294,6 +296,26 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
                       className="w-full px-5 py-4 rounded-2xl bg-white/5 border border-white/10 outline-none focus:border-accent/50 transition-all font-mono text-lg"
                       required
                     />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-3 block">Currency</label>
+                  <div className="relative">
+                    <select
+                      title="Currency"
+                      value={currency}
+                      onChange={(e) => setCurrency(e.target.value)}
+                      className="w-full px-5 py-4 rounded-2xl bg-white/5 border border-white/10 outline-none focus:border-accent/50 transition-all appearance-none text-white text-lg font-mono font-bold"
+                    >
+                      <option value="INR" className="bg-[#050508]">INR (₹)</option>
+                      <option value="EUR" className="bg-[#050508]">EUR (€)</option>
+                      <option value="USD" className="bg-[#050508]">USD ($)</option>
+                      <option value="GBP" className="bg-[#050508]">GBP (£)</option>
+                    </select>
+                    <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-white/20">
+                      <Search className="w-5 h-5 rotate-90" />
+                    </div>
                   </div>
                 </div>
               </div>

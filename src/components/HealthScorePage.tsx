@@ -132,7 +132,7 @@ export const HealthScorePage: React.FC = () => {
       <div className="space-y-4">
         <h3 className="text-sm font-bold text-white/40 uppercase tracking-widest mb-4">Improvement Feed</h3>
         {[
-          { icon: Target, title: "Pay $50 extra on credit card", impact: "+4 points", effort: "Easy", color: "accent" },
+          { icon: Target, title: "Pay extra on credit card", impact: "+4 points", effort: "Easy", color: "accent" },
           { icon: Zap, title: "Consolidate high-interest loans", impact: "+12 points", effort: "Medium", color: "positive" },
         ].map((rec, i) => (
           <div key={i} className="glass-card p-4 flex items-center justify-between group hover:border-accent/30 transition-all cursor-pointer">
@@ -148,7 +148,7 @@ export const HealthScorePage: React.FC = () => {
                 </div>
               </div>
             </div>
-            <button className="px-4 py-2 rounded-lg bg-white/5 text-xs font-bold hover:bg-accent transition-all">Action</button>
+            <button onClick={() => alert(`Starting: ${rec.title}`)} className="px-4 py-2 rounded-lg bg-white/5 text-xs font-bold hover:bg-accent transition-all">Action</button>
           </div>
         ))}
       </div>

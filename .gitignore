@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# H2 local database files (dev profile)
+backend/data/

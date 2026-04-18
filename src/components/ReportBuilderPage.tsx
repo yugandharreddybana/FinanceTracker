@@ -55,11 +55,11 @@ export const ReportBuilderPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-4">
-          <button className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/5 border border-white/10 text-white font-bold hover:bg-white/10 transition-all">
+          <button onClick={() => { localStorage.setItem('ft_report_template', JSON.stringify(widgets)); alert('Report template saved!'); }} className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/5 border border-white/10 text-white font-bold hover:bg-white/10 transition-all">
             <Save className="w-4 h-4" />
             <span>Save Template</span>
           </button>
-          <button className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-accent text-white font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow">
+          <button onClick={() => { const data = widgets.map(w => `${w.title}: ${w.metric} (${w.period})`).join('\n'); const blob = new Blob([`Finance Report\n\n${data}`], { type: 'text/plain' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'finance-report.txt'; a.click(); URL.revokeObjectURL(url); }} className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-accent text-white font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow">
             <Download className="w-4 h-4" />
             <span>Export PDF</span>
           </button>
@@ -150,7 +150,7 @@ export const ReportBuilderPage: React.FC = () => {
                       />
                     </div>
                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button aria-label="Widget settings" className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-all">
+                      <button aria-label="Widget settings" onClick={() => { const newTitle = prompt('Widget title:', widget.title); if (newTitle) setWidgets(prev => prev.map(w => w.id === widget.id ? { ...w, title: newTitle } : w)); }} className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-all">
                         <Settings2 className="w-4 h-4" />
                       </button>
                       <button 

@@ -38,6 +38,7 @@ public class RecurringPaymentService {
         if (updates.getCurrency() != null) existing.setCurrency(updates.getCurrency());
         if (updates.getDescription() != null) existing.setDescription(updates.getDescription());
         if (updates.getPaymentMethod() != null) existing.setPaymentMethod(updates.getPaymentMethod());
+        if (updates.getDueDate() != null) existing.setDueDate(updates.getDueDate());
         if (updates.getHistory() != null) existing.setHistory(updates.getHistory());
         return repo.save(existing);
     }

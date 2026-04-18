@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFinance } from '../context/FinanceContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LineChart, Line, AreaChart, Area } from 'recharts';
-import { TrendingUp, ArrowUpRight, Calendar, DollarSign, Briefcase, ChevronDown, Edit2, Trash2, Plus, X, Palette } from 'lucide-react';
+import { TrendingUp, ArrowUpRight, Calendar, DollarSign, Briefcase, ChevronDown, Pencil, Trash2, Plus, X, Palette } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { IncomeSource } from '../types';
 import { MOCK_INCOME_TRENDS } from '../constants';
@@ -13,7 +13,7 @@ const CustomTooltip = ({ active, payload, currency }: any) => {
     return (
       <div className="glass-card p-3 border-accent/20 bg-card/90 backdrop-blur-xl">
         <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">{payload[0].payload.source || payload[0].payload.month}</p>
-        <p className="text-sm font-bold font-mono text-white">{payload[0].value.toLocaleString('en-IN', { style: 'currency', currency: currency || 'INR' })}</p>
+        <p className="text-sm font-bold font-mono text-white">{payload[0].value.toLocaleString(undefined, { style: 'currency', currency: currency || 'INR' })}</p>
       </div>
     );
   }
@@ -147,7 +147,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
               <h3 className="text-lg font-bold">Income Trend</h3>
               <div className="flex gap-2">
                 {['6M', '1Y', 'All'].map(t => (
-                  <button key={t} className="px-3 py-1 rounded-lg bg-white/5 border border-white/5 text-[10px] font-bold uppercase tracking-widest">
+                  <button key={t} onClick={() => alert(`Showing income trend for: ${t}`)} className="px-3 py-1 rounded-lg bg-white/5 border border-white/5 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all">
                     {t}
                   </button>
                 ))}
@@ -192,7 +192,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
         <div className="space-y-6">
           <div className="glass-card p-8 bg-accent/5 border-accent/20">
             <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-2">Total Monthly Income</p>
-            <h4 className="text-4xl font-bold font-mono tracking-tighter mb-4">{totalIncome.toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency })}</h4>
+            <h4 className="text-4xl font-bold font-mono tracking-tighter mb-4">{totalIncome.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</h4>
             <div className="flex items-center gap-1 text-positive text-xs font-bold">
               <TrendingUp className="w-4 h-4" />
               <span>+15% vs last year</span>
@@ -212,14 +212,14 @@ export const IncomeAnalyticsPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="font-mono font-bold text-sm">{source.amount.toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency })}</span>
+                    <span className="font-mono font-bold text-sm">{source.amount.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</span>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
                       <button 
                         aria-label="Edit income source"
                         onClick={() => setEditingIncome(source)}
                         className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-colors"
                       >
-                        <Edit2 className="w-3.5 h-3.5" />
+                        <Pencil className="w-3.5 h-3.5" />
                       </button>
                       <button 
                         aria-label="Delete income source"
@@ -244,7 +244,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
           </div>
           <div>
             <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-1">Tax Estimate</p>
-            <h4 className="text-xl font-bold font-mono text-negative">$1,240</h4>
+            <h4 className="text-xl font-bold font-mono text-negative">{(totalIncome * 0.2).toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</h4>
           </div>
         </div>
         <div className="glass-card p-6 flex items-center gap-4">
@@ -253,7 +253,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
           </div>
           <div>
             <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-1">Take-home Pay</p>
-            <h4 className="text-xl font-bold font-mono text-positive">$4,230</h4>
+            <h4 className="text-xl font-bold font-mono text-positive">{(totalIncome * 0.8).toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</h4>
           </div>
         </div>
         <div className="glass-card p-6 flex items-center gap-4">
@@ -326,7 +326,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount ($) *</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount ({selectedCurrency}) *</label>
                     <input 
                       type="number"
                       step="0.01"
@@ -418,7 +418,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
               <div className="flex justify-between items-center mb-8">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-2xl bg-accent/20 flex items-center justify-center text-accent border border-accent/30">
-                    <Edit2 className="w-6 h-6" />
+                    <Pencil className="w-6 h-6" />
                   </div>
                   <div>
                     <h3 className="text-2xl font-bold tracking-tight">Edit Income</h3>
@@ -449,7 +449,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount ($)</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount ({selectedCurrency})</label>
                     <input 
                       type="number"
                       step="0.01"

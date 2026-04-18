@@ -124,7 +124,7 @@ export const AuditLogPage: React.FC = () => {
           </div>
         </div>
 
-        <button className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/5 border border-white/10 text-white/60 font-bold hover:bg-white/10 transition-all">
+        <button onClick={() => { const csv = ['Timestamp,Action,Entity,Details,User', ...auditLogs.map(l => `${l.timestamp},${l.action},${l.entityType},"${l.details.replace(/"/g, '""')}",${l.userName}`)].join('\n'); const blob = new Blob([csv], { type: 'text/csv' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'audit-logs.csv'; a.click(); URL.revokeObjectURL(url); }} className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/5 border border-white/10 text-white/60 font-bold hover:bg-white/10 transition-all">
           <Download className="w-4 h-4" />
           <span>Export Logs</span>
         </button>

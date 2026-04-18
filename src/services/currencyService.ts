@@ -36,7 +36,7 @@ class CurrencyService {
   }
 
   formatCurrency(amount: number, currency: string): string {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat(undefined, {
       style: 'currency',
       currency: currency,
     }).format(amount);

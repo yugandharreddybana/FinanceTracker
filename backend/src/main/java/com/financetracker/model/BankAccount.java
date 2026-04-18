@@ -43,4 +43,6 @@ public class BankAccount {
 
     private String cardNetwork;
     private String cardNumberLast4;
+
+    private Boolean isJoint;
 }

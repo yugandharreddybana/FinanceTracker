@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Send, X, MessageSquare, Loader2 } from 'lucide-react';
+import { Sparkles, Send, X, MessageSquare, Loader2, Mic, MicOff } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { GoogleGenAI } from "@google/genai";
 import { MCPClient } from '../services/mcpClient';
+import DeleteModal from './DeleteModal';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -11,6 +12,12 @@ export const AIOracle: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [errorModal, setErrorModal] = useState<{isOpen: boolean, title: string, message: string}>({
+    isOpen: false,
+    title: '',
+    message: ''
+  });
   const [messages, setMessages] = useState<{ role: 'user' | 'ai', content: string }[]>([
     { role: 'ai', content: "Greetings. I am the Yugi Oracle. I've connected to your real-time transaction stream via MCP. How may I assist your journey today?" }
   ]);
@@ -122,6 +129,54 @@ export const AIOracle: React.FC = () => {
       mcpClientRef.current?.disconnect();
     };
   }, [isOpen]);
+
+  const speak = (text: string) => {
+    const utterance = new SpeechSynthesisUtterance(text);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const startListening = () => {
+    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+    if (!SpeechRecognition) {
+      setErrorModal({
+        isOpen: true,
+        title: 'Speech Not Supported',
+        message: 'Your current browser does not support the Web Speech API. Please try using a modern browser like Chrome or Edge.'
+      });
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = (event: any) => {
+      console.error("Speech recognition error:", event.error);
+      setIsListening(false);
+      
+      if (event.error === 'not-allowed') {
+        setErrorModal({
+          isOpen: true,
+          title: 'Microphone Access Denied',
+          message: 'Voice entry requires microphone access. Please click "Allow Access" below and then grant permission in your browser prompt.'
+        });
+      } else if (event.error === 'no-speech') {
+        // Ignore
+      } else {
+        speak("I encountered an error with speech recognition.");
+      }
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(prev => prev + (prev ? ' ' : '') + transcript);
+    };
+
+    recognition.start();
+  };
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
@@ -308,19 +363,48 @@ export const AIOracle: React.FC = () => {
                       onChange={(e) => setInput(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                       placeholder="Ask the Oracle anything..."
-                      className="w-full bg-card border border-white/10 rounded-2xl py-4 pl-6 pr-16 outline-none focus:border-accent/50 transition-all text-lg placeholder:text-white/10"
+                      className="w-full bg-card border border-white/10 rounded-2xl py-4 pl-6 pr-28 outline-none focus:border-accent/50 transition-all text-lg placeholder:text-white/10"
                     />
-                    <button 
-                      id="oracle-send-btn"
-                      onClick={handleSend}
-                      disabled={isLoading}
-                      className="absolute right-2 p-3 bg-accent text-white rounded-xl hover:bg-accent/80 transition-all hover:scale-105 shadow-lg active:scale-95 disabled:opacity-50 disabled:scale-100"
-                    >
-                      {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                    </button>
+                    <div className="absolute right-2 flex items-center gap-2">
+                      <button 
+                        onClick={startListening}
+                        className={cn(
+                          "p-3 rounded-xl transition-all border",
+                          isListening 
+                            ? "bg-negative/20 border-negative/30 text-negative animate-pulse" 
+                            : "bg-white/5 border-white/10 text-white/40 hover:text-white"
+                        )}
+                      >
+                        {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                      </button>
+                      <button 
+                        id="oracle-send-btn"
+                        onClick={handleSend}
+                        disabled={isLoading}
+                        className="p-3 bg-accent text-white rounded-xl hover:bg-accent/80 transition-all hover:scale-105 shadow-lg active:scale-95 disabled:opacity-50 disabled:scale-100"
+                      >
+                        {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
+
+              <DeleteModal
+                isOpen={errorModal.isOpen}
+                onClose={() => setErrorModal(prev => ({ ...prev, isOpen: false }))}
+                onConfirm={() => {
+                  setErrorModal(prev => ({ ...prev, isOpen: false }));
+                  if (errorModal.title === 'Microphone Access Denied') {
+                    setTimeout(startListening, 300);
+                  }
+                }}
+                title={errorModal.title}
+                description={errorModal.message}
+                confirmLabel={errorModal.title === 'Microphone Access Denied' ? "Allow Access" : "Understood"}
+                cancelLabel={errorModal.title === 'Microphone Access Denied' ? "Cancel" : ""}
+                isDestructive={false}
+              />
             </motion.div>
           )}
         </AnimatePresence>

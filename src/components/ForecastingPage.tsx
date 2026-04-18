@@ -122,7 +122,7 @@ export const ForecastingPage: React.FC = () => {
                     fontWeight="bold"
                     tickLine={false}
                     axisLine={false}
-                    tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`}
+                    tickFormatter={(val) => `${currentCurrency === 'INR' ? '₹' : '€'}${(val / 1000).toFixed(0)}k`}
                   />
                   <Tooltip 
                     contentStyle={{ backgroundColor: '#0F0F19', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', padding: '16px' }}
@@ -188,7 +188,7 @@ export const ForecastingPage: React.FC = () => {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <span className="text-xs text-white/40 font-medium">Target Net Worth</span>
-                <span className="text-sm font-bold">$1,000,000</span>
+                <span className="text-sm font-bold">{currencyService.formatCurrency(1000000, currentCurrency)}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-white/40 font-medium">Estimated Date</span>
@@ -221,7 +221,7 @@ export const ForecastingPage: React.FC = () => {
             {[
               { title: 'Increase Savings Rate', desc: 'Boosting your monthly savings by just 10% could bring your freedom date forward by 2.5 years.', icon: TrendingUp },
               { title: 'Rebalance Portfolio', desc: 'Your current allocation is slightly heavy on cash. Moving 15% to index funds could improve returns.', icon: Target },
-              { title: 'Tax Efficiency', desc: 'Utilizing tax-advantaged accounts could save you an estimated $4,200 annually in taxes.', icon: ShieldCheck }
+              { title: 'Tax Efficiency', desc: 'Utilizing tax-advantaged accounts could save you an estimated amount annually in taxes.', icon: ShieldCheck }
             ].map((item, i) => (
               <li key={i} className="flex gap-4">
                 <div className="mt-1">

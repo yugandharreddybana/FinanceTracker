@@ -41,7 +41,7 @@ export const TopBar: React.FC = () => {
   };
 
   return (
-    <div className="w-full mb-10">
+    <div className="w-full mt-6 mb-10">
       <div 
         ref={containerRef}
         className={cn(

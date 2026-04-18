@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Filter, Sparkles, Check, Edit2, Trash2, X, Save, Loader2, Calendar, ChevronUp, ChevronDown, ArrowUpRight, ArrowDownRight, Download, Plus } from 'lucide-react';
+import { Search, Filter, Sparkles, Check, Pencil, Trash2, X, Save, Loader2, Calendar, ChevronUp, ChevronDown, ArrowUpRight, ArrowDownRight, Download, Plus } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useFinance } from '../context/FinanceContext';
 import { Transaction } from '../types';
@@ -605,7 +605,7 @@ export const TransactionsPage: React.FC = () => {
                                 }}
                                 className="flex items-center gap-1.5 text-[8px] font-bold uppercase tracking-widest text-white/40 hover:text-white transition-all"
                               >
-                                <Edit2 className="w-2.5 h-2.5" />
+                                <Pencil className="w-2.5 h-2.5" />
                                 <span>Edit Manually</span>
                               </button>
                             </div>
@@ -650,7 +650,7 @@ export const TransactionsPage: React.FC = () => {
                         onChange={e => setEditForm({...editForm, amount: parseFloat(e.target.value)})}
                       />
                     ) : (
-                      <>{tx.amount > 0 ? '+' : ''}{tx.amount.toLocaleString('en-IN', { style: 'currency', currency: tx.currency || 'INR' })}</>
+                      <>{tx.amount > 0 ? '+' : ''}{tx.amount.toLocaleString(undefined, { style: 'currency', currency: tx.currency || 'INR' })}</>
                     )}
                   </td>
                   <td className="px-8 py-5">
@@ -710,7 +710,7 @@ export const TransactionsPage: React.FC = () => {
                           </>
                         ) : (
                           <>
-                            <button title="Edit transaction" onClick={(e) => { e.stopPropagation(); handleEdit(tx); }} className="p-1.5 rounded-lg hover:bg-accent/10 hover:text-accent transition-all"><Edit2 className="w-4 h-4" /></button>
+                            <button title="Edit transaction" onClick={(e) => { e.stopPropagation(); handleEdit(tx); }} className="p-1.5 rounded-lg hover:bg-accent/10 hover:text-accent transition-all"><Pencil className="w-4 h-4" /></button>
                             <button title="Delete transaction" onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(tx.id); }} className="p-1.5 rounded-lg hover:bg-negative/10 hover:text-negative transition-all"><Trash2 className="w-4 h-4" /></button>
                           </>
                         )}
@@ -945,12 +945,11 @@ export const TransactionsPage: React.FC = () => {
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Amount *</label>
                     <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 font-bold">$</span>
                       <input 
                         type="number"
                         required
                         placeholder="0.00"
-                        className="w-full bg-white/5 border border-white/10 rounded-xl pl-8 pr-4 py-3 text-sm outline-none focus:border-accent transition-all font-mono text-white"
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-sm outline-none focus:border-accent transition-all font-mono text-white"
                         value={newTransactionForm.amount || ''}
                         onChange={e => setNewTransactionForm({ ...newTransactionForm, amount: parseFloat(e.target.value) })}
                       />

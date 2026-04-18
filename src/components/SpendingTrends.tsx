@@ -191,7 +191,7 @@ export const SpendingTrends: React.FC = () => {
               itemStyle={{ color: '#7C6EFA' }}
               cursor={{ stroke: 'rgba(124, 110, 250, 0.2)', strokeWidth: 2 }}
               formatter={(value: number, name: string) => [
-                value.toLocaleString('en-IN', { 
+                value.toLocaleString(undefined, { 
                   style: 'currency', 
                   currency: name,
                   minimumFractionDigits: 0,

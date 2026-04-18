@@ -21,6 +21,9 @@ interface FinanceContextType {
   spendingDataByCurrency: Record<string, { name: string; value: number; color: string }[]>;
   createFamily: (name: string) => void;
   joinFamily: (familyId: string) => void;
+  deleteFamily: () => void;
+  addFamilyMember: (name: string, role: string) => void;
+  removeFamilyMember: (uid: string) => void;
   addLog: (action: string, details: string, entityType: string, entityId: string) => void;
   transferToSavings: (amount: number, goalId: string, accountId: string) => void;
   categorizeTransactions: () => Promise<void>;
@@ -98,30 +101,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([]);
-  const [investments, setInvestments] = useState<Investment[]>([
-    {
-      id: '1',
-      symbol: 'RELIANCE',
-      name: 'Reliance Industries',
-      type: 'Stock',
-      quantity: 10,
-      averagePrice: 2650,
-      currentPrice: 2921.45,
-      currency: 'INR',
-      lastUpdated: new Date().toISOString()
-    },
-    {
-      id: '2',
-      symbol: 'TCS',
-      name: 'Tata Consultancy Services',
-      type: 'Stock',
-      quantity: 5,
-      averagePrice: 3500,
-      currentPrice: 3712.80,
-      currency: 'INR',
-      lastUpdated: new Date().toISOString()
-    }
-  ]);
+  const [investments, setInvestments] = useState<Investment[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [familyAccount, setFamilyAccount] = useState<FamilyAccount | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile>({
@@ -223,32 +203,73 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [transactions, savingsGoals, recurringPayments, loans, budgets, accounts, incomeSources, investments, userProfile, customCategories, isDataLoaded]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Initial data fetch
+  // Refs to track latest state for sync-back logic without causing infinite loops
+  const transactionsRef = useRef(transactions);
+  const savingsGoalsRef = useRef(savingsGoals);
+  const recurringPaymentsRef = useRef(recurringPayments);
+  const loansRef = useRef(loans);
+  const budgetsRef = useRef(budgets);
+  const accountsRef = useRef(accounts);
+  const incomeSourcesRef = useRef(incomeSources);
+  const investmentsRef = useRef(investments);
+
+  useEffect(() => { transactionsRef.current = transactions; }, [transactions]);
+  useEffect(() => { savingsGoalsRef.current = savingsGoals; }, [savingsGoals]);
+  useEffect(() => { recurringPaymentsRef.current = recurringPayments; }, [recurringPayments]);
+  useEffect(() => { loansRef.current = loans; }, [loans]);
+  useEffect(() => { budgetsRef.current = budgets; }, [budgets]);
+  useEffect(() => { accountsRef.current = accounts; }, [accounts]);
+  useEffect(() => { incomeSourcesRef.current = incomeSources; }, [incomeSources]);
+  useEffect(() => { investmentsRef.current = investments; }, [investments]);
+
+  const hasInitialSyncBeenAttempted = useRef(false);
+
+  // Initial data fetch with sync-back logic
   const refreshData = useCallback(async () => {
+    // Only perform the smart sync-back once per session to prevent loops
+    const shouldSyncBack = !hasInitialSyncBeenAttempted.current;
     setIsLoading(true);
+    
     try {
-      const [txs, goals, recs, lns, bdgts, accs, incs] = await Promise.all([
+      const [txs, goals, recs, lns, bdgts, accs, incs, invs] = await Promise.all([
         financeApi.getTransactions(),
         financeApi.getSavingsGoals(),
         financeApi.getRecurringPayments(),
         financeApi.getLoans(),
         financeApi.getBudgets(),
         financeApi.getAccounts(),
-        financeApi.getIncomeSources()
+        financeApi.getIncomeSources(),
+        financeApi.getInvestments()
       ]);
-      setTransactions(txs);
-      setSavingsGoals(goals);
-      setRecurringPayments(recs);
-      setLoans(lns);
-      setBudgets(bdgts);
-      setAccounts(accs);
-      setIncomeSources(incs);
+
+      // Helper to handle sync-back for a specific entity type
+      const handleSync = async (fetched: any[], current: any[], createFn: (item: any) => Promise<any>, setFn: (data: any[]) => void) => {
+        if (shouldSyncBack && fetched.length === 0 && current.length > 0) {
+          // If backend is empty but we have local data, upload it
+          console.log(`Syncing ${current.length} items to fresh backend...`);
+          const created = await Promise.all(current.map(item => createFn(item)));
+          setFn(created);
+        } else {
+          setFn(fetched);
+        }
+      };
+
+      await handleSync(txs, transactionsRef.current, financeApi.createTransaction, setTransactions);
+      await handleSync(goals, savingsGoalsRef.current, financeApi.createSavingsGoal, setSavingsGoals);
+      await handleSync(recs, recurringPaymentsRef.current, financeApi.createRecurringPayment, setRecurringPayments);
+      await handleSync(lns, loansRef.current, financeApi.createLoan, setLoans);
+      await handleSync(bdgts, budgetsRef.current, financeApi.createBudget, setBudgets);
+      await handleSync(accs, accountsRef.current, financeApi.createAccount, setAccounts);
+      await handleSync(incs, incomeSourcesRef.current, financeApi.createIncomeSource, setIncomeSources);
+      await handleSync(invs, investmentsRef.current, financeApi.createInvestment, setInvestments);
+
+      hasInitialSyncBeenAttempted.current = true;
     } catch (error) {
-      console.error('Failed to fetch initial data:', error);
+      console.error('Failed to fetch/sync data:', error);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, []); // Dependencies removed to prevent infinite loops
 
   useEffect(() => {
     refreshData();
@@ -268,19 +289,34 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setAuditLogs(prev => [newLog, ...prev]);
   }, [userProfile.name]);
 
-  const addInvestment = useCallback((investment: Investment) => {
-    setInvestments(prev => [...prev, investment]);
-    addLog('CREATE', `Added investment ${investment.symbol}`, 'Investment', investment.id);
+  const addInvestment = useCallback(async (investment: Investment) => {
+    try {
+      const newInv = await financeApi.createInvestment(investment);
+      setInvestments(prev => [...prev, newInv]);
+      addLog('CREATE', `Added investment ${newInv.symbol}`, 'Investment', newInv.id);
+    } catch (error) {
+      console.error('Failed to add investment:', error);
+    }
   }, [addLog]);
 
-  const updateInvestment = useCallback((id: string, updates: Partial<Investment>) => {
-    setInvestments(prev => prev.map(inv => inv.id === id ? { ...inv, ...updates } : inv));
-    addLog('UPDATE', `Updated investment ${id}`, 'Investment', id);
+  const updateInvestment = useCallback(async (id: string, updates: Partial<Investment>) => {
+    try {
+      const updated = await financeApi.updateInvestment(id, updates);
+      setInvestments(prev => prev.map(inv => inv.id === id ? updated : inv));
+      addLog('UPDATE', `Updated investment ${id}`, 'Investment', id);
+    } catch (error) {
+      console.error('Failed to update investment:', error);
+    }
   }, [addLog]);
 
-  const deleteInvestment = useCallback((id: string) => {
-    setInvestments(prev => prev.filter(inv => inv.id !== id));
-    addLog('DELETE', `Deleted investment ${id}`, 'Investment', id);
+  const deleteInvestment = useCallback(async (id: string) => {
+    try {
+      await financeApi.deleteInvestment(id);
+      setInvestments(prev => prev.filter(inv => inv.id !== id));
+      addLog('DELETE', `Deleted investment ${id}`, 'Investment', id);
+    } catch (error) {
+      console.error('Failed to delete investment:', error);
+    }
   }, [addLog]);
 
   const createFamily = useCallback((name: string) => {
@@ -297,10 +333,38 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [userProfile.name, addLog]);
 
   const joinFamily = useCallback((familyId: string) => {
-    // In a real app, this would fetch the family from Firestore
     setUserProfile(prev => ({ ...prev, familyId }));
     addLog('JOIN', `Joined family ${familyId}`, 'Family', familyId);
   }, [addLog]);
+
+  const deleteFamily = useCallback(() => {
+    if (familyAccount) {
+      addLog('DELETE', `Deleted family ${familyAccount.name}`, 'Family', familyAccount.id);
+      setFamilyAccount(null);
+      setUserProfile(prev => ({ ...prev, familyId: undefined }));
+    }
+  }, [familyAccount, addLog]);
+
+  const addFamilyMember = useCallback((name: string, role: string) => {
+    if (familyAccount) {
+      const newMember = { uid: 'user-' + Math.random().toString(36).substr(2, 6), name, role: role as 'Admin' | 'Member' };
+      setFamilyAccount(prev => prev ? {
+        ...prev,
+        members: [...prev.members, newMember]
+      } : null);
+      addLog('UPDATE', `Added member ${name} to family`, 'Family', familyAccount.id);
+    }
+  }, [familyAccount, addLog]);
+
+  const removeFamilyMember = useCallback((uid: string) => {
+    if (familyAccount) {
+      setFamilyAccount(prev => prev ? {
+        ...prev,
+        members: prev.members.filter(m => m.uid !== uid)
+      } : null);
+      addLog('UPDATE', `Removed member ${uid} from family`, 'Family', familyAccount.id);
+    }
+  }, [familyAccount, addLog]);
 
   const netWorthByCurrency = React.useMemo(() => {
     const result: Record<string, { total: number; assets: number; liabilities: number; change: number }> = {};
@@ -507,7 +571,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       2. INTELLIGENT CATEGORIZATION: 
          - For EXPENSES: Housing, Food & Drink, Transport, Entertainment, Shopping, Electronics, Utilities, Health, Education, Others.
          - For INCOME: Salary, Freelance, Investment, Gift, Refund, Others. Intelligently categorize based on source (e.g., "Google" -> "Salary", "Upwork" -> "Freelance").
-      3. SAVINGS TRANSFERS: Detect if the user wants to move money to a savings goal (e.g., "Save $50 for Hawaii", "Move $100 to car fund"). 
+      3. SAVINGS TRANSFERS: Detect if the user wants to move money to a savings goal (e.g., "Save ₹500 for Hawaii", "Move ₹1000 to car fund"). 
          - If detected, set intent to "SAVINGS_TRANSFER".
       4. Available Savings Goals: ${JSON.stringify(savingsGoals.map(g => ({ id: g.id, name: g.name })))}
       
@@ -1144,6 +1208,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       deleteInvestment,
       createFamily,
       joinFamily,
+      deleteFamily,
+      addFamilyMember,
+      removeFamilyMember,
       addLog,
       transferToSavings,
       categorizeTransactions,

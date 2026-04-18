@@ -22,7 +22,6 @@ public class SavingsGoal {
     private BigDecimal target;
 
     @Column(name = "current_amount", precision = 15, scale = 2)
-    @com.fasterxml.jackson.annotation.JsonProperty("current")
     private BigDecimal current;
 
     private String emoji;

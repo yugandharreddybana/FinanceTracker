@@ -9,7 +9,7 @@ const CustomTooltip = ({ active, payload, currency }: any) => {
       <div className="glass-card p-4 border-accent/20 bg-card/90 backdrop-blur-xl shadow-2xl">
         <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-2">Day {payload[0].payload.day}</p>
         <div className="space-y-1">
-          <p className="text-lg font-bold font-mono text-white">{payload[0].value.toLocaleString('en-IN', { style: 'currency', currency })}</p>
+          <p className="text-lg font-bold font-mono text-white">{payload[0].value.toLocaleString(undefined, { style: 'currency', currency })}</p>
           <p className="text-[10px] text-positive font-bold uppercase tracking-tighter">Projected Balance</p>
         </div>
       </div>

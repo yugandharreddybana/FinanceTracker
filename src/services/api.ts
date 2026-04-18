@@ -222,6 +222,35 @@ export const financeApi = {
     if (!res.ok) throw new Error('Failed to delete income source');
   },
 
+  // Investments
+  getInvestments: async (): Promise<Investment[]> => {
+    const res = await fetch(`${API_BASE}/investments`);
+    if (!res.ok) throw new Error('Failed to fetch investments');
+    return res.json();
+  },
+  createInvestment: async (investment: Partial<Investment>): Promise<Investment> => {
+    const res = await fetch(`${API_BASE}/investments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(investment),
+    });
+    if (!res.ok) throw new Error('Failed to create investment');
+    return res.json();
+  },
+  updateInvestment: async (id: string, updates: Partial<Investment>): Promise<Investment> => {
+    const res = await fetch(`${API_BASE}/investments/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) throw new Error('Failed to update investment');
+    return res.json();
+  },
+  deleteInvestment: async (id: string): Promise<void> => {
+    const res = await fetch(`${API_BASE}/investments/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to delete investment');
+  },
+
   // AI Insights
   getAIInsights: async (transactions: any[], selectedBank: string): Promise<any[]> => {
     const res = await fetch('/api/ai/insights', {

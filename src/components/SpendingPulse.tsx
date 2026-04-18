@@ -9,7 +9,7 @@ const CustomTooltip = ({ active, payload, currency }: any) => {
     return (
       <div className="glass-card p-3 border-accent/20 bg-card/90 backdrop-blur-xl">
         <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">{payload[0].name}</p>
-        <p className="text-sm font-bold font-mono text-white">{payload[0].value.toLocaleString('en-IN', { style: 'currency', currency: currency || 'INR' })}</p>
+        <p className="text-sm font-bold font-mono text-white">{payload[0].value.toLocaleString(undefined, { style: 'currency', currency: currency || 'INR' })}</p>
       </div>
     );
   }
@@ -97,7 +97,7 @@ export const SpendingPulse: React.FC = () => {
               <span className="text-xs font-medium text-white/60 group-hover/item:text-white transition-colors">{item.name}</span>
             </div>
             <div className="flex items-center gap-4">
-              <span className="text-xs font-mono font-bold">{item.value.toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency })}</span>
+              <span className="text-xs font-mono font-bold">{item.value.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</span>
               <div className="w-12 h-1 bg-white/5 rounded-full overflow-hidden">
                 <div 
                   className="h-full bg-white/20 [width:var(--bw)]" 

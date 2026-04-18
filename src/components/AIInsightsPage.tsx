@@ -37,6 +37,7 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
     message: ''
   });
   const [insights, setInsights] = useState<Insight[]>([]);
+  const [insightFilter, setInsightFilter] = useState('All Intelligence');
   const [messages, setMessages] = useState<{ role: 'user' | 'ai', content: string }[]>([
     { role: 'ai', content: "Welcome back, Yugandhar. I'm analyzing your real-time financial stream. How can I help you optimize your wealth today?" }
   ]);
@@ -223,12 +224,13 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
         {!compact && (
           <div className="lg:col-span-7 flex flex-col h-full overflow-hidden">
             <div className="flex gap-3 mb-8 overflow-x-auto pb-2 no-scrollbar">
-              {['All Intelligence', 'Risk Alerts', 'Wealth Wins', 'Optimization Tips', 'Market Trends'].map((f, i) => (
+              {['All Intelligence', 'Risk Alerts', 'Wealth Wins', 'Optimization Tips', 'Market Trends'].map((f) => (
                 <button 
-                  key={f} 
+                  key={f}
+                  onClick={() => setInsightFilter(f)}
                   className={cn(
                     "px-5 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all border",
-                    i === 0 ? "bg-accent/10 border-accent/30 text-accent" : "bg-white/5 border-white/5 text-white/40 hover:bg-white/10 hover:text-white"
+                    insightFilter === f ? "bg-accent/10 border-accent/30 text-accent" : "bg-white/5 border-white/5 text-white/40 hover:bg-white/10 hover:text-white"
                   )}
                 >
                   {f}
@@ -243,7 +245,11 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
                   <p className="font-bold uppercase tracking-widest text-xs">Synthesizing Neural Insights...</p>
                 </div>
               ) : (
-                insights.map((insight, i) => {
+                insights.filter(insight => {
+                  if (insightFilter === 'All Intelligence') return true;
+                  const typeMap: Record<string, string> = { 'Risk Alerts': 'ALERT', 'Wealth Wins': 'WIN', 'Optimization Tips': 'TIP', 'Market Trends': 'TREND' };
+                  return insight.type === typeMap[insightFilter];
+                }).map((insight, i) => {
                   const Icon = insight.type === 'ALERT' ? AlertCircle : insight.type === 'WIN' ? Award : insight.type === 'TIP' ? Lightbulb : BarChart;
                   const colorClass = insight.type === 'ALERT' ? 'text-negative' : insight.type === 'WIN' ? 'text-positive' : insight.type === 'TIP' ? 'text-accent' : 'text-amber-500';
                   const bgClass = insight.type === 'ALERT' ? 'bg-negative/[0.03] border-negative/20' : insight.type === 'WIN' ? 'bg-positive/[0.03] border-positive/20' : insight.type === 'TIP' ? 'bg-accent/[0.03] border-accent/20' : 'bg-amber-500/[0.03] border-amber-500/20';
@@ -273,11 +279,11 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
                         </div>
                         <p className="text-sm text-white/50 leading-relaxed mb-6 font-medium">{insight.description}</p>
                         <div className="flex gap-6 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0">
-                          <button className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent hover:text-white transition-colors flex items-center gap-2">
+                          <button onClick={() => { setInput(`Help me execute: ${insight.title}`); setTimeout(() => document.getElementById('insights-send-btn')?.click(), 100); }} className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent hover:text-white transition-colors flex items-center gap-2">
                             <span>Execute Strategy</span>
                             <TrendingUp className="w-3 h-3" />
                           </button>
-                          <button className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/20 hover:text-white transition-colors">Archive</button>
+                          <button onClick={() => setInsights(prev => prev.filter(ins => ins.id !== insight.id))} className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/20 hover:text-white transition-colors">Archive</button>
                         </div>
                       </div>
                     </motion.div>

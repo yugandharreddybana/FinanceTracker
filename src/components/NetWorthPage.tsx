@@ -5,7 +5,7 @@ import { TrendingUp, ArrowUpRight, ArrowDownRight, Plus, ChevronDown } from 'luc
 import { useFinance } from '../context/FinanceContext';
 
 export const NetWorthPage: React.FC = () => {
-  const { netWorthByCurrency, accounts, loans } = useFinance();
+  const { netWorthByCurrency, accounts, loans, investments } = useFinance();
   const currencies = Object.keys(netWorthByCurrency);
   const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
   
@@ -32,7 +32,7 @@ export const NetWorthPage: React.FC = () => {
     ...loans.filter(l => (l.currency || 'INR') === selectedCurrency).map(l => ({ name: l.name, value: l.remainingAmount, color: l.color }))
   ];
 
-  const formattedTotal = Math.floor(netWorth.total).toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency }).split('.')[0];
+  const formattedTotal = Math.floor(netWorth.total).toLocaleString(undefined, { style: 'currency', currency: selectedCurrency }).split('.')[0];
   const decimal = (netWorth.total % 1).toFixed(2).substring(1);
 
   return (
@@ -106,7 +106,7 @@ export const NetWorthPage: React.FC = () => {
         
         <div className="flex gap-2 mt-8">
           {['1M', '3M', '6M', '1Y', 'All'].map(t => (
-            <button key={t} className="px-4 py-1.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all">
+            <button key={t} onClick={() => alert(`Showing net worth trend for: ${t}`)} className="px-4 py-1.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all">
               {t}
             </button>
           ))}
@@ -132,7 +132,7 @@ export const NetWorthPage: React.FC = () => {
                   <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" className="shrink-0"><circle cx="6" cy="6" r="6" fill={a.color} /></svg>
                   <span className="text-sm font-medium">{a.name}</span>
                 </div>
-                <span className="font-mono font-bold">{a.value.toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency })}</span>
+                <span className="font-mono font-bold">{a.value.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</span>
               </div>
             ))}
           </div>
@@ -156,7 +156,7 @@ export const NetWorthPage: React.FC = () => {
                   <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" className="shrink-0"><circle cx="6" cy="6" r="6" fill={l.color} /></svg>
                   <span className="text-sm font-medium">{l.name}</span>
                 </div>
-                <span className="font-mono font-bold">{l.value.toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency })}</span>
+                <span className="font-mono font-bold">{l.value.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</span>
               </div>
             ))}
           </div>
@@ -165,26 +165,29 @@ export const NetWorthPage: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="glass-card p-6">
-          <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-2">Real Estate</p>
-          <h4 className="text-xl font-bold font-mono mb-4">$8,200</h4>
+          <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-2">Total Assets</p>
+          <h4 className="text-xl font-bold font-mono mb-4">{netWorth.assets.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</h4>
           <div className="flex items-center gap-1 text-positive text-[10px] font-bold">
             <ArrowUpRight className="w-3 h-3" />
-            <span>+0.5%</span>
+            <span>{accounts.filter(a => a.type !== 'Credit' && (a.currency || 'INR') === selectedCurrency).length} accounts</span>
           </div>
         </div>
         <div className="glass-card p-6">
           <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-2">Investments</p>
-          <h4 className="text-xl font-bold font-mono mb-4">$12,400</h4>
+          <h4 className="text-xl font-bold font-mono mb-4">{investments
+            .filter(inv => (inv.currency || 'INR') === selectedCurrency)
+            .reduce((sum, inv) => sum + (inv.currentPrice * inv.quantity), 0)
+            .toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</h4>
           <div className="flex items-center gap-1 text-positive text-[10px] font-bold">
             <ArrowUpRight className="w-3 h-3" />
-            <span>+4.2%</span>
+            <span>{investments.filter(inv => (inv.currency || 'INR') === selectedCurrency).length} holdings</span>
           </div>
         </div>
-        <div className="glass-card p-6 border-dashed border-white/10 flex flex-col items-center justify-center text-center cursor-pointer hover:border-accent/50 transition-all group">
+        <div onClick={() => alert('Navigate to Bank Accounts to add a new asset account.')} className="glass-card p-6 border-dashed border-white/10 flex flex-col items-center justify-center text-center cursor-pointer hover:border-accent/50 transition-all group">
           <Plus className="w-6 h-6 text-white/20 group-hover:text-accent mb-2" />
           <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Add Asset</span>
         </div>
-        <div className="glass-card p-6 border-dashed border-white/10 flex flex-col items-center justify-center text-center cursor-pointer hover:border-accent/50 transition-all group">
+        <div onClick={() => alert('Navigate to Loans to add a new liability.')} className="glass-card p-6 border-dashed border-white/10 flex flex-col items-center justify-center text-center cursor-pointer hover:border-accent/50 transition-all group">
           <Plus className="w-6 h-6 text-white/20 group-hover:text-accent mb-2" />
           <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Add Liability</span>
         </div>

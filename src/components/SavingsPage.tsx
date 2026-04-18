@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFinance } from '../context/FinanceContext';
-import { Plus, Target, TrendingUp, Calendar, ArrowRight, X, ChevronDown, Edit2, Trash2 } from 'lucide-react';
+import { Plus, Target, TrendingUp, Calendar, ArrowRight, X, ChevronDown, Pencil, Trash2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { SavingsGoal } from '../types';
 
@@ -12,15 +12,17 @@ export const SavingsPage: React.FC = () => {
   const [fundingGoal, setFundingGoal] = React.useState<string | null>(null);
   const [fundAmount, setFundAmount] = React.useState('');
   const [selectedAccountId, setSelectedAccountId] = React.useState('');
-  const [newGoal, setNewGoal] = React.useState({ name: '', target: '', emoji: '🎯', deadline: '', currency: 'INR' });
-
   const currencies = Array.from(new Set(savingsGoals.map(g => g.currency || 'INR')));
   const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
+  const [newGoal, setNewGoal] = React.useState({ name: '', target: '', emoji: '🎯', deadline: '', currency: selectedCurrency });
+  const [isSaving, setIsSaving] = React.useState(false);
+
 
   const filteredGoals = savingsGoals.filter(g => (g.currency || 'INR') === selectedCurrency);
 
-  const handleAddGoal = () => {
+  const handleAddGoal = async () => {
     if (!newGoal.name || !newGoal.target) return;
+    setIsSaving(true);
     
     const goalData = {
       name: newGoal.name,
@@ -30,20 +32,25 @@ export const SavingsPage: React.FC = () => {
       currency: newGoal.currency || 'INR'
     };
 
-    if (editingGoal) {
-      updateSavingsGoal(editingGoal.id, goalData);
-    } else {
-      addSavingsGoal({
-        id: `goal-${Date.now()}`,
-        ...goalData,
-        current: 0,
-        isHero: false,
-      });
+    try {
+      if (editingGoal) {
+        await updateSavingsGoal(editingGoal.id, goalData);
+      } else {
+        await addSavingsGoal({
+          id: `goal-${Date.now()}`,
+          ...goalData,
+          current: 0,
+          isHero: false,
+        });
+      }
+      setIsAdding(false);
+      setEditingGoal(null);
+      setNewGoal({ name: '', target: '', emoji: '🎯', deadline: '', currency: 'INR' });
+    } catch (error) {
+      console.error('Failed to save goal:', error);
+    } finally {
+      setIsSaving(false);
     }
-    
-    setIsAdding(false);
-    setEditingGoal(null);
-    setNewGoal({ name: '', target: '', emoji: '🎯', deadline: '', currency: 'INR' });
   };
 
   const startEdit = (goal: SavingsGoal) => {
@@ -52,7 +59,7 @@ export const SavingsPage: React.FC = () => {
       name: goal.name,
       target: goal.target.toString(),
       emoji: goal.emoji,
-      deadline: goal.deadline,
+      deadline: goal.deadline || '',
       currency: goal.currency || 'INR'
     });
     setIsAdding(true);
@@ -162,6 +169,8 @@ export const SavingsPage: React.FC = () => {
                   >
                     <option value="INR" className="bg-[#050508] text-white">INR (₹)</option>
                     <option value="EUR" className="bg-[#050508] text-white">EUR (€)</option>
+                    <option value="USD" className="bg-[#050508] text-white">USD ($)</option>
+                    <option value="GBP" className="bg-[#050508] text-white">GBP (£)</option>
                   </select>
                 </div>
                 <div className="flex gap-3">
@@ -177,9 +186,10 @@ export const SavingsPage: React.FC = () => {
                   </button>
                   <button 
                     onClick={handleAddGoal}
-                    className="flex-1 py-3 rounded-xl bg-accent text-white text-sm font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow"
+                    disabled={isSaving}
+                    className="flex-1 py-3 rounded-xl bg-accent text-white text-sm font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow disabled:opacity-50"
                   >
-                    {editingGoal ? 'Update' : 'Save'}
+                    {isSaving ? 'Saving...' : (editingGoal ? 'Update' : 'Save')}
                   </button>
                 </div>
               </div>
@@ -214,7 +224,7 @@ export const SavingsPage: React.FC = () => {
                     onClick={() => startEdit(goal)}
                     className="p-2 rounded-lg bg-white/5 hover:bg-accent/20 text-white/40 hover:text-accent transition-all"
                   >
-                    <Edit2 className="w-4 h-4" />
+                    <Pencil className="w-4 h-4" />
                   </button>
                   <button 
                     title="Delete goal"
@@ -230,10 +240,10 @@ export const SavingsPage: React.FC = () => {
               <div className="mb-8">
                 <div className="flex justify-between items-end mb-2">
                   <span className="text-3xl font-bold font-mono tracking-tighter">
-                    {goal.current.toLocaleString('en-IN', { style: 'currency', currency: goal.currency || 'INR' })}
+                    {goal.current.toLocaleString(undefined, { style: 'currency', currency: goal.currency || 'INR' })}
                   </span>
                   <span className="text-sm text-white/40 font-mono">
-                    of {goal.target.toLocaleString('en-IN', { style: 'currency', currency: goal.currency || 'INR' })}
+                    of {goal.target.toLocaleString(undefined, { style: 'currency', currency: goal.currency || 'INR' })}
                   </span>
                 </div>
                 <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
@@ -257,7 +267,7 @@ export const SavingsPage: React.FC = () => {
                   <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-1">Monthly</p>
                   <div className="flex items-center gap-2 text-xs font-bold">
                     <TrendingUp className="w-3 h-3 text-positive" />
-                    <span>+$450</span>
+                    <span>Auto-calculated</span>
                   </div>
                 </div>
               </div>
@@ -303,7 +313,7 @@ export const SavingsPage: React.FC = () => {
             <p className="text-sm font-medium mb-4">Round up transactions and save the difference.</p>
             <div className="flex justify-between items-center">
               <span className="text-xs font-bold text-positive">Active</span>
-              <span className="text-[10px] font-mono text-white/30">+$42 this week</span>
+              <span className="text-[10px] font-mono text-white/30">Active</span>
             </div>
           </div>
           <div className="p-4 rounded-xl bg-white/5 border border-white/5">
@@ -311,7 +321,7 @@ export const SavingsPage: React.FC = () => {
             <p className="text-sm font-medium mb-4">Transfer surplus cash to high-yield vaults.</p>
             <div className="flex justify-between items-center">
               <span className="text-xs font-bold text-accent">Suggested</span>
-              <button className="text-[10px] font-bold uppercase text-accent hover:underline">Review</button>
+              <button onClick={() => alert('Smart Transfers: Review your surplus cash and optimize transfers to high-yield vaults.')} className="text-[10px] font-bold uppercase text-accent hover:underline">Review</button>
             </div>
           </div>
           <div className="p-4 rounded-xl bg-white/5 border border-white/5">
@@ -319,7 +329,7 @@ export const SavingsPage: React.FC = () => {
             <p className="text-sm font-medium mb-4">Prioritize high-interest debt repayment.</p>
             <div className="flex justify-between items-center">
               <span className="text-xs font-bold text-white/20">Inactive</span>
-              <button className="text-[10px] font-bold uppercase text-white/40 hover:text-white transition-colors">Setup</button>
+              <button onClick={() => alert('Debt Snowball: Configure your debt repayment priority to save on interest.')} className="text-[10px] font-bold uppercase text-white/40 hover:text-white transition-colors">Setup</button>
             </div>
           </div>
         </div>
@@ -354,7 +364,7 @@ export const SavingsPage: React.FC = () => {
 
               <div className="space-y-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount ($) *</label>
+                  <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Amount ({selectedCurrency === 'INR' ? '₹' : selectedCurrency}) *</label>
                   <input 
                     type="number"
                     required
@@ -378,7 +388,7 @@ export const SavingsPage: React.FC = () => {
                       <option value="" disabled className="bg-[#050508] text-white">Select an account</option>
                       {accounts.map(account => (
                         <option key={account.id} value={account.id} className="bg-[#050508] text-white">
-                          {account.name} (${account.balance.toLocaleString()})
+                          {account.name} ({account.balance.toLocaleString(undefined, { style: 'currency', currency: account.currency || 'INR' })})
                         </option>
                       ))}
                     </select>

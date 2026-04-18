@@ -81,7 +81,7 @@ export const MonthlyReview: React.FC = () => {
     };
   }, [transactions, savingsGoals, accounts, loans]);
 
-  const fmt = (n: number) => n.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+  const fmt = (n: number) => n.toLocaleString(undefined, { style: 'currency', currency, maximumFractionDigits: 0 });
 
   const hasData = review.txnCount > 0;
 
@@ -102,10 +102,10 @@ export const MonthlyReview: React.FC = () => {
           <span>Arta Intelligence: {review.monthName} Review</span>
         </motion.div>
         <div className="flex gap-4">
-          <button aria-label="Share" className="p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group">
+          <button onClick={() => { if (navigator.share) { navigator.share({ title: `${review.monthName} Financial Review`, text: `My ${review.monthName} savings rate: ${review.savingsRate}%` }); } else { navigator.clipboard.writeText(`My ${review.monthName} Financial Review\nSavings Rate: ${review.savingsRate}%\nIncome: ${fmt(review.income)}\nExpenses: ${fmt(review.expenses)}`); alert('Review summary copied to clipboard!'); } }} aria-label="Share" className="p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group">
             <Share2 className="w-6 h-6 text-white/40 group-hover:text-white transition-colors" />
           </button>
-          <button aria-label="Download" className="p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group">
+          <button onClick={() => { const text = `${review.monthName} Financial Review\n\nRating: ${review.rating}\nIncome: ${fmt(review.income)}\nExpenses: ${fmt(review.expenses)}\nSaved: ${fmt(review.saved)}\nSavings Rate: ${review.savingsRate}%`; const blob = new Blob([text], { type: 'text/plain' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${review.monthName}-review.txt`; a.click(); URL.revokeObjectURL(url); }} aria-label="Download" className="p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group">
             <Download className="w-6 h-6 text-white/40 group-hover:text-white transition-colors" />
           </button>
         </div>

@@ -53,7 +53,7 @@ export const TaxEnginePage: React.FC = () => {
             <option value="2024" className="bg-[#050508]">Tax Year 2024</option>
             <option value="2023" className="bg-[#050508]">Tax Year 2023</option>
           </select>
-          <button className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/5 border border-white/10 text-white font-bold hover:bg-white/10 transition-all">
+          <button onClick={() => alert('Export Report: Your tax report will be downloaded as a PDF.')} className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/5 border border-white/10 text-white font-bold hover:bg-white/10 transition-all">
             <Download className="w-4 h-4" />
             <span>Export Report</span>
           </button>
@@ -68,7 +68,7 @@ export const TaxEnginePage: React.FC = () => {
           className="glass-card p-8"
         >
           <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Estimated Tax Liability</p>
-          <h2 className="text-4xl font-bold font-mono tracking-tighter mb-4">$12,450.00</h2>
+          <h2 className="text-4xl font-bold font-mono tracking-tighter mb-4">{currencyService.formatCurrency(12450, currentCurrency)}</h2>
           <div className="flex items-center gap-2 text-xs text-white/40">
             <Calculator className="w-3 h-3" />
             <span>Based on current income & deductions</span>
@@ -82,7 +82,7 @@ export const TaxEnginePage: React.FC = () => {
           className="glass-card p-8 border-positive/20 bg-positive/[0.02]"
         >
           <p className="text-[10px] font-bold text-positive uppercase tracking-widest mb-2">Potential AI Savings</p>
-          <h2 className="text-4xl font-bold font-mono tracking-tighter text-positive mb-4">$3,200.00</h2>
+          <h2 className="text-4xl font-bold font-mono tracking-tighter text-positive mb-4">{currencyService.formatCurrency(3200, currentCurrency)}</h2>
           <div className="flex items-center gap-2 text-xs text-positive/60">
             <Sparkles className="w-3 h-3" />
             <span>Optimization opportunities found</span>
@@ -155,7 +155,7 @@ export const TaxEnginePage: React.FC = () => {
                     </div>
                   </div>
                   <p className="text-xs text-white/40 leading-relaxed mb-4">{s.description}</p>
-                  <button className="flex items-center gap-2 text-[10px] font-bold text-accent uppercase tracking-widest group-hover:gap-3 transition-all">
+                  <button onClick={() => alert(`Learn more about: ${s.title}. ${s.description}`)} className="flex items-center gap-2 text-[10px] font-bold text-accent uppercase tracking-widest group-hover:gap-3 transition-all">
                     <span>Learn How</span>
                     <ArrowRight className="w-3 h-3" />
                   </button>
@@ -200,7 +200,7 @@ export const TaxEnginePage: React.FC = () => {
               <div>
                 <p className="text-xs font-bold text-white/80 mb-1">Upcoming Deadline</p>
                 <p className="text-xs text-white/40 leading-relaxed">
-                  The Q2 estimated tax payment deadline is June 15th. You have an estimated payment of $3,112 due.
+                  The Q2 estimated tax payment deadline is June 15th. You have an estimated payment of {currencyService.formatCurrency(3112, currentCurrency)} due.
                 </p>
               </div>
             </div>
@@ -216,7 +216,7 @@ export const TaxEnginePage: React.FC = () => {
                 <p className="text-xs text-white/40">12 documents stored securely</p>
               </div>
             </div>
-            <button aria-label="Open document vault" className="p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all">
+            <button onClick={() => alert('Tax Document Vault: Store and organize your tax documents securely.')} aria-label="Open document vault" className="p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all">
               <ArrowRight className="w-5 h-5" />
             </button>
           </div>

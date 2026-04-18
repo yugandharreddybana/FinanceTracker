@@ -91,7 +91,7 @@ export const CategoriesPage: React.FC = () => {
               </div>
               
               <h3 className="text-lg font-bold mb-1">{cat.name}</h3>
-              <p className="text-2xl font-bold font-mono tracking-tighter">{spending.toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency })}</p>
+              <p className="text-2xl font-bold font-mono tracking-tighter">{spending.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</p>
               
               <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
                 <ChevronRight className="w-5 h-5 text-white/40" />
@@ -271,7 +271,7 @@ export const CategoriesPage: React.FC = () => {
                           <div className="w-2 h-2 rounded-full [background-color:var(--sc)]" style={{ '--sc': sub.color } as React.CSSProperties} />
                           <span className="text-sm font-medium">{sub.name}</span>
                         </div>
-                        <span className="font-mono font-bold">${sub.value}</span>
+                        <span className="font-mono font-bold">{sub.value.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</span>
                       </div>
                     ))}
                   </div>

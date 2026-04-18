@@ -4,7 +4,8 @@ import { useFinance } from '../context/FinanceContext';
 import { cn } from '../lib/utils';
 import { Budget } from '../types';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, AreaChart, Area } from 'recharts';
-import { TrendingUp, AlertCircle, Sparkles, Home, Utensils, Car, Film, ShoppingBag, Smartphone, Zap, Heart, GraduationCap, MoreHorizontal, Plane, Gift, ShieldCheck, Wallet, Coffee, Plus, PieChart as PieChartIcon, Calendar, ArrowUpDown } from 'lucide-react';
+import { TrendingUp, AlertCircle, Sparkles, Home, Utensils, Car, Film, ShoppingBag, Smartphone, Zap, Heart, GraduationCap, MoreHorizontal, Plane, Gift, ShieldCheck, Wallet, Coffee, Plus, PieChart as PieChartIcon, Calendar, ArrowUpDown, Pencil, Trash2 } from 'lucide-react';
+import { WORLD_CURRENCIES } from '../constants/currencies';
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   'Housing': <Home className="w-5 h-5" />,
@@ -41,7 +42,8 @@ interface BudgetsPageProps {
 
 export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
   const { budgets, addBudget, updateBudget, deleteBudget, transactions, healthMetricsByCurrency } = useFinance();
-  const healthMetrics = healthMetricsByCurrency['INR'] || Object.values(healthMetricsByCurrency)[0] || { budgetAdherence: 0 };
+  const currencies = Array.from(new Set(budgets.map(b => b.currency || 'INR')));
+  const [selectedCurrency, setSelectedCurrency] = React.useState(currencies[0] || 'INR');
   const [isAdding, setIsAdding] = React.useState(false);
   const [editingBudget, setEditingBudget] = React.useState<Budget | null>(null);
   const [formData, setFormData] = React.useState({ 
@@ -50,29 +52,38 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
     rolloverEnabled: false, 
     perTransactionLimit: '',
     color: PRESET_COLORS[0],
-    dueDate: ''
+    dueDate: '',
+    currency: selectedCurrency
   });
   const [selectedCategory, setSelectedCategory] = React.useState<string | null>(null);
   const [isProcessingRollover, setIsProcessingRollover] = React.useState(false);
   const [sortBy, setSortBy] = React.useState<'category' | 'limit' | 'spent' | 'dueDate'>('category');
 
-  const sortedBudgets = [...budgets].sort((a, b) => {
-    if (sortBy === 'category') return a.category.localeCompare(b.category);
-    if (sortBy === 'limit') return b.limit - a.limit;
-    if (sortBy === 'spent') return b.spent - a.spent;
-    if (sortBy === 'dueDate') {
-      if (!a.dueDate) return 1;
-      if (!b.dueDate) return -1;
-      return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
-    }
-    return 0;
-  });
+  const sortedBudgets = [...budgets]
+    .filter(b => (b.currency || 'INR') === selectedCurrency)
+    .sort((a, b) => {
+      if (sortBy === 'category') return a.category.localeCompare(b.category);
+      if (sortBy === 'limit') return b.limit - a.limit;
+      if (sortBy === 'spent') return b.spent - a.spent;
+      if (sortBy === 'dueDate') {
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+      }
+      return 0;
+    });
 
-  const totalBudget = budgets.reduce((acc, b) => acc + b.limit + (b.rolloverAmount || 0), 0);
-  const totalSpent = budgets.reduce((acc, b) => acc + b.spent, 0);
+  const healthMetrics = healthMetricsByCurrency[selectedCurrency] || Object.values(healthMetricsByCurrency)[0] || { budgetAdherence: 0 };
+
+  const totalBudget = budgets
+    .filter(b => (b.currency || 'INR') === selectedCurrency)
+    .reduce((acc, b) => acc + b.limit + (b.rolloverAmount || 0), 0);
+  const totalSpent = budgets
+    .filter(b => (b.currency || 'INR') === selectedCurrency)
+    .reduce((acc, b) => acc + b.spent, 0);
   const percentSpent = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
 
-  const budgetAlerts = budgets.filter(b => (b.spent / (b.limit + (b.rolloverAmount || 0))) > 0.85);
+  const budgetAlerts = budgets.filter(b => (b.spent / (b.limit + (b.rolloverAmount || 0))) > 0.85 && (b.currency || 'INR') === selectedCurrency);
 
   const handleSaveBudget = () => {
     if (!formData.category || !formData.limit) return;
@@ -83,7 +94,8 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
       rolloverEnabled: formData.rolloverEnabled,
       perTransactionLimit: formData.perTransactionLimit ? Number(formData.perTransactionLimit) : undefined,
       color: formData.color,
-      dueDate: formData.dueDate || undefined
+      dueDate: formData.dueDate || undefined,
+      currency: formData.currency || 'INR'
     };
 
     if (editingBudget) {
@@ -99,7 +111,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
     
     setIsAdding(false);
     setEditingBudget(null);
-    setFormData({ category: '', limit: '', rolloverEnabled: false, perTransactionLimit: '', color: PRESET_COLORS[0], dueDate: '' });
+    setFormData({ category: '', limit: '', rolloverEnabled: false, perTransactionLimit: '', color: PRESET_COLORS[0], dueDate: '', currency: 'INR' });
   };
 
   const handleProcessRollover = async () => {
@@ -137,7 +149,8 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
       rolloverEnabled: !!budget.rolloverEnabled,
       perTransactionLimit: budget.perTransactionLimit?.toString() || '',
       color: budget.color || PRESET_COLORS[0],
-      dueDate: budget.dueDate || ''
+      dueDate: budget.dueDate || '',
+      currency: budget.currency || 'INR'
     });
     setIsAdding(true);
   };
@@ -150,9 +163,26 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
       className="max-w-7xl mx-auto"
     >
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-12 gap-6">
-        <div>
-          <h1 className="text-5xl font-bold tracking-tighter mb-3 font-display">Budgets</h1>
-          <p className="text-white/40 font-medium">Track and optimize your monthly spending with AI insights</p>
+        <div className="flex flex-col md:flex-row items-start md:items-end gap-6">
+          <div>
+            <h1 className="text-5xl font-bold tracking-tighter mb-3 font-display">Budgets</h1>
+            <p className="text-white/40 font-medium">Track and optimize your monthly spending with AI insights</p>
+          </div>
+          {currencies.length > 1 && (
+            <div className="relative mb-1">
+              <select
+                title="Currency"
+                value={selectedCurrency}
+                onChange={(e) => setSelectedCurrency(e.target.value)}
+                className="appearance-none bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm font-bold text-white pr-10 focus:outline-none focus:ring-1 focus:ring-accent"
+              >
+                {currencies.map(c => (
+                  <option key={c} value={c} className="bg-[#050508] text-white">{c}</option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-4">
           <button 
@@ -199,7 +229,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Monthly Limit ($) *</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Monthly Limit *</label>
                     <input 
                       type="number"
                       required
@@ -210,7 +240,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Per-Transaction Limit ($)</label>
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Per-Transaction Limit</label>
                     <input 
                       type="number"
                       value={formData.perTransactionLimit}
@@ -232,6 +262,21 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                       />
                       <Calendar className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-white/20 pointer-events-none" />
                     </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Currency</label>
+                    <select
+                      title="Currency"
+                      value={formData.currency}
+                      onChange={(e) => setFormData(prev => ({ ...prev, currency: e.target.value }))}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all text-sm"
+                    >
+                      {WORLD_CURRENCIES.map(curr => (
+                        <option key={curr.code} value={curr.code} className="bg-[#050508] text-white">
+                          {curr.code} ({curr.symbol}) - {curr.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="flex items-center gap-4 h-[50px]">
                     <label className="flex items-center gap-3 cursor-pointer group">
@@ -290,7 +335,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                     onClick={() => {
                       setIsAdding(false);
                       setEditingBudget(null);
-                      setFormData({ category: '', limit: '', rolloverEnabled: false, perTransactionLimit: '', color: PRESET_COLORS[0], dueDate: '' });
+                      setFormData({ category: '', limit: '', rolloverEnabled: false, perTransactionLimit: '', color: PRESET_COLORS[0], dueDate: '', currency: 'INR' });
                     }}
                     className="px-6 py-3 rounded-xl bg-white/5 border border-white/10 text-sm font-bold hover:bg-white/10 transition-all"
                   >
@@ -317,7 +362,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
             <div className="space-y-4 text-center lg:text-left">
               <p className="text-accent text-[10px] font-bold tracking-[0.3em] uppercase">Current Utilization</p>
               <h2 className="text-5xl font-bold font-mono tracking-tighter">
-                {totalSpent.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })} <span className="text-white/20 text-2xl font-medium">/ {totalBudget.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</span>
+                {totalSpent.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })} <span className="text-white/20 text-2xl font-medium">/ {totalBudget.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</span>
               </h2>
               <div className="flex items-center gap-4 justify-center lg:justify-start">
                 <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-positive/10 border border-positive/20 text-positive text-[10px] font-bold uppercase tracking-widest">
@@ -428,7 +473,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                             <div className="glass-card p-4 border-accent/20 bg-card/90 backdrop-blur-xl">
                               <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">{data.category}</p>
                               <p className="text-lg font-bold font-mono text-white">
-                                {data.spent.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                                {data.spent.toLocaleString(undefined, { style: 'currency', currency: data.currency || 'INR' })}
                               </p>
                               <p className="text-[10px] text-accent font-bold uppercase tracking-widest mt-1">
                                 {Math.round((data.spent / totalSpent) * 100)}% of total
@@ -561,7 +606,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                         {budget.dueDate && (
                           <div className="flex items-center gap-1 text-[9px] font-bold text-accent uppercase tracking-widest bg-accent/10 px-1.5 py-0.5 rounded">
                             <Calendar className="w-2.5 h-2.5" />
-                            <span>Due {new Date(budget.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                            <span>Due {new Date(budget.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
                           </div>
                         )}
                       </div>
@@ -574,20 +619,20 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                         onClick={(e) => startEdit(e, budget)}
                         className="p-1.5 rounded-lg bg-white/5 hover:bg-accent/20 text-white/40 hover:text-accent transition-all"
                       >
-                        <Plus className="w-3.5 h-3.5 rotate-45" />
+                        <Pencil className="w-3.5 h-3.5" />
                       </button>
                       <button 
                         title="Delete budget"
                         onClick={(e) => {
                           e.stopPropagation();
-                          deleteBudget(budget.id);
+                          setDeleteConfirmId(budget.id);
                         }}
                         className="p-1.5 rounded-lg bg-white/5 hover:bg-negative/20 text-white/40 hover:text-negative transition-all"
                       >
-                        <AlertCircle className="w-3.5 h-3.5" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                    <p className="text-2xl font-bold font-mono tracking-tighter">{budget.limit.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</p>
+                    <p className="text-2xl font-bold font-mono tracking-tighter">{budget.limit.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</p>
                   </div>
                 </div>
 
@@ -615,18 +660,18 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                 <div className="space-y-4 mb-8">
                   <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest">
                     <div className="flex flex-col gap-1">
-                      <span className="text-white/40">Spent: <span className="text-white font-mono text-xs ml-1">{budget.spent.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</span></span>
+                      <span className="text-white/40">Spent: <span className="text-white font-mono text-xs ml-1">{budget.spent.toLocaleString(undefined, { style: 'currency', currency: budget.currency || 'INR' })}</span></span>
                       {budget.rolloverAmount && budget.rolloverAmount !== 0 && (
                         <span className={cn(budget.rolloverAmount > 0 ? "text-positive" : "text-negative")}>
-                          Rollover: <span className="font-mono text-xs ml-1">{budget.rolloverAmount > 0 ? '+' : ''}{budget.rolloverAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</span>
+                          Rollover: <span className="font-mono text-xs ml-1">{budget.rolloverAmount > 0 ? '+' : ''}{budget.rolloverAmount.toLocaleString(undefined, { style: 'currency', currency: budget.currency || 'INR' })}</span>
                         </span>
                       )}
                       {budget.perTransactionLimit && (
-                        <span className="text-accent">Tx Limit: <span className="font-mono text-xs ml-1">{budget.perTransactionLimit.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</span></span>
+                        <span className="text-accent">Tx Limit: <span className="font-mono text-xs ml-1">{budget.perTransactionLimit.toLocaleString(undefined, { style: 'currency', currency: budget.currency || 'INR' })}</span></span>
                       )}
                     </div>
                     <span className={cn(isOver ? "text-negative font-bold" : "text-white/40")}>
-                      {isOver ? `-${Math.round(budget.spent - effectiveLimit).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })} over` : `${Math.round(effectiveLimit - budget.spent).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })} left`}
+                      {isOver ? `-${Math.round(budget.spent - effectiveLimit).toLocaleString(undefined, { style: 'currency', currency: budget.currency || 'INR' })} over` : `${Math.round(effectiveLimit - budget.spent).toLocaleString(undefined, { style: 'currency', currency: budget.currency || 'INR' })} left`}
                     </span>
                   </div>
                   <div className="h-2.5 w-full bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/5">
@@ -656,9 +701,9 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                       const diff = projectedSpent - effectiveLimit;
                       
                       if (diff > 0) {
-                        return `Burn rate: You'll exceed by $${Math.round(diff)} at this pace`;
+                        return `Burn rate: You'll exceed by ${Math.round(diff).toLocaleString(undefined, { style: 'currency', currency: budget.currency || 'INR' })} at this pace`;
                       } else {
-                        return `Burn rate: On track to save $${Math.round(Math.abs(diff))} this month`;
+                        return `Burn rate: On track to save ${Math.round(Math.abs(diff)).toLocaleString(undefined, { style: 'currency', currency: budget.currency || 'INR' })} this month`;
                       }
                     })()}
                   </span>
@@ -683,7 +728,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
               <div className="space-y-2">
                 <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest">Projected Monthly Savings</p>
                 <p className="text-2xl font-bold font-mono text-positive">
-                  +${(totalBudget - totalSpent > 0 ? (totalBudget - totalSpent) * 0.4 : 0).toFixed(2)}
+                  +{(totalBudget - totalSpent > 0 ? (totalBudget - totalSpent) * 0.4 : 0).toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}
                 </p>
                 <p className="text-xs text-white/40 font-medium">Based on current spending velocity</p>
               </div>
@@ -702,7 +747,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                       return `Your ${nearLimitBudgets[0].category} budget is nearing its limit. Consider delaying non-essential purchases in this category.`;
                     }
                     if (totalBudget - totalSpent > 500) {
-                      return `You have a healthy surplus this month. Consider allocating $${Math.round((totalBudget - totalSpent) * 0.5)} to your priority savings goal.`;
+                      return `You have a healthy surplus this month. Consider allocating ${(totalBudget - totalSpent) * 0.5} to your priority savings goal.`;
                     }
                     return "Your spending is well-balanced. Keep maintaining this pace to reach your financial goals.";
                   })()}
@@ -783,7 +828,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                                   <div className="group/limit relative">
                                     <AlertCircle className="w-3 h-3 text-negative" />
                                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-negative text-[8px] text-white rounded opacity-0 group-hover/limit:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                                      Exceeds ${currentBudget.perTransactionLimit} limit
+                                      Exceeds {currentBudget.perTransactionLimit.toLocaleString(undefined, { style: 'currency', currency: currentBudget.currency || 'INR' })} limit
                                     </div>
                                   </div>
                                 )}
@@ -794,7 +839,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                                 "text-sm font-bold font-mono",
                                 t.type === 'expense' ? "text-negative" : "text-positive"
                               )}>
-                                {t.type === 'expense' ? '-' : '+'}${Math.abs(t.amount).toLocaleString()}
+                                {t.type === 'expense' ? '-' : '+'}{Math.abs(t.amount).toLocaleString(undefined, { style: 'currency', currency: currentBudget?.currency || 'INR' })}
                               </span>
                             </td>
                             <td className="px-6 py-4 text-right">

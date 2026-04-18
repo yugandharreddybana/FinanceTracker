@@ -3,10 +3,10 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import cors from "cors";
 import dotenv from "dotenv";
+dotenv.config();
+
 import { aiRouter } from "./server/routes/ai.ts";
 import { authRouter } from "./server/routes/auth.ts";
-
-dotenv.config();
 
 async function startServer() {
   const app = express();
@@ -19,7 +19,7 @@ async function startServer() {
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("X-XSS-Protection", "1; mode=block");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(self), geolocation=()");
     next();
   });
 

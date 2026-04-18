@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, ExternalLink, RefreshCw, Shield, Lock, Globe, X, ChevronRight, Landmark, CreditCard, Wallet as WalletIcon, Check, ChevronDown, Edit2, Trash2 } from 'lucide-react';
+import { Plus, ExternalLink, RefreshCw, Shield, Lock, Globe, X, ChevronRight, Landmark, CreditCard, Wallet as WalletIcon, Check, ChevronDown, Pencil, Trash2, Users } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { BankAccount } from '../types';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -17,23 +17,25 @@ export const BankAccountsPage: React.FC = () => {
   const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
   const [isManual, setIsManual] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [transactionFilter, setTransactionFilter] = useState('');
+
+  const currencies = Object.keys(netWorthByCurrency);
+  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
+
   const [manualForm, setManualForm] = useState({ 
     bank: '', 
     name: '', 
     balance: '', 
     type: 'Current' as any, 
-    currency: 'INR',
+    currency: selectedCurrency,
     creditLimit: '',
     dueDate: '',
     apr: '',
     minPayment: '',
     cardNetwork: 'Visa' as any,
-    cardNumberLast4: ''
+    cardNumberLast4: '',
+    isJoint: false
   });
-  const [transactionFilter, setTransactionFilter] = useState('');
-
-  const currencies = Object.keys(netWorthByCurrency);
-  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
   
   const netWorth = netWorthByCurrency[selectedCurrency] || { total: 0, assets: 0, liabilities: 0, change: 0 };
 
@@ -55,6 +57,7 @@ export const BankAccountsPage: React.FC = () => {
       currency: manualForm.currency || 'INR',
       color: manualForm.type === 'Credit' ? '#F43F5E' : (manualForm.type === 'Savings' ? '#22D3A5' : '#7C6EFA'),
       lastSynced: 'Just now',
+      isJoint: manualForm.isJoint,
       creditLimit: manualForm.type === 'Credit' ? Number(manualForm.creditLimit) : undefined,
       dueDate: manualForm.type === 'Credit' ? manualForm.dueDate : undefined,
       apr: manualForm.type === 'Credit' ? Number(manualForm.apr) : undefined,
@@ -86,7 +89,8 @@ export const BankAccountsPage: React.FC = () => {
       apr: '',
       minPayment: '',
       cardNetwork: 'Visa',
-      cardNumberLast4: ''
+      cardNumberLast4: '',
+      isJoint: false
     });
   };
 
@@ -104,7 +108,8 @@ export const BankAccountsPage: React.FC = () => {
       apr: account.apr?.toString() || '',
       minPayment: account.minPayment?.toString() || '',
       cardNetwork: account.cardNetwork || 'Visa',
-      cardNumberLast4: account.cardNumberLast4 || ''
+      cardNumberLast4: account.cardNumberLast4 || '',
+      isJoint: account.isJoint || false
     });
     setIsManual(true);
     setIsConnecting(true);
@@ -148,8 +153,8 @@ export const BankAccountsPage: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
         {[
-          { label: 'Total Liquidity', value: netWorth.assets.toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency }), color: 'text-white' },
-          { label: 'Credit Utilization', value: creditUtilization.toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency }), color: 'text-negative' },
+          { label: 'Total Liquidity', value: netWorth.assets.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency }), color: 'text-white' },
+          { label: 'Credit Utilization', value: creditUtilization.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency }), color: 'text-negative' },
           { label: 'Active Links', value: `${accounts.length} Institutions`, color: 'text-positive' }
         ].map((stat, i) => (
           <motion.div 
@@ -211,7 +216,7 @@ export const BankAccountsPage: React.FC = () => {
                       onClick={(e) => startEdit(e, account)}
                       className="p-1.5 rounded-lg bg-white/5 hover:bg-accent/20 text-white/40 hover:text-accent transition-all"
                     >
-                      <Edit2 className="w-3.5 h-3.5" />
+                      <Pencil className="w-3.5 h-3.5" />
                     </button>
                     <button 
                       title="Delete account"
@@ -224,13 +229,18 @@ export const BankAccountsPage: React.FC = () => {
                   <span className="px-3 py-1 rounded-lg bg-white/5 border border-white/5 text-[10px] font-bold uppercase tracking-widest text-white/40">
                     {account.type}
                   </span>
+                  {account.isJoint && (
+                    <span className="px-2 py-1 rounded-lg bg-accent/10 border border-accent/20 text-[10px] font-bold uppercase tracking-widest text-accent flex items-center gap-1">
+                      <Users className="w-3 h-3" /> Joint
+                    </span>
+                  )}
                 </div>
               </div>
 
               <div className="mb-8 relative z-10">
                 <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest mb-1">Available Balance</p>
                 <h4 className="text-4xl font-bold font-mono tracking-tighter">
-                  {account.balance.toLocaleString('en-IN', { style: 'currency', currency: account.currency || 'INR' })}
+                  {account.balance.toLocaleString(undefined, { style: 'currency', currency: account.currency || selectedCurrency })}
                 </h4>
               </div>
 
@@ -321,7 +331,7 @@ export const BankAccountsPage: React.FC = () => {
                       onClick={(e) => startEdit(e, card)}
                       className="p-1.5 rounded-lg bg-white/5 hover:bg-accent/20 text-white/40 hover:text-accent transition-all"
                     >
-                      <Edit2 className="w-3.5 h-3.5" />
+                      <Pencil className="w-3.5 h-3.5" />
                     </button>
                     <button 
                       title="Delete card"
@@ -343,7 +353,7 @@ export const BankAccountsPage: React.FC = () => {
               <div className="mb-8 relative z-10">
                 <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest mb-1">Current Balance</p>
                 <h4 className="text-4xl font-bold font-mono tracking-tighter text-negative">
-                  {Math.abs(card.balance).toLocaleString('en-IN', { style: 'currency', currency: card.currency || 'INR' })}
+                  {Math.abs(card.balance).toLocaleString(undefined, { style: 'currency', currency: card.currency || selectedCurrency })}
                 </h4>
               </div>
 
@@ -352,7 +362,7 @@ export const BankAccountsPage: React.FC = () => {
                   <div className="flex justify-between items-end mb-2">
                     <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest">Utilization</p>
                     <p className="text-[10px] font-bold text-white/40">
-                      {Math.round((Math.abs(card.balance) / card.creditLimit) * 100)}% of {card.creditLimit.toLocaleString('en-IN', { style: 'currency', currency: card.currency || 'INR' })}
+                      {Math.round((Math.abs(card.balance) / card.creditLimit) * 100)}% of {card.creditLimit.toLocaleString(undefined, { style: 'currency', currency: card.currency || selectedCurrency })}
                     </p>
                   </div>
                   <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
@@ -469,23 +479,23 @@ export const BankAccountsPage: React.FC = () => {
                       "text-3xl font-bold font-mono tracking-tighter",
                       selectedAccount.type === 'Credit' ? "text-negative" : ""
                     )}>
-                      ${Math.abs(selectedAccount.balance).toLocaleString()}
+                      {Math.abs(selectedAccount.balance).toLocaleString(undefined, { style: 'currency', currency: selectedAccount.currency || 'INR' })}
                     </p>
                   </div>
                   <div className="glass-card p-6 bg-positive/5 border-positive/10">
                     <p className="text-[10px] font-bold text-positive uppercase tracking-widest mb-2">Income So Far</p>
                     <p className="text-3xl font-bold font-mono tracking-tighter text-positive">
-                      +${transactions
+                      +{transactions
                         .filter(t => t.account === selectedAccount.name && t.type === 'income')
-                        .reduce((acc, t) => acc + t.amount, 0).toLocaleString()}
+                        .reduce((acc, t) => acc + t.amount, 0).toLocaleString(undefined, { style: 'currency', currency: selectedAccount.currency || 'INR' })}
                     </p>
                   </div>
                   <div className="glass-card p-6 bg-negative/5 border-negative/10">
                     <p className="text-[10px] font-bold text-negative uppercase tracking-widest mb-2">Expense So Far</p>
                     <p className="text-3xl font-bold font-mono tracking-tighter text-negative">
-                      -${transactions
+                      -{transactions
                         .filter(t => t.account === selectedAccount.name && t.type === 'expense')
-                        .reduce((acc, t) => acc + Math.abs(t.amount), 0).toLocaleString()}
+                        .reduce((acc, t) => acc + Math.abs(t.amount), 0).toLocaleString(undefined, { style: 'currency', currency: selectedAccount.currency || 'INR' })}
                     </p>
                   </div>
                 </div>
@@ -495,7 +505,7 @@ export const BankAccountsPage: React.FC = () => {
                     <div className="glass-card p-4 bg-white/[0.02]">
                       <p className="text-[8px] font-bold text-white/20 uppercase tracking-widest mb-1">Credit Limit</p>
                       <p className="text-lg font-bold font-mono">
-                        ${selectedAccount.creditLimit?.toLocaleString()}
+                        {selectedAccount.creditLimit?.toLocaleString(undefined, { style: 'currency', currency: selectedAccount.currency || 'INR' })}
                       </p>
                     </div>
                     <div className="glass-card p-4 bg-white/[0.02]">
@@ -513,7 +523,7 @@ export const BankAccountsPage: React.FC = () => {
                     <div className="glass-card p-4 bg-white/[0.02]">
                       <p className="text-[8px] font-bold text-white/20 uppercase tracking-widest mb-1">Min Payment</p>
                       <p className="text-lg font-bold font-mono">
-                        ${selectedAccount.minPayment?.toLocaleString()}
+                        {selectedAccount.minPayment?.toLocaleString(undefined, { style: 'currency', currency: selectedAccount.currency || 'INR' })}
                       </p>
                     </div>
                   </div>
@@ -597,7 +607,7 @@ export const BankAccountsPage: React.FC = () => {
                                   "px-6 py-4 text-sm font-bold font-mono text-right",
                                   t.type === 'expense' ? "text-negative" : "text-positive"
                                 )}>
-                                  {t.type === 'expense' ? '-' : '+'}${Math.abs(t.amount).toLocaleString()}
+                                  {t.type === 'expense' ? '-' : '+'}{Math.abs(t.amount).toLocaleString(undefined, { style: 'currency', currency: selectedAccount?.currency || 'INR' })}
                                 </td>
                               </tr>
                             ))}
@@ -665,7 +675,7 @@ export const BankAccountsPage: React.FC = () => {
                               { name: 'Revolut', icon: WalletIcon, color: 'bg-white text-black' },
                               { name: 'HSBC Global', icon: Globe, color: 'bg-red-600' }
                             ].map(bank => (
-                              <button key={bank.name} className="w-full flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-accent/50 hover:bg-accent/5 transition-all group">
+                              <button key={bank.name} onClick={() => { setManualForm(prev => ({ ...prev, bank: bank.name })); setIsManual(true); }} className="w-full flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-accent/50 hover:bg-accent/5 transition-all group">
                                 <div className="flex items-center gap-4">
                                   <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", bank.color)}>
                                     <bank.icon className="w-5 h-5" />
@@ -706,7 +716,7 @@ export const BankAccountsPage: React.FC = () => {
                         >
                           Manual Entry
                         </button>
-                        <button className="flex-[2] py-4 rounded-2xl bg-accent text-white font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow">
+                        <button onClick={() => alert('Secure bank linking requires a production API key. Use Manual Entry for now.')} className="flex-[2] py-4 rounded-2xl bg-accent text-white font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow">
                           Continue to Secure Login
                         </button>
                       </div>
@@ -743,7 +753,7 @@ export const BankAccountsPage: React.FC = () => {
                           />
                         </div>
                         <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Current Balance ($) *</label>
+                          <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Current Balance *</label>
                           <input 
                             type="number"
                             required
@@ -766,11 +776,29 @@ export const BankAccountsPage: React.FC = () => {
                             <option value="Credit" className="bg-[#050508] text-white">Credit Card</option>
                           </select>
                         </div>
+                        <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
+                          <div>
+                            <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Joint Account</label>
+                            <p className="text-[10px] text-white/20 mt-0.5">Shared with family members</p>
+                          </div>
+                          <div 
+                            onClick={() => setManualForm(prev => ({ ...prev, isJoint: !prev.isJoint }))}
+                            className={cn(
+                              "w-10 h-5 rounded-full relative transition-colors cursor-pointer",
+                              manualForm.isJoint ? "bg-accent" : "bg-white/10"
+                            )}
+                          >
+                            <div className={cn(
+                              "absolute top-1 w-3 h-3 rounded-full bg-white transition-all",
+                              manualForm.isJoint ? "right-1" : "left-1"
+                            )} />
+                          </div>
+                        </div>
 
                         {manualForm.type === 'Credit' && (
                           <>
                             <div className="space-y-2">
-                              <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Credit Limit ($) *</label>
+                              <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Credit Limit *</label>
                               <input 
                                 type="number"
                                 required
@@ -831,7 +859,7 @@ export const BankAccountsPage: React.FC = () => {
                         )}
                         <div className="space-y-2">
                           <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Currency</label>
-                          <select                           title="Currency"                            value={manualForm.currency || 'INR'}
+                          <select                           title="Currency"                            value={manualForm.currency || selectedCurrency}
                             onChange={(e) => setManualForm(prev => ({ ...prev, currency: e.target.value }))}
                             className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all"
                           >
@@ -854,13 +882,14 @@ export const BankAccountsPage: React.FC = () => {
                               name: '', 
                               balance: '', 
                               type: 'Current', 
-                              currency: 'INR',
+                              currency: selectedCurrency,
                               creditLimit: '',
                               dueDate: '',
                               apr: '',
                               minPayment: '',
                               cardNetwork: 'Visa',
-                              cardNumberLast4: ''
+                              cardNumberLast4: '',
+                              isJoint: false
                             });
                           }}
                           className="flex-1 py-4 rounded-2xl bg-white/5 font-bold hover:bg-white/10 transition-all text-white/40"

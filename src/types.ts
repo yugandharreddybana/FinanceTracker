@@ -48,6 +48,7 @@ export interface BankAccount {
   minPayment?: number;
   cardNetwork?: 'Visa' | 'Mastercard' | 'Amex' | 'Discover';
   cardNumberLast4?: string;
+  isJoint?: boolean;
 }
 
 export interface Budget {
@@ -69,6 +70,7 @@ export interface RecurringPayment {
   name: string;
   amount: number;
   date: number; // day of month
+  dueDate?: string;
   category: string;
   frequency: 'Monthly' | 'Weekly' | 'Annual';
   status: 'Active' | 'Paused';

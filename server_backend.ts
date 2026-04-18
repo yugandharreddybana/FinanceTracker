@@ -1,12 +1,12 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+dotenv.config();
+
 import { financeRouter } from "./server/routes/finance.ts";
 import { aiRouter } from "./server/routes/ai.ts";
 import { investmentRouter } from "./server/routes/investment.ts";
 import { authRouter } from "./server/routes/auth.ts";
-
-dotenv.config();
 
 async function startServer() {
   const app = express();

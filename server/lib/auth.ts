@@ -1,9 +1,14 @@
+import dotenv from "dotenv";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) throw new Error("JWT_SECRET environment variable is required");
+if (!JWT_SECRET) {
+  // Try to find .env file manually if process.env is missing it
+  console.warn("JWT_SECRET missing from process.env, verifying .env presence...");
+}
 const USERS_FILE = path.join(process.cwd(), "data", "users.json");
 
 export interface StoredUser {

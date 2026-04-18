@@ -49,7 +49,16 @@ function MainApp() {
   const { userProfile, transactions, isOffline, updateUserProfile, clearDataForNewUser, refreshData } = useFinance();
   const location = useLocation();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState(() => {
+    const saved = localStorage.getItem('yugi_finance_active_tab');
+    if (saved) return saved;
+    return 'dashboard';
+  });
+
+  // Save activeTab to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('yugi_finance_active_tab', activeTab);
+  }, [activeTab]);
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
     // Persistent Login: Check if a session exists and hasn't expired
     const session = localStorage.getItem('yugi_finance_session');
@@ -349,7 +358,7 @@ function MainApp() {
                   </div>
                 </header>
 
-                <div className="pt-20 p-6 md:p-10 lg:p-12 pb-40">
+                <div className="pt-32 p-6 md:p-10 lg:p-12 pb-40">
                   <AnimatePresence mode="wait">
                     {renderContent()}
                   </AnimatePresence>

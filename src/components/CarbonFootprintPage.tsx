@@ -106,7 +106,7 @@ export const CarbonFootprintPage: React.FC = () => {
 
   const COLORS = ['#F43F5E', '#F59E0B', '#22D3A5', '#10B981', '#8B5CF6', '#3B82F6', '#EC4899'];
 
-  const fmt = (n: number) => n.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+  const fmt = (n: number) => n.toLocaleString(undefined, { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 
   return (
     <motion.div

@@ -49,7 +49,11 @@ export const SmartAdd: React.FC<{ setActiveTab: (tab: string) => void }> = ({ se
         // Network error can sometimes be a transient issue with the speech service
         speak("I'm having trouble connecting to the speech service. Please try again in a moment.");
       } else if (event.error === 'not-allowed') {
-        speak("Microphone access was denied. Please check your browser permissions.");
+        setErrorModal({
+          isOpen: true,
+          title: 'Microphone Access Denied',
+          message: 'Voice entry requires microphone access. Please click "Allow Access" below and then grant permission in your browser prompt.'
+        });
       } else if (event.error === 'no-speech') {
         // Ignore no-speech errors to avoid annoying the user
       } else {
@@ -156,7 +160,7 @@ export const SmartAdd: React.FC<{ setActiveTab: (tab: string) => void }> = ({ se
                 <textarea
                   autoFocus
                   disabled={isAnalyzing}
-                  placeholder="Coffee $5 at Starbucks; Save $10k for a car by Dec; Monthly rent $1500..."
+                  placeholder="Coffee ₹500 at Starbucks; Save ₹10k for a car by Dec; Monthly rent ₹15000..."
                   className="w-full bg-white/[0.03] border border-white/10 rounded-2xl p-6 text-base outline-none focus:border-accent/50 transition-all resize-none h-40 placeholder:text-white/10 font-medium leading-relaxed disabled:opacity-50"
                   value={naturalInput}
                   onChange={(e) => setNaturalInput(e.target.value)}
@@ -248,11 +252,16 @@ export const SmartAdd: React.FC<{ setActiveTab: (tab: string) => void }> = ({ se
       <DeleteModal
         isOpen={errorModal.isOpen}
         onClose={() => setErrorModal(prev => ({ ...prev, isOpen: false }))}
-        onConfirm={() => {}}
+        onConfirm={() => {
+          setErrorModal(prev => ({ ...prev, isOpen: false }));
+          if (errorModal.title === 'Microphone Access Denied') {
+            setTimeout(startListening, 300);
+          }
+        }}
         title={errorModal.title}
         description={errorModal.message}
-        confirmLabel="Understood"
-        cancelLabel=""
+        confirmLabel={errorModal.title === 'Microphone Access Denied' ? "Allow Access" : "Understood"}
+        cancelLabel={errorModal.title === 'Microphone Access Denied' ? "Cancel" : ""}
         isDestructive={false}
       />
 

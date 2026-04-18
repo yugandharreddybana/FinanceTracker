@@ -24,6 +24,8 @@ export const InvestmentPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const currencies = Array.from(new Set(investments.map(i => i.currency || 'INR')));
+  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
   const [editingInvestment, setEditingInvestment] = useState<typeof investments[number] | null>(null);
 
   const refreshPrices = async () => {
@@ -68,15 +70,21 @@ export const InvestmentPage: React.FC = () => {
     return matchesFilter && matchesSearch;
   });
 
-  const totalValue = investments.reduce((sum, inv) => sum + (inv.quantity * (prices[inv.symbol]?.price || inv.currentPrice)), 0);
-  const totalCost = investments.reduce((sum, inv) => sum + (inv.quantity * inv.averagePrice), 0);
+  const totalValue = investments
+    .filter(inv => (inv.currency || 'INR') === selectedCurrency)
+    .reduce((sum, inv) => sum + (inv.quantity * (prices[inv.symbol]?.price || inv.currentPrice)), 0);
+    
+  const totalCost = investments
+    .filter(inv => (inv.currency || 'INR') === selectedCurrency)
+    .reduce((sum, inv) => sum + (inv.quantity * inv.averagePrice), 0);
+    
   const totalGain = totalValue - totalCost;
   const totalGainPercent = totalCost > 0 ? (totalGain / totalCost) * 100 : 0;
-
+  
   const typeData = [
-    { name: 'Stocks', value: investments.filter(i => i.type === 'Stock').reduce((sum, i) => sum + (i.quantity * (prices[i.symbol]?.price || i.currentPrice)), 0) },
-    { name: 'Crypto', value: investments.filter(i => i.type === 'Crypto').reduce((sum, i) => sum + (i.quantity * (prices[i.symbol]?.price || i.currentPrice)), 0) },
-    { name: 'ETFs', value: investments.filter(i => i.type === 'ETF').reduce((sum, i) => sum + (i.quantity * (prices[i.symbol]?.price || i.currentPrice)), 0) },
+    { name: 'Stocks', value: investments.filter(i => i.type === 'Stock' && (i.currency || 'INR') === selectedCurrency).reduce((sum, i) => sum + (i.quantity * (prices[i.symbol]?.price || i.currentPrice)), 0) },
+    { name: 'Crypto', value: investments.filter(i => i.type === 'Crypto' && (i.currency || 'INR') === selectedCurrency).reduce((sum, i) => sum + (i.quantity * (prices[i.symbol]?.price || i.currentPrice)), 0) },
+    { name: 'ETFs', value: investments.filter(i => i.type === 'ETF' && (i.currency || 'INR') === selectedCurrency).reduce((sum, i) => sum + (i.quantity * (prices[i.symbol]?.price || i.currentPrice)), 0) },
   ].filter(d => d.value > 0);
 
   const COLORS = ['#7C6EFA', '#22D3A5', '#F59E0B'];
@@ -86,13 +94,32 @@ export const InvestmentPage: React.FC = () => {
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center text-accent">
-              <TrendingUp className="w-6 h-6" />
+          <div className="flex flex-col md:flex-row items-start md:items-end gap-6">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center text-accent">
+                  <TrendingUp className="w-6 h-6" />
+                </div>
+                <h1 className="text-4xl font-bold tracking-tighter font-display">Investment Portfolio</h1>
+              </div>
+              <p className="text-white/40 font-medium">Real-time tracking of your global assets and wealth.</p>
             </div>
-            <h1 className="text-4xl font-bold tracking-tighter font-display">Investment Portfolio</h1>
+            {currencies.length > 1 && (
+              <div className="relative mb-1">
+                <select
+                  title="Currency"
+                  value={selectedCurrency}
+                  onChange={(e) => setSelectedCurrency(e.target.value)}
+                  className="appearance-none bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm font-bold text-white pr-10 focus:outline-none focus:ring-1 focus:ring-accent"
+                >
+                  {currencies.map(c => (
+                    <option key={c} value={c} className="bg-[#050508] text-white">{c}</option>
+                  ))}
+                </select>
+                <ChevronDown className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+              </div>
+            )}
           </div>
-          <p className="text-white/40 font-medium">Real-time tracking of your global assets and wealth.</p>
         </div>
         
         <div className="flex items-center gap-4">
@@ -142,7 +169,7 @@ export const InvestmentPage: React.FC = () => {
           </div>
           <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Total Portfolio Value</p>
           <h2 className="text-4xl font-bold font-mono tracking-tighter mb-4">
-            {currencyService.formatCurrency(totalValue, userProfile.preferences.currency)}
+            {currencyService.formatCurrency(totalValue, selectedCurrency)}
           </h2>
           <div className="flex items-center gap-2">
             <div className={cn(

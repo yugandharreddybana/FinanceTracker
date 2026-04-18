@@ -16,10 +16,10 @@ export const NetWorthHero: React.FC = () => {
     ? savingsGoals.reduce((max, g) => g.target > max.target ? g : max, savingsGoals[0])
     : null;
   const goalAmount = topGoal ? topGoal.target : (netWorth.total > 0 ? Math.ceil(netWorth.total * 2 / 100000) * 100000 : 1000000);
-  const goalLabel = topGoal ? topGoal.name : `${selectedCurrency === 'INR' ? '₹' : '$'}${(goalAmount / 100000).toFixed(0)}L Goal`;
+  const goalLabel = topGoal ? topGoal.name : `${(goalAmount).toLocaleString(undefined, { style: 'currency', currency: selectedCurrency, maximumFractionDigits: 0 })} Goal`;
   const goalProgress = goalAmount > 0 ? Math.min(100, (netWorth.total / goalAmount) * 100) : 0;
   
-  const formattedTotal = Math.floor(netWorth.total).toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency }).split('.')[0];
+  const formattedTotal = Math.floor(netWorth.total).toLocaleString(undefined, { style: 'currency', currency: selectedCurrency }).split('.')[0];
   const decimal = (netWorth.total % 1).toFixed(2).substring(1);
 
   return (
@@ -85,8 +85,8 @@ export const NetWorthHero: React.FC = () => {
             </div>
           </div>
           <p className="text-white/30 text-sm font-medium">
-            Assets: <span className="text-white">{netWorth.assets.toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency })}</span> • 
-            Liabilities: <span className="text-negative">{netWorth.liabilities.toLocaleString('en-IN', { style: 'currency', currency: selectedCurrency })}</span>
+            Assets: <span className="text-white">{netWorth.assets.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</span> • 
+            Liabilities: <span className="text-negative">{netWorth.liabilities.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</span>
           </p>
         </div>
 
