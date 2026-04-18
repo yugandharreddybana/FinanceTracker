@@ -40,8 +40,7 @@ public class Loan {
     private String color;
 
     @Column(length = 10)
-    @Builder.Default
-    private String currency = "INR";
+    private String currency;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")

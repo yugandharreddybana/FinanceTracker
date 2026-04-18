@@ -36,8 +36,7 @@ public class RecurringPayment {
     private String status;
 
     @Column(length = 10)
-    @Builder.Default
-    private String currency = "INR";
+    private String currency;
 
     private String description;
     private String paymentMethod;

@@ -30,8 +30,7 @@ public class Investment {
     private BigDecimal currentPrice;
 
     @Column(length = 10)
-    @Builder.Default
-    private String currency = "INR";
+    private String currency;
 
     private String lastUpdated;
 }

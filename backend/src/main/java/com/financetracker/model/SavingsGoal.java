@@ -29,6 +29,5 @@ public class SavingsGoal {
     private Boolean isHero;
 
     @Column(length = 10)
-    @Builder.Default
-    private String currency = "INR";
+    private String currency;
 }

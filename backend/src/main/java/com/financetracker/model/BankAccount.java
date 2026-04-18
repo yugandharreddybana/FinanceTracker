@@ -27,8 +27,7 @@ public class BankAccount {
     private String lastSynced;
 
     @Column(length = 10)
-    @Builder.Default
-    private String currency = "INR";
+    private String currency;
 
     @Column(precision = 15, scale = 2)
     private BigDecimal creditLimit;

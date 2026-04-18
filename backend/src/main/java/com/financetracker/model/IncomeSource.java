@@ -26,6 +26,5 @@ public class IncomeSource {
     private String color;
 
     @Column(length = 10)
-    @Builder.Default
-    private String currency = "INR";
+    private String currency;
 }

@@ -39,6 +39,5 @@ public class Budget {
     private String dueDate;
 
     @Column(length = 10)
-    @Builder.Default
-    private String currency = "INR";
+    private String currency;
 }

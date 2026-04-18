@@ -34,6 +34,5 @@ public class Transaction {
     private String savingsGoalId;
 
     @Column(length = 10)
-    @Builder.Default
-    private String currency = "INR";
+    private String currency;
 }

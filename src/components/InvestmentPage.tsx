@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   TrendingUp, TrendingDown, Plus, Search, Filter, 
   ArrowUpRight, ArrowDownRight, RefreshCw, Wallet,
-  PieChart, BarChart3, History, Shield, Globe, Coins, Pencil, Trash2
+  PieChart, BarChart3, History, Shield, Globe, Coins, Pencil, Trash2, ChevronDown
 } from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
 import { investmentService, AssetPrice } from '../services/investmentService';

@@ -27,7 +27,7 @@ import {
 import { RecurringPayment } from '../types';
 
 export const RecurringPage: React.FC = () => {
-  const { recurringPayments, updateRecurringPayment, deleteRecurringPayment, addRecurringPayment, accounts } = useFinance();
+  const { recurringPayments, updateRecurringPayment, deleteRecurringPayment, addRecurringPayment, accounts, userProfile } = useFinance();
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'amount' | 'date' | 'status'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
