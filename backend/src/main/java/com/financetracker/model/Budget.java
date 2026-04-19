@@ -17,6 +17,9 @@ public class Budget {
     @Id
     private String id;
 
+    @Column(name = "user_id")
+    private String userId;
+
     private String category;
     private String emoji;
 

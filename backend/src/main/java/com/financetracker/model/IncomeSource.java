@@ -16,6 +16,9 @@ public class IncomeSource {
     @Id
     private String id;
 
+    @Column(name = "user_id")
+    private String userId;
+
     private String source;
 
     @Column(precision = 15, scale = 2)

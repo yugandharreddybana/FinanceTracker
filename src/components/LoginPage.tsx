@@ -17,12 +17,41 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
   const [isBiometricLoading, setIsBiometricLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleBiometricLogin = () => {
+  const handleBiometricLogin = async () => {
+    setError('');
     setIsBiometricLoading(true);
-    setTimeout(() => {
+    try {
+      // 1. Get options from backend
+      const optionsRes = await fetch(`${(import.meta as any).env?.VITE_API_URL ?? ''}/api/auth/webauthn/login/options`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email || null })
+      });
+      
+      if (!optionsRes.ok) throw new Error('Failed to get login options');
+      const options = await optionsRes.json();
+
+      // 2. Start WebAuthn authentication using @simplewebauthn/browser
+      const { startAuthentication } = await import('@simplewebauthn/browser');
+      const authResponse = await startAuthentication(options);
+
+      // 3. Verify in backend
+      const verifyRes = await fetch(`${(import.meta as any).env?.VITE_API_URL ?? ''}/api/auth/webauthn/login/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(authResponse)
+      });
+
+      if (!verifyRes.ok) throw new Error('Biometric verification failed');
+      const userProfile = await verifyRes.json();
+
       setIsBiometricLoading(false);
-      onLogin(email || 'yugandharreddybana@outlook.com');
-    }, 2000);
+      onLogin(userProfile.email);
+    } catch (err: any) {
+      console.error('Biometric Login Error:', err);
+      setError(err.message || 'Biometric authentication failed');
+      setIsBiometricLoading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   User, Bell, Shield, Globe, Palette, Database, CreditCard,
@@ -159,6 +159,43 @@ export const SettingsPage: React.FC = () => {
   const [passwordStatus, setPasswordStatus] = useState<'idle' | 'success' | 'error' | 'mismatch'>('idle');
   const [twoFactorEnabled,  setTwoFactorEnabled]  = useState(false);
   const [biometricEnabled,  setBiometricEnabled]  = useState(true);
+
+  const handleToggleBiometric = async () => {
+    if (!biometricEnabled) {
+      // Logic to Disable (UI Only for now)
+      setBiometricEnabled(false);
+      return;
+    }
+
+    // Logic to Enable (Register)
+    try {
+      // 1. Get options
+      const optionsRes = await fetch(`${(import.meta as any).env?.VITE_API_URL ?? ''}/api/auth/webauthn/register/options`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: userProfile.email, name: userProfile.name })
+      });
+      const options = await optionsRes.json();
+
+      // 2. Browser prompt
+      const { startRegistration } = await import('@simplewebauthn/browser');
+      const regResponse = await startRegistration(options);
+
+      // 3. Verify
+      const verifyRes = await fetch(`${(import.meta as any).env?.VITE_API_URL ?? ''}/api/auth/webauthn/register/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(regResponse)
+      });
+
+      if (verifyRes.ok) {
+        setBiometricEnabled(true);
+      }
+    } catch (err) {
+      console.error('Biometric registration failed:', err);
+      // Revert toggle
+    }
+  };
   const [privacyMode,       setPrivacyMode]       = useState(false);
 
   const handlePasswordChange = async () => {
@@ -227,11 +264,22 @@ export const SettingsPage: React.FC = () => {
       confirmLabel: 'Delete Everything',
       requireConfirmText: 'DELETE',
       isDestructive: true,
-      onConfirm: () => {
-        clearDataForNewUser();
-        // Also wipe local storage cache specifically
-        localStorage.removeItem('yugi_finance_data');
-        window.location.href = '/';
+      onConfirm: async () => {
+        try {
+          // 1. Delete from Backend (Cascading)
+          await fetch(`${(import.meta as any).env?.VITE_API_URL ?? ''}/api/finance/user-profiles/${userProfile.id}`, {
+            method: 'DELETE'
+          });
+
+          // 2. Clear local data
+          clearDataForNewUser();
+          localStorage.removeItem('yugi_finance_data');
+          window.location.href = '/';
+        } catch (err) {
+          console.error('Failed to delete account on server:', err);
+          // Still clear local for security if requested? 
+          // Usually we want to at least notify if server failed.
+        }
       }
     });
   };
@@ -472,7 +520,7 @@ export const SettingsPage: React.FC = () => {
                 <h4 className="font-bold text-sm text-white/50 uppercase tracking-widest">Access Controls</h4>
                 {[
                   { checked: twoFactorEnabled,  onChange: () => setTwoFactorEnabled((p)  => !p), Icon: SmartphoneNfc, label: 'Two-Factor Authentication', sub: twoFactorEnabled  ? 'Enabled · Shield Level 2'   : 'Disabled · Recommended',   color: twoFactorEnabled  ? 'text-accent'    : 'text-white/30', bg: twoFactorEnabled  ? 'bg-accent/20'    : 'bg-white/5' },
-                  { checked: biometricEnabled,  onChange: () => setBiometricEnabled((p)  => !p), Icon: Fingerprint,   label: 'Biometric Login',           sub: biometricEnabled  ? 'Active · Synced with OS'    : 'Inactive',                  color: biometricEnabled  ? 'text-positive'  : 'text-white/30', bg: biometricEnabled  ? 'bg-positive/15'  : 'bg-white/5' },
+                  { checked: biometricEnabled,  onChange: handleToggleBiometric, Icon: Fingerprint,   label: 'Biometric Login',           sub: biometricEnabled  ? 'Active · Synced with OS'    : 'Inactive',                  color: biometricEnabled  ? 'text-positive'  : 'text-white/30', bg: biometricEnabled  ? 'bg-positive/15'  : 'bg-white/5' },
                   { checked: privacyMode,       onChange: () => setPrivacyMode((p)       => !p), Icon: Eye,           label: 'Privacy Mode',              sub: privacyMode       ? 'On · Amounts are masked'    : 'Off · Amounts visible',     color: privacyMode       ? 'text-yellow-400': 'text-white/30', bg: privacyMode       ? 'bg-yellow-500/15': 'bg-white/5' },
                 ].map(({ checked, onChange, Icon, label, sub, color, bg }) => (
                   <div key={label} className="flex items-center justify-between p-5 rounded-2xl bg-white/[0.02] border border-white/10 hover:border-white/15 transition-all">

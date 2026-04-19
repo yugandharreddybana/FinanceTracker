@@ -15,8 +15,10 @@ public class AuditLog {
     @Id
     private String id;
 
-    private String timestamp;
+    @Column(name = "user_id")
     private String userId;
+
+    private String timestamp;
     private String userName;
     private String action;
 

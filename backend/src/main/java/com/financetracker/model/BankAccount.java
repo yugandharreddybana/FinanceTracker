@@ -16,6 +16,9 @@ public class BankAccount {
     @Id
     private String id;
 
+    @Column(name = "user_id")
+    private String userId;
+
     private String name;
     private String type;
 

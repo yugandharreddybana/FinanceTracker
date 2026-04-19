@@ -16,6 +16,9 @@ public class Investment {
     @Id
     private String id;
 
+    @Column(name = "user_id")
+    private String userId;
+
     private String symbol;
     private String name;
     private String type;

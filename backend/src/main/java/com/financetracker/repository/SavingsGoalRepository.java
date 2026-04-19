@@ -2,6 +2,11 @@ package com.financetracker.repository;
 
 import com.financetracker.model.SavingsGoal;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.transaction.annotation.Transactional;
 
 public interface SavingsGoalRepository extends JpaRepository<SavingsGoal, String> {
+    @Modifying
+    @Transactional
+    void deleteByUserId(String userId);
 }

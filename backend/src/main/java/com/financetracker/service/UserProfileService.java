@@ -1,7 +1,7 @@
 package com.financetracker.service;
 
 import com.financetracker.model.UserProfile;
-import com.financetracker.repository.UserProfileRepository;
+import com.financetracker.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,6 +12,18 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class UserProfileService {
     private final UserProfileRepository repo;
+    private final TransactionRepository transactionRepo;
+    private final BankAccountRepository bankAccountRepo;
+    private final BudgetRepository budgetRepo;
+    private final AuditLogRepository auditLogRepo;
+    private final AuthenticatorRepository authenticatorRepo;
+    private final FamilyAccountRepository familyAccountRepo;
+    private final IncomeSourceRepository incomeSourceRepo;
+    private final InvestmentRepository investmentRepo;
+    private final LoanRepository loanRepo;
+    private final RecurringPaymentRepository recurringPaymentRepo;
+    private final SavingsGoalRepository savingsGoalRepo;
+    private final AppUserRepository appUserRepo;
 
     @Transactional(readOnly = true)
     public List<UserProfile> findAll() {
@@ -52,6 +64,21 @@ public class UserProfileService {
 
     @Transactional
     public void delete(String id) {
+        // Cascade delete all mapping data
+        transactionRepo.deleteByUserId(id);
+        bankAccountRepo.deleteByUserId(id);
+        budgetRepo.deleteByUserId(id);
+        auditLogRepo.deleteByUserId(id);
+        authenticatorRepo.deleteByUserId(id);
+        familyAccountRepo.deleteByOwnerId(id);
+        incomeSourceRepo.deleteByUserId(id);
+        investmentRepo.deleteByUserId(id);
+        loanRepo.deleteByUserId(id);
+        recurringPaymentRepo.deleteByUserId(id);
+        savingsGoalRepo.deleteByUserId(id);
+        
+        // Finally delete profile and credentials
         repo.deleteById(id);
+        appUserRepo.deleteById(id);
     }
 }

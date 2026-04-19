@@ -20,6 +20,9 @@ public class RecurringPayment {
     @Id
     private String id;
 
+    @Column(name = "user_id")
+    private String userId;
+
     private String name;
 
     @Column(precision = 15, scale = 2)

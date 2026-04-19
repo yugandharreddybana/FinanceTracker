@@ -19,6 +19,9 @@ public class FamilyAccount {
     private String id;
 
     private String name;
+    
+    @Column(name = "owner_id")
+    private String ownerId;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
