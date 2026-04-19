@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
     root: 'src',
     envDir: path.resolve(__dirname, '../..'),
     build: {
-      outDir: '../dist',
+      outDir: path.resolve(__dirname, 'dist'),
       emptyOutDir: true,
     },
     plugins: [
