@@ -35,7 +35,7 @@ router.post("/register", authLimiter, (req: Request, res: Response) => {
     res.json({ user: result.user, token: result.token });
   } catch (err: any) {
     if (err.message === "An account with this email already exists") {
-      res.status(409).json({ error: err.message });
+      res.status(409).json({ error: "An account with this email already exists. Please login instead." });
     } else {
       res.status(500).json({ error: "Registration failed" });
     }
