@@ -17,19 +17,25 @@ async function startServer() {
   // ---------------------------------------------------------------------------
   const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:3000")
     .split(",")
-    .map((o) => o.trim());
+    .map((o) => o.trim().replace(/\/$/, "")); // Remove trailing slashes
 
   app.use(
     cors({
       origin: (origin, callback) => {
-        // Allow requests with no origin (server-to-server, curl, health checks)
-        if (!origin || allowedOrigins.includes(origin)) {
+        // Allow requests with no origin (like mobile apps or curl)
+        if (!origin) return callback(null, true);
+        
+        const normalizedOrigin = origin.replace(/\/$/, "");
+        if (allowedOrigins.includes(normalizedOrigin)) {
           callback(null, true);
         } else {
+          console.error(`CORS Blocked: Origin "${origin}" not in [${allowedOrigins.join(", ")}]`);
           callback(new Error("Not allowed by CORS"));
         }
       },
       credentials: true,
+      methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"]
     })
   );
 
