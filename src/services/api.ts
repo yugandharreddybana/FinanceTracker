@@ -1,6 +1,22 @@
 import { Transaction, BankAccount, Budget, Loan, SavingsGoal, RecurringPayment, IncomeSource } from '../types';
 
-const API_BASE = `${(import.meta as any).env?.VITE_API_URL ?? 'http://localhost:8080'}/api/finance`;
+const getApiBase = () => {
+  const env = (import.meta as any).env;
+  const url = env?.VITE_API_URL;
+  
+  if (url) return `${url}/api/finance`;
+  
+  // In development, default to localhost
+  if (env?.MODE === 'development') {
+    return 'http://localhost:8080/api/finance';
+  }
+  
+  // In production, if VITE_API_URL is missing, we try a relative path 
+  // to avoid hitting the loopback/localhost and causing browser blocks.
+  return '/api/finance';
+};
+
+const API_BASE = getApiBase();
 
 export const financeApi = {
   // Transactions

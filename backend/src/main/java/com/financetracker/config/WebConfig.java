@@ -18,9 +18,14 @@ public class WebConfig {
         return new WebMvcConfigurer() {
             @Override
             public void addCorsMappings(@NonNull CorsRegistry registry) {
-                String[] origins = allowedOrigins != null ? allowedOrigins.split(",") : new String[]{"http://localhost:3000"};
+                // Allow both the configured origins AND any railway.app subdomain
                 registry.addMapping("/api/**")
-                        .allowedOrigins(origins)
+                        .allowedOriginPatterns(
+                            "http://localhost:3000",
+                            "http://localhost:5173",
+                            "https://*.up.railway.app",
+                            allowedOrigins != null ? allowedOrigins : "http://localhost:3000"
+                        )
                         .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                         .allowedHeaders("*")
                         .allowCredentials(true);
