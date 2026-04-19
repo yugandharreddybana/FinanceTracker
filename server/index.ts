@@ -9,31 +9,29 @@ import { investmentRouter } from "./routes/investment.js";
 import { authRouter } from "./routes/auth.js";
 
 async function startServer() {
-  console.log("-------------------------------------------------------------------");
-  console.log("MIDDLEWARE STARTUP DIAGNOSTICS");
-  console.log("- Timestamp:", new Date().toISOString());
-  console.log("- Node Version:", process.version);
-  console.log("- Working Dir:", process.cwd());
-  console.log("- PORT:", process.env.PORT || 4000);
-  console.log("- Backend Target:", process.env.VITE_API_URL || "localhost:8080");
-  console.log("-------------------------------------------------------------------");
-
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT) : 4000;
+  // IMPORTANT: Priority on the PORT environment variable from Railway
+  const PORT = process.env.PORT || 4000;
 
-  // ---------------------------------------------------------------------------
-  // 1. MANUAL CORS HEADERS (Must be first)
-  // ---------------------------------------------------------------------------
+  console.log("-------------------------------------------------------------------");
+  console.log("DEPLOYMENT DIAGNOSTICS");
+  console.log("- Listening on PORT:", PORT);
+  console.log("- Node Version:", process.version);
+  console.log("-------------------------------------------------------------------");
+
+  // 1. MEGA LOGGER & CORS (Must be first line of code)
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    // Allow all origins for the deployment phase to guarantee connectivity
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - Origin: ${origin}`);
+    
+    // Nuclear CORS headers - set on EVERY request no matter what
     res.setHeader('Access-Control-Allow-Origin', origin || '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
 
-    // Handle Preflight (OPTIONS)
     if (req.method === 'OPTIONS') {
+      console.log(`[CORS] Handled preflight for: ${req.path}`);
       return res.status(200).end();
     }
     next();
@@ -41,44 +39,29 @@ async function startServer() {
 
   app.use(express.json());
 
-  // ---------------------------------------------------------------------------
   // 2. Routes
-  // ---------------------------------------------------------------------------
   app.use("/api/auth", authRouter);
   app.use("/api/finance", financeRouter);
   app.use("/api/ai", aiRouter);
   app.use("/api/investment", investmentRouter);
 
-  // Health check
   app.get("/api/health", (_req, res) => {
-    res.json({
-      status: "ok",
-      service: "middleware",
-      backend_url: process.env.VITE_API_URL || "not configured",
-    });
+    res.json({ status: "ok", port: PORT });
   });
 
-  // ---------------------------------------------------------------------------
-  // 3. GLOBAL ERROR HANDLER (Must be last)
-  // ---------------------------------------------------------------------------
+  // 3. Last-Resort Error Handler
   app.use((err: any, req: any, res: any, next: any) => {
-    console.error('CRITICAL SERVER ERROR:', err);
-    // Ensure headers aren't already sent before adding CORS
+    console.error('SERVER CRASH PREVENTED:', err.message);
     if (!res.headersSent) {
-      const origin = req.headers.origin;
-      res.setHeader('Access-Control-Allow-Origin', origin || '*');
+      res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
       res.setHeader('Access-Control-Allow-Credentials', 'true');
     }
-    res.status(err.status || 500).json({ 
-      error: 'Internal Server Error',
-      message: err.message,
-      path: req.path
-    });
+    res.status(500).json({ error: 'Server Error', message: err.message });
   });
 
+  // Bind to 0.0.0.0 to ensure Railway can see the service
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Middleware service running on port ${PORT}`);
-    console.log(`Configured backend: ${process.env.VITE_API_URL || "localhost:8080"}`);
+    console.log(`>>> SERVER LIVE ON PORT ${PORT} <<<`);
   });
 }
 
