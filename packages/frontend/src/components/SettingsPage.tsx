@@ -267,7 +267,7 @@ export const SettingsPage: React.FC = () => {
       onConfirm: async () => {
         try {
           // 1. Delete from Backend (Cascading)
-          await fetch(`${(import.meta as any).env?.VITE_API_URL ?? ''}/api/finance/user-profiles/${userProfile.id}`, {
+          await fetch(`${(import.meta as any).env?.VITE_API_URL ?? ''}/api/finance/user-profiles/${userProfile.email}`, {
             method: 'DELETE'
           });
 

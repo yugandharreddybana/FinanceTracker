@@ -4,7 +4,8 @@ import { Share2, Download, Sparkles, TrendingUp, Award, Zap, TrendingDown, Alert
 import { useFinance } from '../context/FinanceContext';
 
 export const MonthlyReview: React.FC = () => {
-  const { transactions, savingsGoals, accounts, loans } = useFinance();
+  const { transactions, savingsGoals, accounts, loans, userProfile } = useFinance();
+  const currency = userProfile.preferences.currency || 'INR';
 
   const review = useMemo(() => {
     const now = new Date();

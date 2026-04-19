@@ -4,7 +4,7 @@ import { useFinance } from '../context/FinanceContext';
 import { cn } from '../lib/utils';
 import { Budget } from '../types';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, AreaChart, Area } from 'recharts';
-import { TrendingUp, AlertCircle, Sparkles, Home, Utensils, Car, Film, ShoppingBag, Smartphone, Zap, Heart, GraduationCap, MoreHorizontal, Plane, Gift, ShieldCheck, Wallet, Coffee, Plus, PieChart as PieChartIcon, Calendar, ArrowUpDown, Pencil, Trash2 } from 'lucide-react';
+import { TrendingUp, AlertCircle, Sparkles, Home, Utensils, Car, Film, ShoppingBag, Smartphone, Zap, Heart, GraduationCap, MoreHorizontal, Plane, Gift, ShieldCheck, Wallet, Coffee, Plus, PieChart as PieChartIcon, Calendar, ArrowUpDown, Pencil, Trash2, ChevronDown } from 'lucide-react';
 import { WORLD_CURRENCIES } from '../constants/currencies';
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
@@ -58,6 +58,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
   const [selectedCategory, setSelectedCategory] = React.useState<string | null>(null);
   const [isProcessingRollover, setIsProcessingRollover] = React.useState(false);
   const [sortBy, setSortBy] = React.useState<'category' | 'limit' | 'spent' | 'dueDate'>('category');
+  const [deleteConfirmId, setDeleteConfirmId] = React.useState<string | null>(null);
 
   const sortedBudgets = [...budgets]
     .filter(b => (b.currency || 'INR') === selectedCurrency)
