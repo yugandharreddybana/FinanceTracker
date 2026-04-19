@@ -1,16 +1,16 @@
-import { Transaction, BankAccount, Budget, Loan, SavingsGoal, RecurringPayment, IncomeSource } from '../types';
+import { Transaction, BankAccount, Budget, Loan, SavingsGoal, RecurringPayment, IncomeSource, Investment } from '../types';
 
 const getApiBase = () => {
   const env = (import.meta as any).env;
   const url = env?.VITE_API_URL;
-  
+
   if (url) return `${url}/api/finance`;
-  
+
   // In development, default to localhost
   if (env?.MODE === 'development') {
     return 'http://localhost:8080/api/finance';
   }
-  
+
   // In production, if VITE_API_URL is missing, we try a relative path 
   // to avoid hitting the loopback/localhost and causing browser blocks.
   return '/api/finance';
@@ -21,14 +21,14 @@ const API_BASE = getApiBase();
 const getMiddlewareBase = () => {
   const env = (import.meta as any).env;
   const url = env?.VITE_MIDDLEWARE_URL;
-  
+
   if (url) return url;
-  
+
   // In development, default to localhost:4000
   if (env?.MODE === 'development') {
     return 'http://localhost:4000';
   }
-  
+
   // Fallback for production: try to use the same domain 
   // or a relative path if middleware is not separately defined.
   return `${window.location.origin}/api/middleware`;

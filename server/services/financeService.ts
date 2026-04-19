@@ -6,7 +6,7 @@ import {
   MOCK_SAVINGS_GOALS, 
   MOCK_RECURRING,
   MOCK_INCOME 
-} from "../../src/constants.ts";
+} from "../lib/constants.ts";
 
 class FinanceService {
   transactions = [...MOCK_TRANSACTIONS];
