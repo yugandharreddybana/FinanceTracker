@@ -13,33 +13,33 @@ async function startServer() {
   const PORT = process.env.PORT ? parseInt(process.env.PORT) : 4000;
 
   // ---------------------------------------------------------------------------
-  // CORS — strict origin whitelist
+  // CORS Configuration
   // ---------------------------------------------------------------------------
-  const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:3000")
-    .split(",")
-    .map((o) => o.trim().replace(/\/$/, "")); 
+  app.use(cors({
+    origin: true, // Reflect the request origin (Allow All)
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
+  }));
 
-  console.log("CORS Configuration:");
-  console.log("- Allowed Origins:", allowedOrigins);
-
-  app.use(
-    cors({
-      origin: (origin, callback) => {
-        // Reflection: If it's Vercel or Localhost, just say yes.
-        if (!origin || origin.endsWith(".vercel.app") || origin.includes("localhost")) {
-          callback(null, true);
-        } else {
-          // For anything else, allow it for now to get unblocked
-          callback(null, true); 
-        }
-      },
-      credentials: true,
-      methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-      allowedHeaders: ["Content-Type", "Authorization"]
-    })
-  );
+  // Manual Preflight handler to ensure OPTIONS requests never fail CORS
+  app.options('*', (req, res) => {
+    res.header('Access-Control-Allow-Origin', req.header('Origin') || '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.status(200).send();
+  });
 
   app.use(express.json());
+
+  // Global error handler to ensure Errors have CORS headers (prevents CORS-blocked 500s)
+  app.use((err: any, req: any, res: any, next: any) => {
+    res.header('Access-Control-Allow-Origin', req.header('Origin') || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    console.error('Unhandled Error:', err);
+    res.status(err.status || 500).json({ error: err.message || 'Internal Server Error' });
+  });
 
   // ---------------------------------------------------------------------------
   // Routes
