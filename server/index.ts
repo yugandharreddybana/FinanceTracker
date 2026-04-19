@@ -3,10 +3,10 @@ import cors from "cors";
 import dotenv from "dotenv";
 dotenv.config();
 
-import { financeRouter } from "./routes/finance.ts";
-import { aiRouter } from "./routes/ai.ts";
-import { investmentRouter } from "./routes/investment.ts";
-import { authRouter } from "./routes/auth.ts";
+import { financeRouter } from "./routes/finance";
+import { aiRouter } from "./routes/ai";
+import { investmentRouter } from "./routes/investment";
+import { authRouter } from "./routes/auth";
 
 async function startServer() {
   console.log("-------------------------------------------------------------------");
