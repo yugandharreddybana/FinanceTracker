@@ -19,3 +19,6 @@ coverage/
 
 # H2 local database files (dev profile)
 backend/data/
+
+# Server compiled output
+server/dist/

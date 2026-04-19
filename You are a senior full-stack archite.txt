@@ -1,0 +1,234 @@
+You are a senior full-stack architect. I need you to completely fix my 
+FinanceTracker application. It has critical deployment and structural issues.
+
+Repository is open in the current working directory. Read ALL files first.
+
+## CRITICAL FIXES REQUIRED — IN THIS ORDER:
+
+### FIX 1: RESTRUCTURE INTO PROPER MONOREPO
+Current problem: root package.json mixes frontend + server dependencies causing 
+build failures. Two separate package.json files with no workspace config.
+
+Required structure:
+
+/
+├── package.json ← root workspace config ONLY (no deps, just workspaces)
+├── packages/
+│ └── frontend/ ← move all /src, vite.config.ts, index.html, tsconfig here
+│ ├── package.json ← ONLY frontend deps (react, vite, tailwind, etc.)
+│ ├── vite.config.ts
+│ └── src/
+├── server/ ← keep as-is but fix (Node.js middleware)
+│ ├── package.json ← ONLY server deps (express, cors, tsx, etc.)
+│ └── ...
+└── backend/ ← Spring Boot (keep as-is)
+
+
+Root package.json:
+```json
+{
+  "name": "finance-tracker",
+  "private": true,
+  "workspaces": ["packages/frontend", "server"],
+  "scripts": {
+    "dev:frontend": "npm run dev -w packages/frontend",
+    "dev:server": "npm run dev -w server",
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:server\"",
+    "build:frontend": "npm run build -w packages/frontend",
+    "build": "npm run build:frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}
+```
+
+### FIX 2: FIX THE API ROUTING — ALL CALLS MUST GO THROUGH MIDDLEWARE
+Current problem: frontend calls Spring Boot directly for finance data, 
+bypassing the Node middleware entirely.
+
+In packages/frontend/src/services/api.ts:
+- ALL finance calls (transactions, accounts, budgets, loans, goals, etc.) 
+  must go to VITE_MIDDLEWARE_URL (Node server, port 4000)
+- Node middleware then proxies to Spring Boot (VITE_API_URL, port 8080)
+- Remove the separate API_BASE pointing to Spring Boot from the frontend
+- Add Authorization header with JWT token to ALL API calls
+
+Fix the getMiddlewareBase() function:
+```ts
+const getMiddlewareBase = () => {
+  const url = import.meta.env.VITE_MIDDLEWARE_URL;
+  if (url) return url;
+  if (import.meta.env.DEV) return 'http://localhost:4000';
+  return ''; // Use relative paths in production
+};
+```
+
+Update ALL api calls to use middleware base and include auth headers:
+```ts
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('auth_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+};
+```
+
+### FIX 3: FIX NODE SERVER — ADD PROXY TO SPRING BOOT
+Current problem: Node server stores data in-memory (lost on restart) and 
+doesn't proxy to Spring Boot.
+
+In server/routes/finance.ts — replace the in-memory storage with 
+proper HTTP proxy calls to Spring Boot:
+```ts
+import fetch from 'node-fetch'; // or use built-in fetch (Node 18+)
+
+const BACKEND_URL = process.env.VITE_API_URL || 'http://localhost:8080';
+
+router.get('/transactions', async (req, res) => {
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/finance/transactions`, {
+      headers: { 
+        Authorization: req.headers.authorization || '',
+        'Content-Type': 'application/json'
+      }
+    });
+    const data = await response.json();
+    res.status(response.status).json(data);
+  } catch (err) {
+    res.status(502).json({ error: 'Backend unavailable' });
+  }
+});
+// Repeat this pattern for ALL routes (DELETE, PUT, POST)
+// DELETE must forward the id correctly: DELETE /transactions/:id → backend DELETE /api/finance/transactions/:id
+```
+
+### FIX 4: FIX CORS IN SERVER
+Replace:
+```ts
+app.use(cors());
+```
+With:
+```ts
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
+  .split(',')
+  .map(o => o.trim());
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+}));
+```
+
+### FIX 5: FIX .TS IMPORT EXTENSIONS IN SERVER
+In all server files, change imports from:
+```ts
+import { financeRouter } from "./routes/finance.ts";
+```
+To:
+```ts
+import { financeRouter } from "./routes/finance.js";
+```
+And add to server/tsconfig.json:
+```json
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "./dist",
+    "rootDir": "./",
+    "strict": true,
+    "esModuleInterop": true
+  }
+}
+```
+Update server/package.json scripts:
+```json
+"scripts": {
+  "dev": "tsx watch index.ts",
+  "build": "tsc",
+  "start": "node dist/index.js"
+}
+```
+
+### FIX 6: FIX DUPLICATE FILES
+- Delete /index.html at root (Vite uses src/index.html as root is set to 'src')
+- Merge src/constants.ts INTO src/constants/ folder, delete src/constants.ts
+- Keep only one source of truth for each
+
+### FIX 7: FIX VERCEL DEPLOYMENT
+Replace vercel.json with:
+```json
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "packages/frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "routes": [
+    { "src": "/assets/(.*)", "dest": "/assets/$1" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}
+```
+Note: The Node.js server CANNOT run on Vercel as a long-running process.
+Deploy it separately to Railway or Render. Add a Railway config:
+- Create railway.json in /server/:
+```json
+{
+  "build": { "builder": "NIXPACKS" },
+  "deploy": { "startCommand": "npm run start", "healthcheckPath": "/api/health" }
+}
+```
+
+### FIX 8: UPDATE .ENV.EXAMPLE — UNIFIED AND CORRECT
+```env
+# === FRONTEND (Vite) ===
+VITE_MIDDLEWARE_URL=http://localhost:4000    # Node.js server URL
+# DO NOT set VITE_API_URL in frontend — frontend never talks to Spring Boot directly
+
+# === NODE MIDDLEWARE (server/) ===
+PORT=4000
+JWT_SECRET=your-64-char-random-secret
+ALLOWED_ORIGINS=http://localhost:3000,https://your-frontend.vercel.app
+VITE_API_URL=http://localhost:8080          # Spring Boot URL (used by server only)
+GEMINI_API_KEY=your-gemini-key
+ALPHA_VANTAGE_API_KEY=your-alpha-vantage-key
+
+# === SPRING BOOT (backend/) ===
+DB_URL=jdbc:postgresql://...
+DB_USERNAME=postgres.your-ref
+DB_PASSWORD=your-password
+DDL_AUTO=validate
+ALLOWED_ORIGINS=http://localhost:4000       # Only allow Node middleware, not frontend
+```
+
+### FIX 9: ADD MISSING AUTH TOKEN STORAGE IN FRONTEND
+In src/context (auth context), after successful login store token:
+```ts
+localStorage.setItem('auth_token', response.token);
+```
+And on logout:
+```ts
+localStorage.removeItem('auth_token');
+```
+
+### AFTER ALL FIXES:
+1. Run `npm install` from root
+2. Run `npm run build` — verify no TypeScript errors
+3. Confirm all API calls in browser devtools show 200s through middleware
+4. Confirm DELETE works end-to-end: frontend → middleware → Spring Boot → DB
+5. Show me the complete updated file for every file you changed.

@@ -4,13 +4,18 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY environment variable is required");
-
 const router = Router();
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+let genAI: any = null;
+if (process.env.GEMINI_API_KEY) {
+  genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+} else {
+  console.warn("GEMINI_API_KEY not set — AI endpoints will return 503");
+}
 
 router.post("/insights", async (req, res) => {
   try {
+    if (!genAI) return res.status(503).json({ error: "AI service not configured" });
     const { transactions, selectedBank } = req.body;
     
     const prompt = `Based on these transactions: ${JSON.stringify(transactions)}, generate 4 personalized financial insights. 
@@ -37,6 +42,7 @@ router.post("/insights", async (req, res) => {
 
 router.post("/chat", async (req, res) => {
   try {
+    if (!genAI) return res.status(503).json({ error: "AI service not configured" });
     const { message, history, transactions } = req.body;
     
     const systemInstruction = "You are the Yugi Oracle, a premium financial AI. You have access to real-time transaction data. Always be professional, insightful, and proactive. User context: The user's name is Yugandhar. Current financial data is provided in the context.";
@@ -69,6 +75,7 @@ router.post("/chat", async (req, res) => {
 
 router.post("/forecast", async (req, res) => {
   try {
+    if (!genAI) return res.status(503).json({ error: "AI service not configured" });
     const { currentNetWorth, monthlySavings, riskProfile } = req.body;
     const result = await (genAI as any).models.generateContent({
       model: "gemini-2.0-flash",
@@ -87,6 +94,7 @@ router.post("/forecast", async (req, res) => {
 
 router.post("/tax-suggestions", async (req, res) => {
   try {
+    if (!genAI) return res.status(503).json({ error: "AI service not configured" });
     const { spendingData } = req.body;
     const result = await (genAI as any).models.generateContent({
       model: "gemini-2.0-flash",

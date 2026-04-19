@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { Sparkles, Mail, Lock, User, ArrowRight, Loader2, AlertCircle, ShieldCheck } from 'lucide-react';
 
 interface SignupPageProps {
-  onSignup: (name: string, email: string) => void;
+  onSignup: (name: string, email: string, token?: string) => void;
   onSwitchToLogin: () => void;
   onBackToHome: () => void;
 }
@@ -40,11 +40,8 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onSwitchToLogi
       const { authApi } = await import('../services/api');
       const result = await authApi.register(name, email, password);
       
-      // Store token if returned
-      if (result.token) sessionStorage.setItem('auth_token', result.token);
-      
       setIsLoading(false);
-      onSignup(name, result.user?.email || email);
+      onSignup(name, result.user?.email || email, result.token);
     } catch (err: any) {
       console.error('Signup Error:', err);
       setError(err.message || 'Registration failed. Please check your connection.');

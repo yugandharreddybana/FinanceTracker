@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { Sparkles, Mail, Lock, ArrowRight, Loader2, AlertCircle, Fingerprint } from 'lucide-react';
 
 interface LoginPageProps {
-  onLogin: (email: string) => void;
+  onLogin: (email: string, token?: string, name?: string) => void;
   onSwitchToSignup: () => void;
   onForgotPassword: () => void;
   onBackToHome: () => void;
@@ -73,11 +73,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
       const { authApi } = await import('../services/api');
       const result = await authApi.login(email, password);
       
-      // Store token if returned
-      if (result.token) sessionStorage.setItem('auth_token', result.token);
-      
       setIsLoading(false);
-      onLogin(result.user?.email || email);
+      onLogin(result.user?.email || email, result.token, result.user?.name);
     } catch (err: any) {
       console.error('Login Error:', err);
       setError(err.message || 'Login failed. Please check your connection.');

@@ -60,9 +60,10 @@ function MainApp() {
     localStorage.setItem('yugi_finance_active_tab', activeTab);
   }, [activeTab]);
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
-    // Persistent Login: Check if a session exists and hasn't expired
+    // Persistent Login: Check if a session and auth token both exist
     const session = localStorage.getItem('yugi_finance_session');
-    if (session) {
+    const token = localStorage.getItem('auth_token');
+    if (session && token) {
       const { timestamp } = JSON.parse(session);
       const oneHour = 60 * 60 * 1000;
       if (Date.now() - timestamp < oneHour) {
@@ -198,20 +199,24 @@ function MainApp() {
     };
   }, [isLoggedIn]);
 
-  const handleLogin = (email: string) => {
+  const handleLogin = (email: string, token?: string, name?: string) => {
+    // Store auth token for API calls
+    if (token) localStorage.setItem('auth_token', token);
     // Session persistent for 1 hr
     localStorage.setItem('yugi_finance_session', JSON.stringify({ 
       timestamp: Date.now() 
     }));
     clearDataForNewUser();
-    updateUserProfile({ email, name: email.split('@')[0] });
+    updateUserProfile({ email, name: name || email.split('@')[0] });
     setIsLoggedIn(true);
     setActiveTab('dashboard');
     refreshData();
     navigate('/dashboard');
   };
 
-  const handleSignup = (name: string, email: string) => {
+  const handleSignup = (name: string, email: string, token?: string) => {
+    // Store auth token for API calls
+    if (token) localStorage.setItem('auth_token', token);
     // Session persistent for 1 hr
     localStorage.setItem('yugi_finance_session', JSON.stringify({ 
       timestamp: Date.now() 
@@ -226,6 +231,7 @@ function MainApp() {
 
   const handleLogout = () => {
     localStorage.removeItem('yugi_finance_session');
+    localStorage.removeItem('auth_token');
     clearDataForNewUser();
     setIsLoggedIn(false);
     navigate('/');
