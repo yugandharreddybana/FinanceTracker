@@ -65,4 +65,15 @@ async function startServer() {
   });
 }
 
-startServer();
+// Global Process Shield - Catch errors that normally kill the server silently
+process.on('uncaughtException', (err) => {
+  console.error('[STABILITY SHIELD] Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[STABILITY SHIELD] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+startServer().catch(err => {
+  console.error("[STABILITY SHIELD] startServer failed:", err);
+});
