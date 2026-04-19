@@ -37,6 +37,8 @@ const getMiddlewareBase = () => {
 const MIDDLEWARE_BASE = getMiddlewareBase();
 
 export { API_BASE, MIDDLEWARE_BASE };
+
+export const financeApi = {
   // Transactions
   getTransactions: async (): Promise<Transaction[]> => {
     const res = await fetch(`${API_BASE}/transactions`);
