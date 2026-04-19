@@ -5,10 +5,16 @@ import { Transaction, BankAccount, Budget, Loan, SavingsGoal, RecurringPayment, 
 // ---------------------------------------------------------------------------
 
 const getMiddlewareBase = () => {
-  const url = import.meta.env.VITE_MIDDLEWARE_URL;
-  if (url) return url;
+  let url = import.meta.env.VITE_MIDDLEWARE_URL;
+  if (url) {
+    // Ensure it's an absolute URL
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = `https://${url}`;
+    }
+    return url;
+  }
   if (import.meta.env.DEV) return 'http://localhost:4000';
-  return ''; // relative paths in production
+  return window.location.origin;
 };
 
 const MIDDLEWARE_BASE = getMiddlewareBase();
