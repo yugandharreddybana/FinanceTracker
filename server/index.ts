@@ -9,6 +9,15 @@ import { investmentRouter } from "./routes/investment.ts";
 import { authRouter } from "./routes/auth.ts";
 
 async function startServer() {
+  console.log("-------------------------------------------------------------------");
+  console.log("MIDDLEWARE STARTUP DIAGNOSTICS");
+  console.log("- Timestamp:", new Date().toISOString());
+  console.log("- Node Version:", process.version);
+  console.log("- Working Dir:", process.cwd());
+  console.log("- PORT:", process.env.PORT || 4000);
+  console.log("- Backend Target:", process.env.VITE_API_URL || "localhost:8080");
+  console.log("-------------------------------------------------------------------");
+
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT) : 4000;
 
