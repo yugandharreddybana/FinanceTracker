@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { rateLimit } from "express-rate-limit";
-import { registerUser, loginUser, findUserByEmail } from "../lib/auth.ts";
+import { registerUser, loginUser, findUserByEmail } from "../lib/auth.js";
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes

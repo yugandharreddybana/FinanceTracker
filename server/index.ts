@@ -1,5 +1,4 @@
 import express from "express";
-import cors from "cors";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -10,8 +9,8 @@ import { authRouter } from "./routes/auth.js";
 
 async function startServer() {
   const app = express();
-  // IMPORTANT: Priority on the PORT environment variable from Railway
-  const PORT = process.env.PORT || 4000;
+  // Ensure PORT is a number for Railway's process environment
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4000;
 
   console.log("-------------------------------------------------------------------");
   console.log("DEPLOYMENT DIAGNOSTICS");
