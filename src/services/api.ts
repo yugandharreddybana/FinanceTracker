@@ -289,7 +289,7 @@ export const financeApi = {
 
   // AI Insights
   getAIInsights: async (transactions: any[], selectedBank: string): Promise<any[]> => {
-    const res = await fetch('/api/ai/insights', {
+    const res = await fetch(`${MIDDLEWARE_BASE}/api/ai/insights`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ transactions, selectedBank }),
@@ -298,12 +298,39 @@ export const financeApi = {
     return res.json();
   },
   sendAIChat: async (message: string, history: any[], transactions: any[]): Promise<{ content: string }> => {
-    const res = await fetch('/api/ai/chat', {
+    const res = await fetch(`${MIDDLEWARE_BASE}/api/ai/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, history, transactions }),
     });
     if (!res.ok) throw new Error('Failed to send AI chat');
+    return res.json();
+  },
+};
+
+export const authApi = {
+  login: async (email: string, password: string): Promise<any> => {
+    const res = await fetch(`${MIDDLEWARE_BASE}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || "Login failed");
+    }
+    return res.json();
+  },
+  register: async (name: string, email: string, password: string): Promise<any> => {
+    const res = await fetch(`${MIDDLEWARE_BASE}/api/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, email, password }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || "Registration failed");
+    }
     return res.json();
   },
 };

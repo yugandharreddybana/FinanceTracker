@@ -37,8 +37,7 @@ export const CashFlowForecast: React.FC = () => {
       
       currentBalance -= paymentsToday;
       
-      // Add some random daily fluctuation
-      currentBalance += (Math.random() - 0.5) * 100;
+      // Daily fluctuation removed for strict data integrity
 
       data.push({
         day: i,

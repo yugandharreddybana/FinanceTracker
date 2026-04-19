@@ -71,7 +71,7 @@ export const SpendingTrends: React.FC = () => {
             })
             .reduce((acc, t) => acc + Math.abs(t.amount), 0);
             
-          dataPoint[curr] = amount || (transactions.length > 0 ? 0 : Math.random() * 2000 + 1000);
+          dataPoint[curr] = amount;
         });
         data.push(dataPoint);
       }
@@ -91,7 +91,7 @@ export const SpendingTrends: React.FC = () => {
             })
             .reduce((acc, t) => acc + Math.abs(t.amount), 0);
             
-          dataPoint[curr] = amount || (transactions.length > 0 ? 0 : Math.random() * 100 + 50);
+          dataPoint[curr] = amount;
         });
         data.push(dataPoint);
       }

@@ -69,11 +69,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
     }
 
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      const { authApi } = await import('../services/api');
+      const result = await authApi.login(email, password);
+      
+      // Store token if returned
+      if (result.token) sessionStorage.setItem('auth_token', result.token);
+      
       setIsLoading(false);
-      onLogin(email);
-    }, 1500);
+      onLogin(result.user?.email || email);
+    } catch (err: any) {
+      console.error('Login Error:', err);
+      setError(err.message || 'Login failed. Please check your connection.');
+      setIsLoading(false);
+    }
   };
 
   return (

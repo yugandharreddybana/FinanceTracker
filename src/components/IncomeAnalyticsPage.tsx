@@ -193,9 +193,9 @@ export const IncomeAnalyticsPage: React.FC = () => {
           <div className="glass-card p-8 bg-accent/5 border-accent/20">
             <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-2">Total Monthly Income</p>
             <h4 className="text-4xl font-bold font-mono tracking-tighter mb-4">{totalIncome.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</h4>
-            <div className="flex items-center gap-1 text-positive text-xs font-bold">
-              <TrendingUp className="w-4 h-4" />
-              <span>+15% vs last year</span>
+            <div className="flex items-center gap-1 text-white/20 text-xs font-bold font-mono">
+              <Calendar className="w-4 h-4" />
+              <span>Current Period</span>
             </div>
           </div>
 

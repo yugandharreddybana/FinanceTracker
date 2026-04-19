@@ -36,11 +36,20 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onSwitchToLogi
     }
 
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      const { authApi } = await import('../services/api');
+      const result = await authApi.register(name, email, password);
+      
+      // Store token if returned
+      if (result.token) sessionStorage.setItem('auth_token', result.token);
+      
       setIsLoading(false);
-      onSignup(name, email);
-    }, 1500);
+      onSignup(name, result.user?.email || email);
+    } catch (err: any) {
+      console.error('Signup Error:', err);
+      setError(err.message || 'Registration failed. Please check your connection.');
+      setIsLoading(false);
+    }
   };
 
   return (
