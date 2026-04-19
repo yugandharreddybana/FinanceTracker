@@ -5,6 +5,8 @@ export interface AssetPrice {
   lastUpdated: string;
 }
 
+import { MIDDLEWARE_BASE } from './api';
+
 // Popular NSE stocks with approximate INR prices
 const NSE_MOCK_PRICES: Record<string, AssetPrice> = {
   'RELIANCE':    { symbol: 'RELIANCE',    price: 2921.45,  change24h: 1.2,  lastUpdated: new Date().toISOString() },
@@ -141,7 +143,7 @@ class InvestmentService {
 
     // Try the backend API as fallback for unknown symbols
     try {
-      const response = await fetch(`http://localhost:4000/api/investment/stock/${symbol}`);
+      const response = await fetch(`${MIDDLEWARE_BASE}/api/investment/stock/${symbol}`);
       if (response.ok) {
         const data = await response.json();
         this.prices[symbol] = data;

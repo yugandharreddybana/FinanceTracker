@@ -18,7 +18,25 @@ const getApiBase = () => {
 
 const API_BASE = getApiBase();
 
-export const financeApi = {
+const getMiddlewareBase = () => {
+  const env = (import.meta as any).env;
+  const url = env?.VITE_MIDDLEWARE_URL;
+  
+  if (url) return url;
+  
+  // In development, default to localhost:4000
+  if (env?.MODE === 'development') {
+    return 'http://localhost:4000';
+  }
+  
+  // Fallback for production: try to use the same domain 
+  // or a relative path if middleware is not separately defined.
+  return `${window.location.origin}/api/middleware`;
+};
+
+const MIDDLEWARE_BASE = getMiddlewareBase();
+
+export { API_BASE, MIDDLEWARE_BASE };
   // Transactions
   getTransactions: async (): Promise<Transaction[]> => {
     const res = await fetch(`${API_BASE}/transactions`);

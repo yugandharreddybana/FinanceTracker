@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { Transaction, SavingsGoal, RecurringPayment, Loan, Budget, BankAccount, IncomeSource, UserProfile, Investment, AuditLog, FamilyAccount } from '../types';
-import { financeApi } from '../services/api';
+import { financeApi, MIDDLEWARE_BASE } from '../services/api';
 import { currencyService } from '../services/currencyService';
 
 interface FinanceContextType {
@@ -499,7 +499,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Sync transactions to server for MCP tools
   React.useEffect(() => {
-    fetch('http://localhost:4000/api/finance/sync-transactions', {
+    fetch(`${MIDDLEWARE_BASE}/api/finance/sync-transactions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ transactions })

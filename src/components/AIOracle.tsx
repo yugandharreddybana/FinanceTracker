@@ -4,6 +4,7 @@ import { Sparkles, Send, X, MessageSquare, Loader2, Mic, MicOff } from 'lucide-r
 import { cn } from '../lib/utils';
 import { GoogleGenAI } from "@google/genai";
 import { MCPClient } from '../services/mcpClient';
+import { MIDDLEWARE_BASE } from '../services/api';
 import DeleteModal from './DeleteModal';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -34,7 +35,7 @@ export const AIOracle: React.FC = () => {
       
       try {
         // Initialize MCP Client
-        const mcp = new MCPClient('http://localhost:4000/api/finance/mcp/sse');
+        const mcp = new MCPClient(`${MIDDLEWARE_BASE}/api/finance/mcp/sse`);
         await mcp.connect();
         mcpClientRef.current = mcp;
 
