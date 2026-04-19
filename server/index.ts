@@ -17,19 +17,27 @@ async function startServer() {
   // ---------------------------------------------------------------------------
   const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:3000")
     .split(",")
-    .map((o) => o.trim().replace(/\/$/, "")); // Remove trailing slashes
+    .map((o) => o.trim().replace(/\/$/, "")); 
+
+  console.log("CORS Configuration:");
+  console.log("- Allowed Origins:", allowedOrigins);
 
   app.use(
     cors({
       origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or curl)
         if (!origin) return callback(null, true);
         
         const normalizedOrigin = origin.replace(/\/$/, "");
-        if (allowedOrigins.includes(normalizedOrigin)) {
+        
+        // Super-forgiving check: allow if in list OR if it's a vercel.app subdomain
+        if (
+          allowedOrigins.includes(normalizedOrigin) || 
+          normalizedOrigin.endsWith(".vercel.app") ||
+          normalizedOrigin.includes("localhost")
+        ) {
           callback(null, true);
         } else {
-          console.error(`CORS Blocked: Origin "${origin}" not in [${allowedOrigins.join(", ")}]`);
+          console.error(`CORS Blocked: Origin "${origin}" not allowed.`);
           callback(new Error("Not allowed by CORS"));
         }
       },
