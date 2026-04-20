@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useFinance } from '../context/FinanceContext';
+import { MIDDLEWARE_BASE } from '../services/api';
 import DeleteModal from './DeleteModal';
 
 type SectionId = 'profile' | 'preferences' | 'notifications' | 'security' | 'billing' | 'data';
@@ -161,39 +162,42 @@ export const SettingsPage: React.FC = () => {
   const [biometricEnabled,  setBiometricEnabled]  = useState(true);
 
   const handleToggleBiometric = async () => {
-    if (!biometricEnabled) {
-      // Logic to Disable (UI Only for now)
-      setBiometricEnabled(false);
+    if (biometricEnabled) {
+      try {
+        const res = await fetch(
+          `${MIDDLEWARE_BASE}/api/auth/webauthn/credentials?email=${encodeURIComponent(userProfile.email)}`,
+          { method: 'DELETE', credentials: 'include' }
+        );
+        if (res.ok || res.status === 404) setBiometricEnabled(false);
+        else console.error('Disable biometric failed:', res.status);
+      } catch (err) {
+        console.error('Disable biometric error:', err);
+      }
       return;
     }
 
-    // Logic to Enable (Register)
     try {
-      // 1. Get options
-      const optionsRes = await fetch(`${(import.meta as any).env?.VITE_API_URL ?? ''}/api/auth/webauthn/register/options`, {
+      const optionsRes = await fetch(`${MIDDLEWARE_BASE}/api/auth/webauthn/register/options`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email: userProfile.email, name: userProfile.name })
       });
       const options = await optionsRes.json();
 
-      // 2. Browser prompt
       const { startRegistration } = await import('@simplewebauthn/browser');
       const regResponse = await startRegistration(options);
 
-      // 3. Verify
-      const verifyRes = await fetch(`${(import.meta as any).env?.VITE_API_URL ?? ''}/api/auth/webauthn/register/verify`, {
+      const verifyRes = await fetch(`${MIDDLEWARE_BASE}/api/auth/webauthn/register/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(regResponse)
       });
 
-      if (verifyRes.ok) {
-        setBiometricEnabled(true);
-      }
+      if (verifyRes.ok) setBiometricEnabled(true);
     } catch (err) {
       console.error('Biometric registration failed:', err);
-      // Revert toggle
     }
   };
   const [privacyMode,       setPrivacyMode]       = useState(false);
@@ -202,16 +206,45 @@ export const SettingsPage: React.FC = () => {
     if (!passwordForm.current)                            { setPasswordStatus('error');    return; }
     if (passwordForm.next !== passwordForm.confirm)       { setPasswordStatus('mismatch');  return; }
     if (passwordForm.next.length < 8)                     { setPasswordStatus('error');    return; }
-    await new Promise((r) => setTimeout(r, 800));
-    setPasswordStatus('success');
-    setPasswordForm({ current: '', next: '', confirm: '' });
-    setTimeout(() => setPasswordStatus('idle'), 3500);
+    try {
+      const res = await fetch(`${MIDDLEWARE_BASE}/api/auth/change-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: userProfile.email,
+          currentPassword: passwordForm.current,
+          newPassword: passwordForm.next,
+        }),
+      });
+      if (!res.ok) { setPasswordStatus('error'); return; }
+      setPasswordStatus('success');
+      setPasswordForm({ current: '', next: '', confirm: '' });
+    } catch {
+      setPasswordStatus('error');
+    } finally {
+      setTimeout(() => setPasswordStatus('idle'), 3500);
+    }
   };
 
   const [isSaving,    setIsSaving]    = useState(false);
   const [saveStatus,  setSaveStatus]  = useState<'idle' | 'success' | 'error'>('idle');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importRef    = useRef<HTMLInputElement>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(userProfile.avatar || null);
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const dataUrl = evt.target?.result as string;
+      setAvatarPreview(dataUrl);
+      updateUserProfile({ ...userProfile, avatar: dataUrl });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   const handleSave = async () => {
     setIsSaving(true); setSaveStatus('idle');
@@ -265,21 +298,42 @@ export const SettingsPage: React.FC = () => {
       requireConfirmText: 'DELETE',
       isDestructive: true,
       onConfirm: async () => {
+        const token = localStorage.getItem('auth_token') || '';
+        let backendOk = true;
+        let authOk = true;
         try {
-          // 1. Delete from Backend (Cascading)
-          await fetch(`${(import.meta as any).env?.VITE_API_URL ?? ''}/api/finance/user-profiles/${userProfile.email}`, {
-            method: 'DELETE'
-          });
-
-          // 2. Clear local data
-          clearDataForNewUser();
-          localStorage.removeItem('yugi_finance_data');
-          window.location.href = '/';
+          const r1 = await fetch(
+            `${MIDDLEWARE_BASE}/api/finance/user-profiles/by-email/${encodeURIComponent(userProfile.email)}`,
+            { method: 'DELETE' }
+          );
+          backendOk = r1.ok || r1.status === 404;
         } catch (err) {
-          console.error('Failed to delete account on server:', err);
-          // Still clear local for security if requested? 
-          // Usually we want to at least notify if server failed.
+          backendOk = false;
+          console.error('Backend profile delete failed:', err);
         }
+        try {
+          const r2 = await fetch(`${MIDDLEWARE_BASE}/api/auth/account`, {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({ email: userProfile.email }),
+          });
+          authOk = r2.ok || r2.status === 404;
+        } catch (err) {
+          authOk = false;
+          console.error('Auth account delete failed:', err);
+        }
+        if (!backendOk && !authOk) {
+          alert('Failed to delete account on the server. Please try again.');
+          return;
+        }
+        clearDataForNewUser();
+        localStorage.removeItem('yugi_finance_data');
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('yugi_finance_session');
+        window.location.href = '/';
       }
     });
   };
@@ -354,8 +408,14 @@ export const SettingsPage: React.FC = () => {
             <div className="flex flex-col sm:flex-row items-center gap-8 mb-10 pb-10 border-b border-white/5">
               <div className="relative group shrink-0">
                 <div className="w-28 h-28 rounded-[2rem] bg-gradient-to-br from-accent via-accent/50 to-positive p-[2px] shadow-2xl group-hover:rotate-0 rotate-2 transition-transform duration-500">
-                  <div className="w-full h-full rounded-[1.9rem] bg-[#0F0F19] flex items-center justify-center text-3xl font-bold font-display select-none">
-                    {profileForm.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                  <div className="w-full h-full rounded-[1.9rem] bg-[#0F0F19] flex items-center justify-center overflow-hidden">
+                    {avatarPreview ? (
+                      <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover rounded-[1.9rem]" />
+                    ) : (
+                      <span className="text-3xl font-bold font-display select-none">
+                        {profileForm.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <button onClick={() => fileInputRef.current?.click()} title="Upload new avatar"
@@ -363,7 +423,7 @@ export const SettingsPage: React.FC = () => {
                   <Camera className="w-4 h-4" />
                 </button>
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
-                  title="Upload profile picture" aria-label="Upload profile picture" onChange={() => {}} />
+                  title="Upload profile picture" aria-label="Upload profile picture" onChange={handleAvatarChange} />
               </div>
               <div className="text-center sm:text-left">
                 <div className="flex flex-col sm:flex-row items-center gap-3 mb-1">

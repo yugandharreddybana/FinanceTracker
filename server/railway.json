@@ -1,4 +1,4 @@
 {
   "build": { "builder": "NIXPACKS" },
-  "deploy": { "startCommand": "npm run start", "healthcheckPath": "/api/health" }
+  "deploy": { "startCommand": "npx tsx index.ts", "healthcheckPath": "/api/health" }
 }

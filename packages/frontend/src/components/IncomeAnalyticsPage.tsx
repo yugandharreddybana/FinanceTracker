@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFinance } from '../context/FinanceContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LineChart, Line, AreaChart, Area } from 'recharts';
@@ -21,9 +21,10 @@ const CustomTooltip = ({ active, payload, currency }: any) => {
 };
 
 export const IncomeAnalyticsPage: React.FC = () => {
-  const { incomeSources, updateIncomeSource, deleteIncomeSource, addIncomeSource } = useFinance();
+  const { incomeSources, updateIncomeSource, deleteIncomeSource, addIncomeSource, transactions } = useFinance();
   const currencies = Array.from(new Set(incomeSources.map(i => i.currency || 'INR')));
   const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
+  const [incomeTrendPeriod, setIncomeTrendPeriod] = useState('6M');
   const [editingIncome, setEditingIncome] = useState<IncomeSource | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -38,6 +39,26 @@ export const IncomeAnalyticsPage: React.FC = () => {
 
   const filteredIncome = incomeSources.filter(i => (i.currency || 'INR') === selectedCurrency);
   const totalIncome = filteredIncome.reduce((acc, curr) => acc + curr.amount, 0);
+
+  const incomeTrendData = React.useMemo(() => {
+    const monthCount: Record<string, number> = { '6M': 6, '1Y': 12, 'All': 24 };
+    const months = monthCount[incomeTrendPeriod] || 6;
+    const now = new Date();
+    const result: { month: string; income: number }[] = [];
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const label = d.toLocaleDateString('en', { month: 'short', year: '2-digit' });
+      const income = transactions
+        .filter(t => t.type === 'income' && (t.currency || 'INR') === selectedCurrency)
+        .filter(t => {
+          const td = new Date(t.date);
+          return td.getFullYear() === d.getFullYear() && td.getMonth() === d.getMonth();
+        })
+        .reduce((s, t) => s + t.amount, 0);
+      result.push({ month: label, income });
+    }
+    return result;
+  }, [transactions, incomeTrendPeriod, selectedCurrency]);
 
   const handleUpdate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,7 +168,15 @@ export const IncomeAnalyticsPage: React.FC = () => {
               <h3 className="text-lg font-bold">Income Trend</h3>
               <div className="flex gap-2">
                 {['6M', '1Y', 'All'].map(t => (
-                  <button key={t} onClick={() => alert(`Showing income trend for: ${t}`)} className="px-3 py-1 rounded-lg bg-white/5 border border-white/5 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all">
+                  <button
+                    key={t}
+                    onClick={() => setIncomeTrendPeriod(t)}
+                    className={`px-3 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-widest transition-all ${
+                      incomeTrendPeriod === t
+                        ? 'bg-accent/20 border-accent/50 text-accent'
+                        : 'bg-white/5 border-white/5 hover:bg-white/10'
+                    }`}
+                  >
                     {t}
                   </button>
                 ))}
@@ -155,7 +184,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
             </div>
             <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={MOCK_INCOME_TRENDS}>
+                <AreaChart data={incomeTrendData}>
                   <defs>
                     <linearGradient id="incomeGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.3}/>

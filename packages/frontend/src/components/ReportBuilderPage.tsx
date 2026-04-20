@@ -17,12 +17,23 @@ interface ReportWidget {
   period: string;
 }
 
+const STORAGE_KEY = 'ft_report_template';
+
 export const ReportBuilderPage: React.FC = () => {
-  const [widgets, setWidgets] = useState<ReportWidget[]>([
-    { id: '1', type: 'bar', title: 'Monthly Spending', metric: 'Expenses', period: 'Last 6 Months' },
-    { id: '2', type: 'pie', title: 'Category Distribution', metric: 'Categories', period: 'Current Month' }
-  ]);
+  const [widgets, setWidgets] = useState<ReportWidget[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : [
+        { id: '1', type: 'bar', title: 'Monthly Spending', metric: 'Expenses', period: 'Last 6 Months' },
+        { id: '2', type: 'pie', title: 'Category Distribution', metric: 'Categories', period: 'Current Month' }
+      ];
+    } catch { return [
+      { id: '1', type: 'bar', title: 'Monthly Spending', metric: 'Expenses', period: 'Last 6 Months' },
+      { id: '2', type: 'pie', title: 'Category Distribution', metric: 'Categories', period: 'Current Month' }
+    ]; }
+  });
   const [isAdding, setIsAdding] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
 
   const addWidget = (type: ReportWidget['type']) => {
     const newWidget: ReportWidget = {
@@ -55,9 +66,9 @@ export const ReportBuilderPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-4">
-          <button onClick={() => { localStorage.setItem('ft_report_template', JSON.stringify(widgets)); alert('Report template saved!'); }} className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/5 border border-white/10 text-white font-bold hover:bg-white/10 transition-all">
+          <button onClick={() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(widgets)); setSaveStatus('saved'); setTimeout(() => setSaveStatus('idle'), 2500); }} className={`flex items-center gap-2 px-6 py-3 rounded-2xl border font-bold transition-all ${saveStatus === 'saved' ? 'bg-positive/20 border-positive/40 text-positive' : 'bg-white/5 border-white/10 text-white hover:bg-white/10'}`}>
             <Save className="w-4 h-4" />
-            <span>Save Template</span>
+            <span>{saveStatus === 'saved' ? 'Saved!' : 'Save Template'}</span>
           </button>
           <button onClick={() => { const data = widgets.map(w => `${w.title}: ${w.metric} (${w.period})`).join('\n'); const blob = new Blob([`Finance Report\n\n${data}`], { type: 'text/plain' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'finance-report.txt'; a.click(); URL.revokeObjectURL(url); }} className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-accent text-white font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow">
             <Download className="w-4 h-4" />

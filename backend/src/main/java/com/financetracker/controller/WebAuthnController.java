@@ -5,6 +5,8 @@ import com.yubico.webauthn.AssertionRequest;
 import com.yubico.webauthn.data.PublicKeyCredentialCreationOptions;
 import com.financetracker.service.WebAuthnService;
 import com.financetracker.repository.AppUserRepository;
+import com.financetracker.repository.AuthenticatorRepository;
+import org.springframework.http.ResponseEntity;
 import jakarta.servlet.http.HttpSession;
 import lombok.Data;
 import org.springframework.web.bind.annotation.*;
@@ -16,10 +18,22 @@ public class WebAuthnController {
 
     private final WebAuthnService webAuthnService;
     private final AppUserRepository userRepository;
+    private final AuthenticatorRepository authenticatorRepository;
 
-    public WebAuthnController(WebAuthnService webAuthnService, AppUserRepository userRepository) {
+    public WebAuthnController(WebAuthnService webAuthnService, AppUserRepository userRepository, AuthenticatorRepository authenticatorRepository) {
         this.webAuthnService = webAuthnService;
         this.userRepository = userRepository;
+        this.authenticatorRepository = authenticatorRepository;
+    }
+
+    @DeleteMapping("/credentials")
+    public ResponseEntity<Void> deleteCredentials(@RequestParam String email) {
+        return userRepository.findByEmail(email)
+                .map(user -> {
+                    authenticatorRepository.deleteByUserId(user.getId());
+                    return ResponseEntity.noContent().<Void>build();
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping("/register/options")
