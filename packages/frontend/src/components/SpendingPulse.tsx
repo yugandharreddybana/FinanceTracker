@@ -52,8 +52,8 @@ export const SpendingPulse: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 relative min-h-[240px]">
-        <ResponsiveContainer width="100%" height="100%">
+      <div style={{ height: 260 }}>
+        <ResponsiveContainer width="100%" height={260}>
           <PieChart>
             <Pie
               data={spendingData}

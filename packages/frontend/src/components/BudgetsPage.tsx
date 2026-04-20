@@ -86,9 +86,9 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
 
   const budgetAlerts = budgets.filter(b => (b.spent / (b.limit + (b.rolloverAmount || 0))) > 0.85 && (b.currency || 'INR') === selectedCurrency);
 
-  const handleSaveBudget = () => {
+  const handleSaveBudget = async () => {
     if (!formData.category || !formData.limit) return;
-    
+
     const budgetData = {
       category: formData.category,
       limit: Number(formData.limit),
@@ -100,16 +100,16 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
     };
 
     if (editingBudget) {
-      updateBudget(editingBudget.id, budgetData);
+      await updateBudget(editingBudget.id, budgetData);
     } else {
-      addBudget({
+      await addBudget({
         id: `budget-${Date.now()}`,
         ...budgetData,
         spent: 0,
         emoji: '📊',
       });
     }
-    
+
     setIsAdding(false);
     setEditingBudget(null);
     setFormData({ category: '', limit: '', rolloverEnabled: false, perTransactionLimit: '', color: PRESET_COLORS[0], dueDate: '', currency: 'INR' });

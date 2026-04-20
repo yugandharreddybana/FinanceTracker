@@ -1,13 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { TrendingUp, TrendingDown, ChevronDown } from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
 import { cn } from '../lib/utils';
 
 export const NetWorthHero: React.FC = () => {
-  const { netWorthByCurrency, savingsGoals } = useFinance();
+  const { netWorthByCurrency, savingsGoals, userProfile } = useFinance();
   const currencies = Object.keys(netWorthByCurrency);
-  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
+  const defaultCurrency = currencies.length > 0 ? currencies[0] : (userProfile.preferences.currency || 'INR');
+  const [selectedCurrency, setSelectedCurrency] = useState(defaultCurrency);
+
+  // Auto-update when accounts finish loading and currencies change
+  useEffect(() => {
+    if (currencies.length > 0 && !currencies.includes(selectedCurrency)) {
+      setSelectedCurrency(currencies[0]);
+    }
+  }, [currencies.join(',')]);
   
   const netWorth = netWorthByCurrency[selectedCurrency] || { total: 0, assets: 0, liabilities: 0, change: 0 };
   

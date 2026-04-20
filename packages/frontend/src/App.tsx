@@ -364,7 +364,7 @@ function MainApp() {
                   </div>
                 </header>
 
-                <div className="pt-32 p-6 md:p-10 lg:p-12 pb-40">
+                <div className="px-6 md:px-10 lg:px-12 pb-40" style={{ paddingTop: '5.5rem' }}>
                   <AnimatePresence mode="wait">
                     {renderContent()}
                   </AnimatePresence>

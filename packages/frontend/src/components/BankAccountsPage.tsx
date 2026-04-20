@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, ExternalLink, RefreshCw, Shield, Lock, Globe, X, ChevronRight, Landmark, CreditCard, Wallet as WalletIcon, Check, ChevronDown, Pencil, Trash2, Users } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -14,6 +14,16 @@ export const BankAccountsPage: React.FC = () => {
   const { accounts, addAccount, updateAccount, deleteAccount, transactions, netWorthByCurrency } = useFinance();
   const [isConnecting, setIsConnecting] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<BankAccount | null>(null);
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (selectedAccount || isConnecting) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [selectedAccount, isConnecting]);
   const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
   const [isManual, setIsManual] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -437,8 +447,8 @@ export const BankAccountsPage: React.FC = () => {
 
       <AnimatePresence>
         {selectedAccount && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-            <motion.div 
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 overflow-hidden">
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -449,7 +459,7 @@ export const BankAccountsPage: React.FC = () => {
               initial={{ opacity: 0, scale: 0.9, y: 40 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 40 }}
-              className="relative glass-card max-w-4xl w-full overflow-hidden border-accent/30 shadow-[0_0_100px_rgba(124,110,250,0.2)]"
+              className="relative glass-card max-w-4xl w-full max-h-[90vh] overflow-y-auto border-accent/30 shadow-[0_0_100px_rgba(124,110,250,0.2)]"
             >
               <div className="p-8 border-b border-white/5 bg-accent/5 flex justify-between items-center">
                 <div className="flex items-center gap-6">

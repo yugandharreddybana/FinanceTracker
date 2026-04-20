@@ -370,10 +370,15 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const result: Record<string, { total: number; assets: number; liabilities: number; change: number }> = {};
     
     // Net worth only includes bank accounts and loans - NOT investments
-    const currencies = Array.from(new Set([
-      ...accounts.map(a => a.currency || 'INR'), 
-      ...loans.map(l => l.currency || 'INR')
-    ]));
+    // Only include currencies that actually have data (no forced INR fallback)
+    const rawCurrencies = Array.from(new Set([
+      ...accounts.map(a => a.currency).filter(Boolean),
+      ...loans.map(l => l.currency).filter(Boolean),
+    ])) as string[];
+    // If no accounts/loans at all, fall back to user preference or INR
+    const currencies = rawCurrencies.length > 0
+      ? rawCurrencies
+      : [userProfile.preferences.currency || 'INR'];
     
     currencies.forEach(c => {
       result[c] = { total: 0, assets: 0, liabilities: 0, change: 0 };
@@ -497,13 +502,16 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return result;
   }, [budgets, transactions, netWorthByCurrency]);
 
-  // Sync transactions to server for MCP tools
+  // Sync transactions to middleware for MCP tools — only if middleware is properly configured
+  // (i.e., VITE_MIDDLEWARE_URL is set; skip silently if it falls back to window.location.origin)
   React.useEffect(() => {
+    const isConfigured = !!import.meta.env.VITE_MIDDLEWARE_URL;
+    if (!isConfigured) return; // avoid 404 noise on Vercel when env var is missing
     fetch(`${MIDDLEWARE_BASE}/api/finance/sync-transactions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ transactions })
-    }).catch(err => console.error('Failed to sync transactions:', err));
+    }).catch(() => { /* silently suppress — middleware may be temporarily unavailable */ });
   }, [transactions]);
 
   const spendingDataByCurrency = React.useMemo(() => {
@@ -883,24 +891,27 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [transactions]);
 
   const addSavingsGoal = useCallback(async (goal: SavingsGoal) => {
+    const optimistic = { ...goal, id: goal.id || `local-${Date.now()}` };
+    setSavingsGoals(prev => [optimistic, ...prev]);
+    addLog('CREATE', `Added savings goal: ${optimistic.name}`, 'SavingsGoal', optimistic.id);
     try {
-      const newGoal = await financeApi.createSavingsGoal(goal);
-      setSavingsGoals(prev => [newGoal, ...prev]);
-      addLog('CREATE', `Added savings goal: ${newGoal.name}`, 'SavingsGoal', newGoal.id);
+      const saved = await financeApi.createSavingsGoal(goal);
+      setSavingsGoals(prev => prev.map(g => g.id === optimistic.id ? saved : g));
     } catch (error) {
-      console.error('Failed to add savings goal:', error);
+      console.error('Failed to persist savings goal to backend (kept locally):', error);
     }
-  }, []);
+  }, [addLog]);
 
   const updateSavingsGoal = useCallback(async (id: string, updates: Partial<SavingsGoal>) => {
+    setSavingsGoals(prev => prev.map(g => g.id === id ? { ...g, ...updates } : g));
+    addLog('UPDATE', `Updated savings goal: ${id}`, 'SavingsGoal', id);
     try {
       const updated = await financeApi.updateSavingsGoal(id, updates);
       setSavingsGoals(prev => prev.map(g => g.id === id ? updated : g));
-      addLog('UPDATE', `Updated savings goal: ${id}`, 'SavingsGoal', id);
     } catch (error) {
-      console.error('Failed to update savings goal:', error);
+      console.error('Failed to sync savings goal update to backend:', error);
     }
-  }, []);
+  }, [addLog]);
 
   const deleteSavingsGoal = useCallback(async (id: string) => {
     try {
@@ -913,24 +924,27 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const addRecurringPayment = useCallback(async (payment: RecurringPayment) => {
+    const optimistic = { ...payment, id: payment.id || `local-${Date.now()}` };
+    setRecurringPayments(prev => [optimistic, ...prev]);
+    addLog('CREATE', `Added recurring payment: ${optimistic.name}`, 'RecurringPayment', optimistic.id);
     try {
-      const newPayment = await financeApi.createRecurringPayment(payment);
-      setRecurringPayments(prev => [newPayment, ...prev]);
-      addLog('CREATE', `Added recurring payment: ${newPayment.name}`, 'RecurringPayment', newPayment.id);
+      const saved = await financeApi.createRecurringPayment(payment);
+      setRecurringPayments(prev => prev.map(p => p.id === optimistic.id ? saved : p));
     } catch (error) {
-      console.error('Failed to add recurring payment:', error);
+      console.error('Failed to persist recurring payment to backend (kept locally):', error);
     }
-  }, []);
+  }, [addLog]);
 
   const updateRecurringPayment = useCallback(async (id: string, updates: Partial<RecurringPayment>) => {
+    setRecurringPayments(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+    addLog('UPDATE', `Updated recurring payment: ${id}`, 'RecurringPayment', id);
     try {
       const updated = await financeApi.updateRecurringPayment(id, updates);
       setRecurringPayments(prev => prev.map(p => p.id === id ? updated : p));
-      addLog('UPDATE', `Updated recurring payment: ${id}`, 'RecurringPayment', id);
     } catch (error) {
-      console.error('Failed to update recurring payment:', error);
+      console.error('Failed to sync recurring payment update to backend:', error);
     }
-  }, []);
+  }, [addLog]);
 
   const deleteRecurringPayment = useCallback(async (id: string) => {
     try {
@@ -963,24 +977,27 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const addLoan = useCallback(async (loan: Loan) => {
+    const optimistic = { ...loan, id: loan.id || `local-${Date.now()}` };
+    setLoans(prev => [optimistic, ...prev]);
+    addLog('CREATE', `Added loan: ${optimistic.name}`, 'Loan', optimistic.id);
     try {
-      const newLoan = await financeApi.createLoan(loan);
-      setLoans(prev => [newLoan, ...prev]);
-      addLog('CREATE', `Added loan: ${newLoan.name}`, 'Loan', newLoan.id);
+      const saved = await financeApi.createLoan(loan);
+      setLoans(prev => prev.map(l => l.id === optimistic.id ? saved : l));
     } catch (error) {
-      console.error('Failed to add loan:', error);
+      console.error('Failed to persist loan to backend (kept locally):', error);
     }
-  }, []);
+  }, [addLog]);
 
   const updateLoan = useCallback(async (id: string, updates: Partial<Loan>) => {
+    setLoans(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
+    addLog('UPDATE', `Updated loan: ${id}`, 'Loan', id);
     try {
       const updated = await financeApi.updateLoan(id, updates);
       setLoans(prev => prev.map(l => l.id === id ? updated : l));
-      addLog('UPDATE', `Updated loan: ${id}`, 'Loan', id);
     } catch (error) {
-      console.error('Failed to update loan:', error);
+      console.error('Failed to sync loan update to backend:', error);
     }
-  }, []);
+  }, [addLog]);
 
   const deleteLoan = useCallback(async (id: string) => {
     try {
@@ -993,24 +1010,27 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const addBudget = useCallback(async (budget: Budget) => {
+    const optimistic = { ...budget, id: budget.id || `local-${Date.now()}` };
+    setBudgets(prev => [optimistic, ...prev]);
+    addLog('CREATE', `Added budget: ${optimistic.category}`, 'Budget', optimistic.id);
     try {
-      const newBudget = await financeApi.createBudget(budget);
-      setBudgets(prev => [newBudget, ...prev]);
-      addLog('CREATE', `Added budget: ${newBudget.category}`, 'Budget', newBudget.id);
+      const saved = await financeApi.createBudget(budget);
+      setBudgets(prev => prev.map(b => b.id === optimistic.id ? saved : b));
     } catch (error) {
-      console.error('Failed to add budget:', error);
+      console.error('Failed to persist budget to backend (kept locally):', error);
     }
-  }, []);
+  }, [addLog]);
 
   const updateBudget = useCallback(async (id: string, updates: Partial<Budget>) => {
+    setBudgets(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
+    addLog('UPDATE', `Updated budget: ${id}`, 'Budget', id);
     try {
       const updated = await financeApi.updateBudget(id, updates);
       setBudgets(prev => prev.map(b => b.id === id ? updated : b));
-      addLog('UPDATE', `Updated budget: ${id}`, 'Budget', id);
     } catch (error) {
-      console.error('Failed to update budget:', error);
+      console.error('Failed to sync budget update to backend:', error);
     }
-  }, []);
+  }, [addLog]);
 
   const deleteBudget = useCallback(async (id: string) => {
     try {
@@ -1023,24 +1043,27 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const addAccount = useCallback(async (account: BankAccount) => {
+    const optimistic = { ...account, id: account.id || `local-${Date.now()}` };
+    setAccounts(prev => [optimistic, ...prev]);
+    addLog('CREATE', `Added account: ${optimistic.name}`, 'Account', optimistic.id);
     try {
-      const newAccount = await financeApi.createAccount(account);
-      setAccounts(prev => [newAccount, ...prev]);
-      addLog('CREATE', `Added account: ${newAccount.name}`, 'Account', newAccount.id);
+      const saved = await financeApi.createAccount(account);
+      setAccounts(prev => prev.map(a => a.id === optimistic.id ? saved : a));
     } catch (error) {
-      console.error('Failed to add account:', error);
+      console.error('Failed to persist account to backend (kept locally):', error);
     }
-  }, []);
+  }, [addLog]);
 
   const updateAccount = useCallback(async (id: string, updates: Partial<BankAccount>) => {
+    setAccounts(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
+    addLog('UPDATE', `Updated account: ${id}`, 'Account', id);
     try {
       const updated = await financeApi.updateAccount(id, updates);
       setAccounts(prev => prev.map(a => a.id === id ? updated : a));
-      addLog('UPDATE', `Updated account: ${id}`, 'Account', id);
     } catch (error) {
-      console.error('Failed to update account:', error);
+      console.error('Failed to sync account update to backend:', error);
     }
-  }, []);
+  }, [addLog]);
 
   const deleteAccount = useCallback(async (id: string) => {
     try {
@@ -1053,14 +1076,16 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const addIncomeSource = useCallback(async (income: IncomeSource) => {
+    const optimistic = { ...income, id: income.id || `local-${Date.now()}` };
+    setIncomeSources(prev => [optimistic, ...prev]);
+    addLog('CREATE', `Added income source: ${optimistic.source}`, 'IncomeSource', optimistic.id);
     try {
-      const newIncome = await financeApi.createIncomeSource(income);
-      setIncomeSources(prev => [newIncome, ...prev]);
-      addLog('CREATE', `Added income source: ${newIncome.source}`, 'IncomeSource', newIncome.id);
+      const saved = await financeApi.createIncomeSource(income);
+      setIncomeSources(prev => prev.map(i => i.id === optimistic.id ? saved : i));
     } catch (error) {
-      console.error('Failed to add income source:', error);
+      console.error('Failed to persist income source to backend (kept locally):', error);
     }
-  }, []);
+  }, [addLog]);
 
   const updateIncomeSource = useCallback(async (id: string, updates: Partial<IncomeSource>) => {
     try {
