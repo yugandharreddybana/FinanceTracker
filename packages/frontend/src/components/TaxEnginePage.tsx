@@ -15,6 +15,42 @@ export const TaxEnginePage: React.FC = () => {
   const [suggestions, setSuggestions] = useState<TaxSuggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [taxYear, setTaxYear] = useState('2024');
+  const [expandedSuggestion, setExpandedSuggestion] = useState<number | null>(null);
+  const [notification, setNotification] = useState<string | null>(null);
+  const [showVaultModal, setShowVaultModal] = useState(false);
+
+  const showNotice = (msg: string) => {
+    setNotification(msg);
+    setTimeout(() => setNotification(null), 3500);
+  };
+
+  const exportTaxReport = () => {
+    const taxSummary = {
+      taxYear,
+      generatedAt: new Date().toISOString(),
+      estimatedLiability: 12450,
+      breakdown: [
+        { label: 'Federal Income Tax', amount: 8450 },
+        { label: 'State Income Tax', amount: 2800 },
+        { label: 'Social Security', amount: 1200 },
+      ],
+      optimizationSuggestions: suggestions,
+      transactionsSummary: {
+        total: transactions.length,
+        income: transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0),
+        expenses: transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0),
+      },
+    };
+    const blob = new Blob([JSON.stringify(taxSummary, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement('a'), {
+      href: url,
+      download: `tax-report-${taxYear}.json`,
+    });
+    a.click();
+    URL.revokeObjectURL(url);
+    showNotice('Tax report downloaded successfully!');
+  };
 
   const currentCurrency = userProfile.preferences.currency;
 
@@ -31,6 +67,52 @@ export const TaxEnginePage: React.FC = () => {
 
   return (
     <div className="space-y-10 pb-20">
+      {/* Notification banner */}
+      <AnimatePresence>
+        {notification && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="fixed top-6 right-6 z-[300] px-6 py-3 rounded-2xl bg-accent text-white text-sm font-bold shadow-xl"
+          >
+            {notification}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Tax Document Vault Modal */}
+      <AnimatePresence>
+        {showVaultModal && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setShowVaultModal(false)} className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="relative glass-card p-8 w-full max-w-md">
+              <h3 className="text-xl font-bold mb-2">Tax Document Vault</h3>
+              <p className="text-sm text-white/40 mb-6">Securely store and organise your tax documents. Upload W-2s, 1099s, receipts and more.</p>
+              <div className="space-y-3 mb-6">
+                {['W-2 Form 2024', '1099-INT 2024', 'Mortgage Interest Statement', 'Charitable Donation Receipts'].map((doc, i) => (
+                  <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
+                    <div className="flex items-center gap-3">
+                      <FileText className="w-4 h-4 text-accent" />
+                      <span className="text-sm font-medium">{doc}</span>
+                    </div>
+                    <CheckCircle2 className="w-4 h-4 text-positive" />
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => { setShowVaultModal(false); showNotice('Upload feature coming soon — export your documents via Settings for now.'); }}
+                className="w-full py-3 rounded-xl bg-accent/20 border border-accent/30 text-accent font-bold hover:bg-accent/30 transition-all"
+              >
+                + Upload Document
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
@@ -53,7 +135,7 @@ export const TaxEnginePage: React.FC = () => {
             <option value="2024" className="bg-[#050508]">Tax Year 2024</option>
             <option value="2023" className="bg-[#050508]">Tax Year 2023</option>
           </select>
-          <button onClick={() => alert('Export Report: Your tax report will be downloaded as a PDF.')} className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/5 border border-white/10 text-white font-bold hover:bg-white/10 transition-all">
+          <button onClick={exportTaxReport} className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/5 border border-white/10 text-white font-bold hover:bg-white/10 transition-all">
             <Download className="w-4 h-4" />
             <span>Export Report</span>
           </button>
@@ -155,10 +237,29 @@ export const TaxEnginePage: React.FC = () => {
                     </div>
                   </div>
                   <p className="text-xs text-white/40 leading-relaxed mb-4">{s.description}</p>
-                  <button onClick={() => alert(`Learn more about: ${s.title}. ${s.description}`)} className="flex items-center gap-2 text-[10px] font-bold text-accent uppercase tracking-widest group-hover:gap-3 transition-all">
-                    <span>Learn How</span>
-                    <ArrowRight className="w-3 h-3" />
+                  <button
+                    onClick={() => setExpandedSuggestion(expandedSuggestion === i ? null : i)}
+                    className="flex items-center gap-2 text-[10px] font-bold text-accent uppercase tracking-widest group-hover:gap-3 transition-all"
+                  >
+                    <span>{expandedSuggestion === i ? 'Show Less' : 'Learn How'}</span>
+                    <ArrowRight className={`w-3 h-3 transition-transform ${expandedSuggestion === i ? 'rotate-90' : ''}`} />
                   </button>
+                  <AnimatePresence>
+                    {expandedSuggestion === i && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mt-4 pt-4 border-t border-white/5"
+                      >
+                        <p className="text-xs text-white/60 leading-relaxed">{s.description}</p>
+                        <div className="mt-3 p-3 rounded-xl bg-accent/5 border border-accent/20">
+                          <p className="text-[10px] font-bold text-accent uppercase tracking-widest mb-1">Potential Savings</p>
+                          <p className="text-sm font-bold text-positive">{currencyService.formatCurrency(s.potentialSavings, currentCurrency)}</p>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </motion.div>
               ))}
             </div>
@@ -216,7 +317,7 @@ export const TaxEnginePage: React.FC = () => {
                 <p className="text-xs text-white/40">12 documents stored securely</p>
               </div>
             </div>
-            <button onClick={() => alert('Tax Document Vault: Store and organize your tax documents securely.')} aria-label="Open document vault" className="p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all">
+            <button onClick={() => setShowVaultModal(true)} aria-label="Open document vault" className="p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all">
               <ArrowRight className="w-5 h-5" />
             </button>
           </div>

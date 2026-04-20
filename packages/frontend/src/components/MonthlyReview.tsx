@@ -1,9 +1,23 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import { AnimatePresence } from 'motion/react';
 import { motion } from 'motion/react';
 import { Share2, Download, Sparkles, TrendingUp, Award, Zap, TrendingDown, AlertCircle } from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
 
 export const MonthlyReview: React.FC = () => {
+  const [copiedNotice, setCopiedNotice] = useState(false);
+
+  const handleShare = (review: any, fmt: (n: number) => string) => {
+    const text = `My ${review.monthName} Financial Review\nSavings Rate: ${review.savingsRate}%\nIncome: ${fmt(review.income)}\nExpenses: ${fmt(review.expenses)}`;
+    if (navigator.share) {
+      navigator.share({ title: `${review.monthName} Financial Review`, text });
+    } else {
+      navigator.clipboard.writeText(text).then(() => {
+        setCopiedNotice(true);
+        setTimeout(() => setCopiedNotice(false), 2500);
+      });
+    }
+  };
   const { transactions, savingsGoals, accounts, loans, userProfile } = useFinance();
   const currency = userProfile.preferences.currency || 'INR';
 
@@ -93,6 +107,20 @@ export const MonthlyReview: React.FC = () => {
       exit={{ opacity: 0 }}
       className="max-w-5xl mx-auto py-16 px-8"
     >
+      {/* Copied notice */}
+      <AnimatePresence>
+        {copiedNotice && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="fixed top-6 right-6 z-[300] px-6 py-3 rounded-2xl bg-accent text-white text-sm font-bold shadow-xl"
+          >
+            Review summary copied to clipboard!
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="flex justify-between items-center mb-20">
         <motion.div 
           initial={{ x: -20, opacity: 0 }}
@@ -103,7 +131,7 @@ export const MonthlyReview: React.FC = () => {
           <span>Arta Intelligence: {review.monthName} Review</span>
         </motion.div>
         <div className="flex gap-4">
-          <button onClick={() => { if (navigator.share) { navigator.share({ title: `${review.monthName} Financial Review`, text: `My ${review.monthName} savings rate: ${review.savingsRate}%` }); } else { navigator.clipboard.writeText(`My ${review.monthName} Financial Review\nSavings Rate: ${review.savingsRate}%\nIncome: ${fmt(review.income)}\nExpenses: ${fmt(review.expenses)}`); alert('Review summary copied to clipboard!'); } }} aria-label="Share" className="p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group">
+          <button onClick={() => handleShare(review, fmt)} aria-label="Share" className="p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group">
             <Share2 className="w-6 h-6 text-white/40 group-hover:text-white transition-colors" />
           </button>
           <button onClick={() => { const text = `${review.monthName} Financial Review\n\nRating: ${review.rating}\nIncome: ${fmt(review.income)}\nExpenses: ${fmt(review.expenses)}\nSaved: ${fmt(review.saved)}\nSavings Rate: ${review.savingsRate}%`; const blob = new Blob([text], { type: 'text/plain' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `${review.monthName}-review.txt`; a.click(); URL.revokeObjectURL(url); }} aria-label="Download" className="p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group">

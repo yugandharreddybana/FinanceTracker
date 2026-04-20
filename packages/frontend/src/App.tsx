@@ -243,11 +243,11 @@ function MainApp() {
       case 'transactions': return <TransactionsPage key="transactions" />;
       case 'accounts': return <BankAccountsPage key="accounts" />;
       case 'budgets': return <BudgetsPage key="budgets" setActiveTab={setActiveTab} />;
-      case 'savings': return <SavingsPage key="savings" />;
+      case 'savings': return <SavingsPage key="savings" onNavigate={setActiveTab} />;
       case 'recurring': return <RecurringPage key="recurring" />;
       case 'loans': return <LoansPage key="loans" />;
-      case 'networth': return <NetWorthPage key="networth" />;
-      case 'health': return <HealthScorePage key="health" />;
+      case 'networth': return <NetWorthPage key="networth" onNavigate={setActiveTab} />;
+      case 'health': return <HealthScorePage key="health" onNavigate={setActiveTab} />;
       case 'carbon': return <CarbonFootprintPage key="carbon" />;
       case 'categories': return <CategoriesPage key="categories" />;
       case 'insights': return <AIInsightsPage key="insights" />;

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { Sparkles, Mail, Lock, ArrowRight, Loader2, AlertCircle, Fingerprint } from 'lucide-react';
+import { MIDDLEWARE_BASE } from '../services/api';
 
 interface LoginPageProps {
   onLogin: (email: string, token?: string, name?: string) => void;
@@ -22,9 +23,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
     setIsBiometricLoading(true);
     try {
       // 1. Get options from backend
-      const optionsRes = await fetch(`${(import.meta as any).env?.VITE_API_URL ?? ''}/api/auth/webauthn/login/options`, {
+      const optionsRes = await fetch(`${MIDDLEWARE_BASE}/api/auth/webauthn/login/options`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email: email || null })
       });
       
@@ -36,9 +38,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
       const authResponse = await startAuthentication(options);
 
       // 3. Verify in backend
-      const verifyRes = await fetch(`${(import.meta as any).env?.VITE_API_URL ?? ''}/api/auth/webauthn/login/verify`, {
+      const verifyRes = await fetch(`${MIDDLEWARE_BASE}/api/auth/webauthn/login/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(authResponse)
       });
 

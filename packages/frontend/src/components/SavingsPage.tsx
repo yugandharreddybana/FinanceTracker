@@ -5,7 +5,11 @@ import { Plus, Target, TrendingUp, Calendar, ArrowRight, X, ChevronDown, Pencil,
 import { cn } from '../lib/utils';
 import { SavingsGoal } from '../types';
 
-export const SavingsPage: React.FC = () => {
+interface SavingsPageProps {
+  onNavigate?: (tab: string) => void;
+}
+
+export const SavingsPage: React.FC<SavingsPageProps> = ({ onNavigate }) => {
   const { savingsGoals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal, accounts, transferToSavings } = useFinance();
   const [isAdding, setIsAdding] = React.useState(false);
   const [editingGoal, setEditingGoal] = React.useState<SavingsGoal | null>(null);
@@ -321,7 +325,7 @@ export const SavingsPage: React.FC = () => {
             <p className="text-sm font-medium mb-4">Transfer surplus cash to high-yield vaults.</p>
             <div className="flex justify-between items-center">
               <span className="text-xs font-bold text-accent">Suggested</span>
-              <button onClick={() => alert('Smart Transfers: Review your surplus cash and optimize transfers to high-yield vaults.')} className="text-[10px] font-bold uppercase text-accent hover:underline">Review</button>
+              <button onClick={() => onNavigate?.('accounts')} className="text-[10px] font-bold uppercase text-accent hover:underline">Review</button>
             </div>
           </div>
           <div className="p-4 rounded-xl bg-white/5 border border-white/5">
@@ -329,7 +333,7 @@ export const SavingsPage: React.FC = () => {
             <p className="text-sm font-medium mb-4">Prioritize high-interest debt repayment.</p>
             <div className="flex justify-between items-center">
               <span className="text-xs font-bold text-white/20">Inactive</span>
-              <button onClick={() => alert('Debt Snowball: Configure your debt repayment priority to save on interest.')} className="text-[10px] font-bold uppercase text-white/40 hover:text-white transition-colors">Setup</button>
+              <button onClick={() => onNavigate?.('loans')} className="text-[10px] font-bold uppercase text-white/40 hover:text-white transition-colors">Setup</button>
             </div>
           </div>
         </div>

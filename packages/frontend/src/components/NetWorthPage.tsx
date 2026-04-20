@@ -4,24 +4,28 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { TrendingUp, ArrowUpRight, ArrowDownRight, Plus, ChevronDown } from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
 
-export const NetWorthPage: React.FC = () => {
+interface NetWorthPageProps {
+  onNavigate?: (tab: string) => void;
+}
+
+export const NetWorthPage: React.FC<NetWorthPageProps> = ({ onNavigate }) => {
   const { netWorthByCurrency, accounts, loans, investments } = useFinance();
   const currencies = Object.keys(netWorthByCurrency);
   const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
+  const [trendPeriod, setTrendPeriod] = useState('1M');
   
   const netWorth = netWorthByCurrency[selectedCurrency] || { total: 0, assets: 0, liabilities: 0, change: 0 };
   
   const forecastData = React.useMemo(() => {
+    const periodDays: Record<string, number> = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365, 'All': 730 };
+    const days = periodDays[trendPeriod] || 30;
     const data = [];
-    const monthlyChange = (netWorth.total * (netWorth.change / 100)) / 30; // daily change
-    for (let i = 0; i < 30; i++) {
-      data.push({
-        day: i,
-        balance: netWorth.total + (monthlyChange * i)
-      });
+    const dailyChange = (netWorth.total * (netWorth.change / 100)) / 30;
+    for (let i = 0; i < days; i++) {
+      data.push({ day: i, balance: netWorth.total + (dailyChange * i) });
     }
     return data;
-  }, [netWorth]);
+  }, [netWorth, trendPeriod]);
 
   const assetBreakdown = accounts
     .filter(a => a.type !== 'Credit' && (a.currency || 'INR') === selectedCurrency)
@@ -106,7 +110,15 @@ export const NetWorthPage: React.FC = () => {
         
         <div className="flex gap-2 mt-8">
           {['1M', '3M', '6M', '1Y', 'All'].map(t => (
-            <button key={t} onClick={() => alert(`Showing net worth trend for: ${t}`)} className="px-4 py-1.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all">
+            <button
+              key={t}
+              onClick={() => setTrendPeriod(t)}
+              className={`px-4 py-1.5 rounded-lg border text-[10px] font-bold uppercase tracking-widest transition-all ${
+                trendPeriod === t
+                  ? 'bg-accent/20 border-accent/50 text-accent'
+                  : 'bg-white/5 border-white/5 hover:bg-white/10'
+              }`}
+            >
               {t}
             </button>
           ))}
@@ -183,11 +195,11 @@ export const NetWorthPage: React.FC = () => {
             <span>{investments.filter(inv => (inv.currency || 'INR') === selectedCurrency).length} holdings</span>
           </div>
         </div>
-        <div onClick={() => alert('Navigate to Bank Accounts to add a new asset account.')} className="glass-card p-6 border-dashed border-white/10 flex flex-col items-center justify-center text-center cursor-pointer hover:border-accent/50 transition-all group">
+        <div onClick={() => onNavigate?.('accounts')} className="glass-card p-6 border-dashed border-white/10 flex flex-col items-center justify-center text-center cursor-pointer hover:border-accent/50 transition-all group">
           <Plus className="w-6 h-6 text-white/20 group-hover:text-accent mb-2" />
           <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Add Asset</span>
         </div>
-        <div onClick={() => alert('Navigate to Loans to add a new liability.')} className="glass-card p-6 border-dashed border-white/10 flex flex-col items-center justify-center text-center cursor-pointer hover:border-accent/50 transition-all group">
+        <div onClick={() => onNavigate?.('loans')} className="glass-card p-6 border-dashed border-white/10 flex flex-col items-center justify-center text-center cursor-pointer hover:border-accent/50 transition-all group">
           <Plus className="w-6 h-6 text-white/20 group-hover:text-accent mb-2" />
           <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Add Liability</span>
         </div>

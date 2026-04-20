@@ -116,6 +116,44 @@ router.put("/investments/:id", (req, res) => proxyToBackend(req, res, `/investme
 router.delete("/investments/:id", (req, res) => proxyToBackend(req, res, `/investments/${req.params.id}`));
 
 // ---------------------------------------------------------------------------
+// User Profiles
+// ---------------------------------------------------------------------------
+
+router.get("/user-profiles", (req, res) => proxyToBackend(req, res, "/user-profiles"));
+router.post("/user-profiles", (req, res) => proxyToBackend(req, res, "/user-profiles"));
+router.get("/user-profiles/by-email/:email", (req, res) =>
+  proxyToBackend(req, res, `/user-profiles/by-email/${encodeURIComponent(req.params.email)}`));
+router.get("/user-profiles/:id", (req, res) => proxyToBackend(req, res, `/user-profiles/${req.params.id}`));
+router.put("/user-profiles/:id", (req, res) => proxyToBackend(req, res, `/user-profiles/${req.params.id}`));
+router.delete("/user-profiles/:id", (req, res) => proxyToBackend(req, res, `/user-profiles/${req.params.id}`));
+
+// Convenience: delete by email — looks up the profile then deletes by id
+router.delete("/user-profiles/by-email/:email", async (req, res) => {
+  try {
+    const lookup = await fetch(`${BACKEND_API}/user-profiles/by-email/${encodeURIComponent(req.params.email)}`);
+    if (lookup.status === 404) return res.status(404).json({ error: "User not found" });
+    if (!lookup.ok) return res.status(502).json({ error: "Backend lookup failed" });
+    const profile: any = await lookup.json();
+    if (!profile?.id) return res.status(404).json({ error: "User profile has no id" });
+    const del = await fetch(`${BACKEND_API}/user-profiles/${profile.id}`, { method: "DELETE" });
+    res.status(del.status).send();
+  } catch (err: any) {
+    res.status(502).json({ error: "Backend unavailable", details: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Sync transactions cache (used by MCP fallback)
+// ---------------------------------------------------------------------------
+
+let cachedTransactions: any[] = [];
+router.post("/sync-transactions", (req, res) => {
+  cachedTransactions = Array.isArray(req.body?.transactions) ? req.body.transactions : [];
+  res.json({ ok: true, count: cachedTransactions.length });
+});
+router.get("/sync-transactions", (_req, res) => res.json({ transactions: cachedTransactions }));
+
+// ---------------------------------------------------------------------------
 // MCP Endpoints (kept for AI Oracle integration)
 // ---------------------------------------------------------------------------
 

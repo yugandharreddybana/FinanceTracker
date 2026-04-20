@@ -105,6 +105,28 @@ export function loginUser(email: string, password: string): { user: { uid: strin
   return { user: { uid: user.uid, email: user.email, name: user.name }, token };
 }
 
+export function changeUserPassword(email: string, currentPassword: string, newPassword: string): void {
+  const users = loadUsers();
+  const idx = users.findIndex((u) => u.email === email);
+  if (idx === -1) throw new Error("User not found");
+  const user = users[idx];
+  const currentHash = hashPassword(currentPassword, user.salt);
+  if (!crypto.timingSafeEqual(Buffer.from(currentHash), Buffer.from(user.passwordHash))) {
+    throw new Error("Current password is incorrect");
+  }
+  const newSalt = crypto.randomBytes(32).toString("hex");
+  users[idx] = { ...user, salt: newSalt, passwordHash: hashPassword(newPassword, newSalt) };
+  saveUsers(users);
+}
+
+export function deleteUserByEmail(email: string): boolean {
+  const users = loadUsers();
+  const next = users.filter((u) => u.email !== email);
+  if (next.length === users.length) return false;
+  saveUsers(next);
+  return true;
+}
+
 export function findUserByEmail(email: string): StoredUser | undefined {
   const users = loadUsers();
   return users.find((u) => u.email === email);
