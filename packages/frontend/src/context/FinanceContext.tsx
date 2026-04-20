@@ -19,11 +19,11 @@ interface FinanceContextType {
   clearDataForNewUser: () => void;
   refreshData: () => Promise<void>;
   spendingDataByCurrency: Record<string, { name: string; value: number; color: string }[]>;
-  createFamily: (name: string) => void;
-  joinFamily: (familyId: string) => void;
-  deleteFamily: () => void;
-  addFamilyMember: (name: string, role: string) => void;
-  removeFamilyMember: (uid: string) => void;
+  createFamily: (name: string) => Promise<void> | void;
+  joinFamily: (familyId: string) => Promise<void> | void;
+  deleteFamily: () => Promise<void> | void;
+  addFamilyMember: (name: string, role: string) => Promise<void> | void;
+  removeFamilyMember: (uid: string) => Promise<void> | void;
   addLog: (action: string, details: string, entityType: string, entityId: string) => void;
   transferToSavings: (amount: number, goalId: string, accountId: string) => void;
   categorizeTransactions: () => Promise<void>;
@@ -175,7 +175,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (parsed.accounts) setAccounts(parsed.accounts);
         if (parsed.incomeSources) setIncomeSources(parsed.incomeSources);
         if (parsed.investments) setInvestments(parsed.investments);
-        if (parsed.userProfile) setUserProfile(parsed.userProfile);
+        if (parsed.userProfile) {
+          const savedAvatar = localStorage.getItem('yugi_finance_avatar');
+          setUserProfile({ ...parsed.userProfile, ...(savedAvatar ? { avatar: savedAvatar } : {}) });
+        }
         if (parsed.customCategories) setCustomCategories(parsed.customCategories);
       } catch (e) {
         console.error('Failed to load persisted data:', e);
@@ -263,6 +266,12 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       await handleSync(incs, incomeSourcesRef.current, financeApi.createIncomeSource, setIncomeSources);
       await handleSync(invs, investmentsRef.current, financeApi.createInvestment, setInvestments);
 
+      // Load family account
+      try {
+        const families = await financeApi.getFamilyAccounts();
+        if (Array.isArray(families) && families.length > 0) setFamilyAccount(families[0]);
+      } catch { /* optional */ }
+
       hasInitialSyncBeenAttempted.current = true;
     } catch (error) {
       console.error('Failed to fetch/sync data:', error);
@@ -319,7 +328,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [addLog]);
 
-  const createFamily = useCallback((name: string) => {
+  const createFamily = useCallback(async (name: string) => {
     const newFamily: FamilyAccount = {
       id: 'fam-' + Math.random().toString(36).substr(2, 9),
       name,
@@ -330,39 +339,47 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setFamilyAccount(newFamily);
     setUserProfile(prev => ({ ...prev, familyId: newFamily.id }));
     addLog('CREATE', `Created family ${name}`, 'Family', newFamily.id);
+    try {
+      const saved = await financeApi.createFamilyAccount(newFamily);
+      if (saved?.id) setFamilyAccount(saved);
+    } catch { /* keep local */ }
   }, [userProfile.name, addLog]);
 
-  const joinFamily = useCallback((familyId: string) => {
+  const joinFamily = useCallback(async (familyId: string) => {
     setUserProfile(prev => ({ ...prev, familyId }));
     addLog('JOIN', `Joined family ${familyId}`, 'Family', familyId);
+    try {
+      const families = await financeApi.getFamilyAccounts();
+      const target = (families as any[]).find((f: any) => f.id === familyId);
+      if (target) setFamilyAccount(target);
+    } catch { /* keep local */ }
   }, [addLog]);
 
-  const deleteFamily = useCallback(() => {
+  const deleteFamily = useCallback(async () => {
     if (familyAccount) {
       addLog('DELETE', `Deleted family ${familyAccount.name}`, 'Family', familyAccount.id);
+      try { await financeApi.deleteFamilyAccount(familyAccount.id); } catch { /* silent */ }
       setFamilyAccount(null);
       setUserProfile(prev => ({ ...prev, familyId: undefined }));
     }
   }, [familyAccount, addLog]);
 
-  const addFamilyMember = useCallback((name: string, role: string) => {
+  const addFamilyMember = useCallback(async (name: string, role: string) => {
     if (familyAccount) {
       const newMember = { uid: 'user-' + Math.random().toString(36).substr(2, 6), name, role: role as 'Admin' | 'Member' };
-      setFamilyAccount(prev => prev ? {
-        ...prev,
-        members: [...prev.members, newMember]
-      } : null);
+      const updated = { ...familyAccount, members: [...familyAccount.members, newMember] };
+      setFamilyAccount(updated);
       addLog('UPDATE', `Added member ${name} to family`, 'Family', familyAccount.id);
+      try { await financeApi.updateFamilyAccount(familyAccount.id, updated); } catch { /* silent */ }
     }
   }, [familyAccount, addLog]);
 
-  const removeFamilyMember = useCallback((uid: string) => {
+  const removeFamilyMember = useCallback(async (uid: string) => {
     if (familyAccount) {
-      setFamilyAccount(prev => prev ? {
-        ...prev,
-        members: prev.members.filter(m => m.uid !== uid)
-      } : null);
+      const updated = { ...familyAccount, members: familyAccount.members.filter(m => m.uid !== uid) };
+      setFamilyAccount(updated);
       addLog('UPDATE', `Removed member ${uid} from family`, 'Family', familyAccount.id);
+      try { await financeApi.updateFamilyAccount(familyAccount.id, updated); } catch { /* silent */ }
     }
   }, [familyAccount, addLog]);
 
@@ -1109,16 +1126,22 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const updateUserProfile = useCallback((updates: Partial<UserProfile>) => {
     setUserProfile(prev => {
-      const newUserProfile = {
+      const newProfile = {
         ...prev,
         ...updates,
-        preferences: {
-          ...prev.preferences,
-          ...(updates.preferences || {})
-        }
+        preferences: { ...prev.preferences, ...(updates.preferences || {}) }
       };
       addLog('UPDATE', 'Updated user profile', 'UserProfile', 'user-1');
-      return newUserProfile;
+      // Persist avatar + profile to backend if we have an ID
+      if (newProfile.id) {
+        // Strip large base64 avatar from backend payload to avoid size limits; store locally only
+        const { avatar, ...backendPayload } = newProfile as any;
+        financeApi.updateUserProfile?.(newProfile.id, backendPayload).catch(() => {/* silent */});
+        if (avatar) {
+          try { localStorage.setItem('yugi_finance_avatar', avatar); } catch { /* quota */ }
+        }
+      }
+      return newProfile;
     });
   }, [addLog]);
 

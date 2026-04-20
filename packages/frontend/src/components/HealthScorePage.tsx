@@ -1,15 +1,33 @@
-import React from 'react';
-import { motion } from 'motion/react';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useFinance } from '../context/FinanceContext';
-import { Activity, Shield, Wallet, PieChart, ArrowUp, Zap, Target } from 'lucide-react';
+import { Activity, Shield, Wallet, PieChart, ArrowUp, Zap, Target, RefreshCw, Sparkles, TrendingUp, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { GoogleGenAI } from '@google/genai';
 
 interface HealthScorePageProps {
   onNavigate?: (tab: string) => void;
 }
 
+interface AIRecommendation {
+  icon: string;
+  title: string;
+  impact: string;
+  effort: string;
+  tab: string;
+  description: string;
+}
+
+const DEFAULT_RECS: AIRecommendation[] = [
+  { icon: 'Target', title: 'Pay extra on high-interest debt', impact: '+4 pts', effort: 'Easy', tab: 'loans', description: 'Reducing high-interest debt is the fastest way to improve your financial health score.' },
+  { icon: 'Zap', title: 'Build a 3-month emergency fund', impact: '+8 pts', effort: 'Medium', tab: 'savings', description: 'An emergency fund covering 3 months of expenses protects against unexpected financial shocks.' },
+];
+
 export const HealthScorePage: React.FC<HealthScorePageProps> = ({ onNavigate }) => {
-  const { healthMetricsByCurrency } = useFinance();
+  const { healthMetricsByCurrency, transactions, loans, accounts, budgets } = useFinance();
+  const [aiRecs, setAiRecs] = useState<AIRecommendation[]>(DEFAULT_RECS);
+  const [isLoadingAI, setIsLoadingAI] = useState(false);
+  const [aiError, setAiError] = useState('');
   const metrics = healthMetricsByCurrency['INR'] || Object.values(healthMetricsByCurrency)[0] || {
     savingsRate: 0,
     debtRatio: 0,
@@ -17,6 +35,52 @@ export const HealthScorePage: React.FC<HealthScorePageProps> = ({ onNavigate }) 
     budgetAdherence: 0,
     overallScore: 0
   };
+
+  const generateAIRecommendations = async () => {
+    setIsLoadingAI(true);
+    setAiError('');
+    try {
+      const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
+      if (!apiKey) throw new Error('No API key');
+      const ai = new GoogleGenAI({ apiKey });
+      const totalIncome = transactions.filter(t => t.type === 'income').reduce((s, t) => s + Math.abs(t.amount), 0);
+      const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + Math.abs(t.amount), 0);
+      const totalDebt = loans.reduce((s, l) => s + l.remainingAmount, 0);
+      const totalAssets = accounts.reduce((s, a) => s + a.balance, 0);
+
+      const prompt = `You are a personal finance AI advisor. Given these financial metrics:
+- Overall Health Score: ${metrics.overallScore}/100
+- Savings Rate: ${Math.round(metrics.savingsRate * 100)}%
+- Debt-to-Income Ratio: ${Math.round(metrics.debtRatio * 100)}%
+- Emergency Fund Coverage: ${Math.round(metrics.emergencyFund * 6)} months
+- Budget Adherence: ${Math.round(metrics.budgetAdherence * 100)}%
+- Total Income (all time): ${totalIncome}
+- Total Expenses (all time): ${totalExpenses}
+- Total Debt: ${totalDebt}
+- Total Assets: ${totalAssets}
+- Active Loans: ${loans.length}
+- Active Budgets: ${budgets.length}
+
+Generate exactly 4 actionable, personalized financial recommendations. Return a JSON array with this exact schema:
+[{"title":"...", "impact":"+X pts", "effort":"Easy|Medium|Hard", "tab":"loans|savings|budgets|accounts|transactions", "description":"One concise sentence of advice."}]
+Only return the JSON array. No markdown, no explanation.`;
+
+      const response = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: prompt });
+      const text = response.text?.trim() || '[]';
+      const cleaned = text.replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(cleaned);
+      setAiRecs(parsed.map((r: any) => ({ ...r, icon: 'Sparkles' })));
+    } catch (e: any) {
+      setAiError('Could not generate AI recommendations. Showing defaults.');
+      setAiRecs(DEFAULT_RECS);
+    } finally {
+      setIsLoadingAI(false);
+    }
+  };
+
+  useEffect(() => {
+    generateAIRecommendations();
+  }, []);
 
   const VITALS = [
     { label: 'Savings Rate', value: metrics.savingsRate, icon: Activity, color: '#7C6EFA', text: `${Math.round(metrics.savingsRate * 100)}% of income saved` },
@@ -134,32 +198,68 @@ export const HealthScorePage: React.FC<HealthScorePageProps> = ({ onNavigate }) 
       </div>
 
       <div className="space-y-4">
-        <h3 className="text-sm font-bold text-white/40 uppercase tracking-widest mb-4">Improvement Feed</h3>
-        {[
-          { icon: Target, title: "Pay extra on credit card", impact: "+4 points", effort: "Easy", color: "accent", tab: "loans" },
-          { icon: Zap, title: "Consolidate high-interest loans", impact: "+12 points", effort: "Medium", color: "positive", tab: "loans" },
-        ].map((rec, i) => (
-          <div key={i} className="glass-card p-4 flex items-center justify-between group hover:border-accent/30 transition-all cursor-pointer">
-            <div className="flex items-center gap-4">
-              <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", `bg-${rec.color}/10 text-${rec.color}`)}>
-                <rec.icon className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="font-bold text-sm">{rec.title}</h4>
-                <div className="flex gap-2 mt-1">
-                  <span className="text-[10px] font-bold text-accent uppercase tracking-widest">{rec.impact}</span>
-                  <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">{rec.effort} Effort</span>
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={() => onNavigate?.(rec.tab)}
-              className="px-4 py-2 rounded-lg bg-white/5 text-xs font-bold hover:bg-accent transition-all"
-            >
-              Action
-            </button>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-bold text-white/40 uppercase tracking-widest">AI Improvement Feed</h3>
+          <button
+            onClick={generateAIRecommendations}
+            disabled={isLoadingAI}
+            className="flex items-center gap-2 text-xs font-bold text-accent hover:text-white transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={cn("w-3 h-3", isLoadingAI && "animate-spin")} />
+            <span>Refresh</span>
+          </button>
+        </div>
+
+        {aiError && (
+          <div className="flex items-center gap-2 text-xs text-yellow-400 bg-yellow-400/5 border border-yellow-400/20 rounded-xl px-4 py-3 mb-4">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{aiError}</span>
           </div>
-        ))}
+        )}
+
+        <AnimatePresence mode="wait">
+          {isLoadingAI ? (
+            <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="glass-card p-12 flex flex-col items-center gap-4">
+              <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center">
+                <Sparkles className="w-5 h-5 text-accent animate-pulse" />
+              </div>
+              <p className="text-xs text-white/40 font-bold">AI is analysing your financial health...</p>
+            </motion.div>
+          ) : (
+            <motion.div key="recs" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
+              {aiRecs.map((rec, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.08 }}
+                  className="glass-card p-4 flex items-start justify-between group hover:border-accent/30 transition-all"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center text-accent shrink-0">
+                      <Sparkles className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm mb-1">{rec.title}</h4>
+                      <p className="text-xs text-white/40 leading-relaxed mb-2">{rec.description}</p>
+                      <div className="flex gap-2">
+                        <span className="text-[10px] font-bold text-accent uppercase tracking-widest bg-accent/10 px-2 py-0.5 rounded">{rec.impact}</span>
+                        <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">{rec.effort} Effort</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => onNavigate?.(rec.tab)}
+                    className="px-4 py-2 rounded-lg bg-white/5 text-xs font-bold hover:bg-accent transition-all shrink-0 ml-4"
+                  >
+                    Go
+                  </button>
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </motion.div>
   );

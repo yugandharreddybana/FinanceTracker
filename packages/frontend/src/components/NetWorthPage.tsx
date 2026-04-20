@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { TrendingUp, ArrowUpRight, ArrowDownRight, Plus, ChevronDown } from 'lucide-react';
@@ -9,23 +9,57 @@ interface NetWorthPageProps {
 }
 
 export const NetWorthPage: React.FC<NetWorthPageProps> = ({ onNavigate }) => {
-  const { netWorthByCurrency, accounts, loans, investments } = useFinance();
+  const { netWorthByCurrency, accounts, loans, investments, transactions } = useFinance();
   const currencies = Object.keys(netWorthByCurrency);
   const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
   const [trendPeriod, setTrendPeriod] = useState('1M');
   
   const netWorth = netWorthByCurrency[selectedCurrency] || { total: 0, assets: 0, liabilities: 0, change: 0 };
   
-  const forecastData = React.useMemo(() => {
-    const periodDays: Record<string, number> = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365, 'All': 730 };
-    const days = periodDays[trendPeriod] || 30;
-    const data = [];
-    const dailyChange = (netWorth.total * (netWorth.change / 100)) / 30;
-    for (let i = 0; i < days; i++) {
-      data.push({ day: i, balance: netWorth.total + (dailyChange * i) });
+  // Real historical trend computed from transactions
+  const forecastData = useMemo(() => {
+    const today = new Date();
+    const periodMonths: Record<string, number> = { '1M': 1, '3M': 3, '6M': 6, '1Y': 12, 'All': 24 };
+    const months = periodMonths[trendPeriod] || 1;
+
+    // Group income/expenses by month
+    const monthlyDeltas: Record<string, number> = {};
+    transactions
+      .filter(t => (t.currency || 'INR') === selectedCurrency)
+      .forEach(t => {
+        const d = new Date(t.date);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const delta = t.type === 'income' ? Math.abs(t.amount) : -Math.abs(t.amount);
+        monthlyDeltas[key] = (monthlyDeltas[key] || 0) + delta;
+      });
+
+    // Build cumulative chart from oldest to newest
+    const data: { label: string; balance: number }[] = [];
+    let runningBalance = netWorth.total;
+
+    // Compute balance backwards from current net worth
+    const keys: string[] = [];
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
     }
+
+    // Start from estimated past balance
+    let pastBalance = netWorth.total;
+    keys.slice().reverse().forEach(key => {
+      pastBalance -= (monthlyDeltas[key] || 0);
+    });
+
+    runningBalance = pastBalance;
+    keys.forEach(key => {
+      const [y, m] = key.split('-');
+      const label = new Date(Number(y), Number(m) - 1, 1).toLocaleString('default', { month: 'short', year: '2-digit' });
+      runningBalance += (monthlyDeltas[key] || 0);
+      data.push({ label, balance: Math.round(runningBalance) });
+    });
+
     return data;
-  }, [netWorth, trendPeriod]);
+  }, [transactions, netWorth.total, selectedCurrency, trendPeriod]);
 
   const assetBreakdown = accounts
     .filter(a => a.type !== 'Credit' && (a.currency || 'INR') === selectedCurrency)
@@ -87,19 +121,24 @@ export const NetWorthPage: React.FC<NetWorthPageProps> = ({ onNavigate }) => {
 
           <div className="flex-1 w-full h-[200px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={forecastData}>
+              <AreaChart data={forecastData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                 <defs>
                   <linearGradient id="netWorthGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#7C6EFA" stopOpacity={0.3}/>
                     <stop offset="95%" stopColor="#7C6EFA" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <Area 
-                  type="monotone" 
-                  dataKey="balance" 
-                  stroke="#7C6EFA" 
-                  strokeWidth={4} 
-                  fill="url(#netWorthGradient)" 
+                <XAxis dataKey="label" hide />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#0F0F19', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '11px', color: '#fff' }}
+                  formatter={(v: number) => [v.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency }), 'Net Worth']}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="balance"
+                  stroke="#7C6EFA"
+                  strokeWidth={4}
+                  fill="url(#netWorthGradient)"
                   animationDuration={1500}
                   animationBegin={200}
                 />

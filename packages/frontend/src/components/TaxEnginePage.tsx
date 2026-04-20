@@ -1,69 +1,126 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Shield, Calculator, TrendingDown, Lightbulb, 
+import {
+  Shield, Calculator, TrendingDown, Lightbulb,
   CheckCircle2, AlertTriangle, FileText, Download,
-  ArrowRight, Sparkles, PieChart, Info, RefreshCw
+  ArrowRight, Sparkles, PieChart, Info, RefreshCw, Upload, X, Trash2
 } from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
 import { aiService, TaxSuggestion } from '../services/aiService';
 import { currencyService } from '../services/currencyService';
 import { cn } from '../lib/utils';
 
+interface VaultDoc {
+  name: string;
+  size: string;
+  dataUrl: string;
+  uploadedAt: string;
+}
+
+const VAULT_KEY = 'ft_tax_vault';
+
 export const TaxEnginePage: React.FC = () => {
   const { transactions, userProfile } = useFinance();
   const [suggestions, setSuggestions] = useState<TaxSuggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [taxYear, setTaxYear] = useState('2024');
+  const [taxYear, setTaxYear] = useState(new Date().getFullYear().toString());
   const [expandedSuggestion, setExpandedSuggestion] = useState<number | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
   const [showVaultModal, setShowVaultModal] = useState(false);
+  const [vaultDocs, setVaultDocs] = useState<VaultDoc[]>(() => {
+    try { return JSON.parse(localStorage.getItem(VAULT_KEY) || '[]'); } catch { return []; }
+  });
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showNotice = (msg: string) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3500);
   };
 
+  // Transactions filtered by selected tax year
+  const yearTransactions = useMemo(() =>
+    transactions.filter(t => new Date(t.date).getFullYear().toString() === taxYear),
+    [transactions, taxYear]
+  );
+
+  const taxStats = useMemo(() => {
+    const income = yearTransactions.filter(t => t.type === 'income').reduce((s, t) => s + Math.abs(t.amount), 0);
+    const expenses = yearTransactions.filter(t => t.type === 'expense').reduce((s, t) => s + Math.abs(t.amount), 0);
+    // Simplified tax estimation: 20% of income above a basic exemption (simplified)
+    const basicExemption = 250000; // common exemption threshold
+    const taxableIncome = Math.max(0, income - basicExemption);
+    const estimatedTax = taxableIncome <= 500000 ? taxableIncome * 0.05
+      : taxableIncome <= 1000000 ? 12500 + (taxableIncome - 500000) * 0.2
+      : 112500 + (taxableIncome - 1000000) * 0.3;
+    const potentialSavings = Math.round(estimatedTax * 0.25);
+    const effectiveRate = income > 0 ? ((estimatedTax / income) * 100).toFixed(1) : '0.0';
+    return { income, expenses, estimatedTax: Math.round(estimatedTax), potentialSavings, effectiveRate };
+  }, [yearTransactions]);
+
   const exportTaxReport = () => {
     const taxSummary = {
       taxYear,
       generatedAt: new Date().toISOString(),
-      estimatedLiability: 12450,
-      breakdown: [
-        { label: 'Federal Income Tax', amount: 8450 },
-        { label: 'State Income Tax', amount: 2800 },
-        { label: 'Social Security', amount: 1200 },
-      ],
+      estimatedLiability: taxStats.estimatedTax,
+      income: taxStats.income,
+      expenses: taxStats.expenses,
+      effectiveRate: taxStats.effectiveRate,
       optimizationSuggestions: suggestions,
       transactionsSummary: {
-        total: transactions.length,
-        income: transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0),
-        expenses: transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0),
+        total: yearTransactions.length,
+        income: taxStats.income,
+        expenses: taxStats.expenses,
       },
     };
     const blob = new Blob([JSON.stringify(taxSummary, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    const a = Object.assign(document.createElement('a'), {
-      href: url,
-      download: `tax-report-${taxYear}.json`,
-    });
+    const a = Object.assign(document.createElement('a'), { href: url, download: `tax-report-${taxYear}.json` });
     a.click();
     URL.revokeObjectURL(url);
     showNotice('Tax report downloaded successfully!');
+  };
+
+  const handleVaultUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const doc: VaultDoc = {
+        name: file.name,
+        size: file.size < 1024 * 1024 ? `${Math.round(file.size / 1024)} KB` : `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+        dataUrl: reader.result as string,
+        uploadedAt: new Date().toLocaleDateString(),
+      };
+      const updated = [...vaultDocs, doc];
+      setVaultDocs(updated);
+      localStorage.setItem(VAULT_KEY, JSON.stringify(updated));
+      setIsUploading(false);
+      showNotice(`"${file.name}" uploaded successfully!`);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const deleteVaultDoc = (idx: number) => {
+    const updated = vaultDocs.filter((_, i) => i !== idx);
+    setVaultDocs(updated);
+    localStorage.setItem(VAULT_KEY, JSON.stringify(updated));
   };
 
   const currentCurrency = userProfile.preferences.currency;
 
   const analyzeTax = async () => {
     setIsLoading(true);
-    const data = await aiService.getTaxOptimizationSuggestions(transactions.slice(0, 50));
+    const data = await aiService.getTaxOptimizationSuggestions(yearTransactions.slice(0, 50));
     setSuggestions(data);
     setIsLoading(false);
   };
 
   useEffect(() => {
     analyzeTax();
-  }, []);
+  }, [taxYear]);
 
   return (
     <div className="space-y-10 pb-20">
@@ -81,6 +138,9 @@ export const TaxEnginePage: React.FC = () => {
         )}
       </AnimatePresence>
 
+      {/* Hidden file input for vault */}
+      <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" onChange={handleVaultUpload} />
+
       {/* Tax Document Vault Modal */}
       <AnimatePresence>
         {showVaultModal && (
@@ -88,25 +148,46 @@ export const TaxEnginePage: React.FC = () => {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setShowVaultModal(false)} className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-              className="relative glass-card p-8 w-full max-w-md">
-              <h3 className="text-xl font-bold mb-2">Tax Document Vault</h3>
-              <p className="text-sm text-white/40 mb-6">Securely store and organise your tax documents. Upload W-2s, 1099s, receipts and more.</p>
-              <div className="space-y-3 mb-6">
-                {['W-2 Form 2024', '1099-INT 2024', 'Mortgage Interest Statement', 'Charitable Donation Receipts'].map((doc, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
-                    <div className="flex items-center gap-3">
-                      <FileText className="w-4 h-4 text-accent" />
-                      <span className="text-sm font-medium">{doc}</span>
-                    </div>
-                    <CheckCircle2 className="w-4 h-4 text-positive" />
+              className="relative glass-card p-8 w-full max-w-lg max-h-[80vh] flex flex-col">
+              <div className="flex justify-between items-start mb-2">
+                <h3 className="text-xl font-bold">Tax Document Vault</h3>
+                <button onClick={() => setShowVaultModal(false)} className="p-1 rounded-lg hover:bg-white/10 transition-all">
+                  <X className="w-5 h-5 text-white/40" />
+                </button>
+              </div>
+              <p className="text-sm text-white/40 mb-6">Store tax documents locally. Supports PDF, images, and Word docs.</p>
+              <div className="flex-1 overflow-y-auto space-y-3 mb-6 pr-1">
+                {vaultDocs.length === 0 ? (
+                  <div className="text-center py-10 text-white/30 text-sm">
+                    No documents yet. Upload your first tax document.
                   </div>
-                ))}
+                ) : (
+                  vaultDocs.map((doc, i) => (
+                    <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 group">
+                      <div className="flex items-center gap-3">
+                        <FileText className="w-4 h-4 text-accent shrink-0" />
+                        <div>
+                          <span className="text-sm font-medium block">{doc.name}</span>
+                          <span className="text-[10px] text-white/30">{doc.size} · {doc.uploadedAt}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-positive" />
+                        <button onClick={() => deleteVaultDoc(i)} className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-negative/20 text-negative">
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
               <button
-                onClick={() => { setShowVaultModal(false); showNotice('Upload feature coming soon — export your documents via Settings for now.'); }}
-                className="w-full py-3 rounded-xl bg-accent/20 border border-accent/30 text-accent font-bold hover:bg-accent/30 transition-all"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="w-full py-3 rounded-xl bg-accent/20 border border-accent/30 text-accent font-bold hover:bg-accent/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                + Upload Document
+                {isUploading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                <span>{isUploading ? 'Uploading...' : '+ Upload Document'}</span>
               </button>
             </motion.div>
           </div>
@@ -126,14 +207,16 @@ export const TaxEnginePage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-4">
-          <select 
+          <select
             value={taxYear}
             onChange={(e) => setTaxYear(e.target.value)}
             aria-label="Tax year"
             className="px-6 py-3 rounded-2xl bg-white/5 border border-white/10 text-sm font-bold outline-none focus:border-accent/50 transition-all"
           >
-            <option value="2024" className="bg-[#050508]">Tax Year 2024</option>
-            <option value="2023" className="bg-[#050508]">Tax Year 2023</option>
+            {[0, 1, 2, 3].map(offset => {
+              const y = (new Date().getFullYear() - offset).toString();
+              return <option key={y} value={y} className="bg-[#050508]">Tax Year {y}</option>;
+            })}
           </select>
           <button onClick={exportTaxReport} className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/5 border border-white/10 text-white font-bold hover:bg-white/10 transition-all">
             <Download className="w-4 h-4" />
@@ -150,38 +233,38 @@ export const TaxEnginePage: React.FC = () => {
           className="glass-card p-8"
         >
           <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Estimated Tax Liability</p>
-          <h2 className="text-4xl font-bold font-mono tracking-tighter mb-4">{currencyService.formatCurrency(12450, currentCurrency)}</h2>
+          <h2 className="text-4xl font-bold font-mono tracking-tighter mb-4">{currencyService.formatCurrency(taxStats.estimatedTax, currentCurrency)}</h2>
           <div className="flex items-center gap-2 text-xs text-white/40">
             <Calculator className="w-3 h-3" />
-            <span>Based on current income & deductions</span>
+            <span>Based on {taxYear} income & deductions</span>
           </div>
         </motion.div>
 
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
           className="glass-card p-8 border-positive/20 bg-positive/[0.02]"
         >
-          <p className="text-[10px] font-bold text-positive uppercase tracking-widest mb-2">Potential AI Savings</p>
-          <h2 className="text-4xl font-bold font-mono tracking-tighter text-positive mb-4">{currencyService.formatCurrency(3200, currentCurrency)}</h2>
+          <p className="text-[10px] font-bold text-positive uppercase tracking-widest mb-2">Potential Savings</p>
+          <h2 className="text-4xl font-bold font-mono tracking-tighter text-positive mb-4">{currencyService.formatCurrency(taxStats.potentialSavings, currentCurrency)}</h2>
           <div className="flex items-center gap-2 text-xs text-positive/60">
             <Sparkles className="w-3 h-3" />
-            <span>Optimization opportunities found</span>
+            <span>Via deductions & optimizations</span>
           </div>
         </motion.div>
 
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
           className="glass-card p-8"
         >
           <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Effective Tax Rate</p>
-          <h2 className="text-4xl font-bold font-mono tracking-tighter mb-4">18.4%</h2>
+          <h2 className="text-4xl font-bold font-mono tracking-tighter mb-4">{taxStats.effectiveRate}%</h2>
           <div className="flex items-center gap-2 text-xs text-white/40">
             <TrendingDown className="w-3 h-3" />
-            <span>2.1% lower than last year</span>
+            <span>On {currencyService.formatCurrency(taxStats.income, currentCurrency)} total income</span>
           </div>
         </motion.div>
       </div>
@@ -271,9 +354,9 @@ export const TaxEnginePage: React.FC = () => {
           <div className="glass-card p-10">
             <div className="space-y-8">
               {[
-                { label: 'Federal Income Tax', amount: 8450, color: '#7C6EFA', percent: 68 },
-                { label: 'State Income Tax', amount: 2800, color: '#22D3A5', percent: 22 },
-                { label: 'Social Security', amount: 1200, color: '#F59E0B', percent: 10 }
+                { label: 'Income Tax (Slab)', amount: Math.round(taxStats.estimatedTax * 0.68), color: '#7C6EFA', percent: 68 },
+                { label: 'Surcharge & Cess', amount: Math.round(taxStats.estimatedTax * 0.22), color: '#22D3A5', percent: 22 },
+                { label: 'Other Levies', amount: Math.round(taxStats.estimatedTax * 0.10), color: '#F59E0B', percent: 10 }
               ].map((item, i) => (
                 <div key={i} className="space-y-3">
                   <div className="flex justify-between items-end">
@@ -301,7 +384,7 @@ export const TaxEnginePage: React.FC = () => {
               <div>
                 <p className="text-xs font-bold text-white/80 mb-1">Upcoming Deadline</p>
                 <p className="text-xs text-white/40 leading-relaxed">
-                  The Q2 estimated tax payment deadline is June 15th. You have an estimated payment of {currencyService.formatCurrency(3112, currentCurrency)} due.
+                  Based on {taxYear} data: {yearTransactions.length} transactions analysed. Estimated quarterly payment: {currencyService.formatCurrency(Math.round(taxStats.estimatedTax / 4), currentCurrency)}.
                 </p>
               </div>
             </div>
@@ -314,7 +397,7 @@ export const TaxEnginePage: React.FC = () => {
               </div>
               <div>
                 <h4 className="font-bold">Tax Document Vault</h4>
-                <p className="text-xs text-white/40">12 documents stored securely</p>
+                <p className="text-xs text-white/40">{vaultDocs.length} document{vaultDocs.length !== 1 ? 's' : ''} stored securely</p>
               </div>
             </div>
             <button onClick={() => setShowVaultModal(true)} aria-label="Open document vault" className="p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all">

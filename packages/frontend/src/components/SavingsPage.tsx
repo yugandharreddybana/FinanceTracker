@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFinance } from '../context/FinanceContext';
-import { Plus, Target, TrendingUp, Calendar, ArrowRight, X, ChevronDown, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Target, TrendingUp, Calendar, ArrowRight, X, ChevronDown, Pencil, Trash2, Zap } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { SavingsGoal } from '../types';
 
@@ -10,7 +10,7 @@ interface SavingsPageProps {
 }
 
 export const SavingsPage: React.FC<SavingsPageProps> = ({ onNavigate }) => {
-  const { savingsGoals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal, accounts, transferToSavings } = useFinance();
+  const { savingsGoals, addSavingsGoal, updateSavingsGoal, deleteSavingsGoal, accounts, transferToSavings, transactions, recurringPayments } = useFinance();
   const [isAdding, setIsAdding] = React.useState(false);
   const [editingGoal, setEditingGoal] = React.useState<SavingsGoal | null>(null);
   const [fundingGoal, setFundingGoal] = React.useState<string | null>(null);
@@ -23,6 +23,28 @@ export const SavingsPage: React.FC<SavingsPageProps> = ({ onNavigate }) => {
 
 
   const filteredGoals = savingsGoals.filter(g => (g.currency || 'INR') === selectedCurrency);
+
+  // Smart Transfers: compute monthly surplus and suggest best allocation
+  const smartTransfers = useMemo(() => {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthTx = transactions.filter(t => new Date(t.date) >= monthStart && (t.currency || 'INR') === selectedCurrency);
+    const monthlyIncome = monthTx.filter(t => t.type === 'income').reduce((s, t) => s + Math.abs(t.amount), 0);
+    const monthlyExpenses = monthTx.filter(t => t.type === 'expense').reduce((s, t) => s + Math.abs(t.amount), 0);
+    const monthlyObligations = recurringPayments
+      .filter(p => (p.currency || 'INR') === selectedCurrency)
+      .reduce((s, p) => s + p.amount, 0);
+    const surplus = monthlyIncome - monthlyExpenses - monthlyObligations;
+
+    // Find goal furthest from target (most in need of funding)
+    const bestGoal = filteredGoals
+      .filter(g => g.current < g.target)
+      .sort((a, b) => (a.current / a.target) - (b.current / b.target))[0];
+
+    const suggestedAmount = Math.max(0, Math.round(surplus * 0.3)); // suggest 30% of surplus
+
+    return { monthlyIncome, monthlyExpenses, monthlyObligations, surplus, bestGoal, suggestedAmount };
+  }, [transactions, recurringPayments, selectedCurrency, filteredGoals]);
 
   const handleAddGoal = async () => {
     if (!newGoal.name || !newGoal.target) return;
@@ -300,41 +322,83 @@ export const SavingsPage: React.FC<SavingsPageProps> = ({ onNavigate }) => {
         </motion.div>
       </div>
 
+      {/* Smart Transfers Engine */}
       <div className="glass-card p-8 border-accent/20 bg-accent/5">
-        <div className="flex items-center gap-4 mb-6">
+        <div className="flex items-center gap-4 mb-8">
           <div className="w-12 h-12 rounded-2xl bg-accent/20 flex items-center justify-center text-accent">
-            <Target className="w-6 h-6" />
+            <Zap className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-lg font-bold">Savings Strategy</h3>
-            <p className="text-sm text-white/60">AI-optimized allocation based on your goals</p>
+            <h3 className="text-lg font-bold">Smart Transfers Engine</h3>
+            <p className="text-sm text-white/60">Surplus analysis and optimal savings allocation for {new Date().toLocaleString('default', { month: 'long' })}</p>
           </div>
         </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="p-4 rounded-xl bg-white/5 border border-white/5">
-            <h4 className="text-xs font-bold uppercase tracking-widest text-white/40 mb-2">Auto-Save</h4>
-            <p className="text-sm font-medium mb-4">Round up transactions and save the difference.</p>
-            <div className="flex justify-between items-center">
-              <span className="text-xs font-bold text-positive">Active</span>
-              <span className="text-[10px] font-mono text-white/30">Active</span>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          {[
+            { label: 'Monthly Income', value: smartTransfers.monthlyIncome, color: 'text-positive' },
+            { label: 'Monthly Expenses', value: smartTransfers.monthlyExpenses, color: 'text-negative' },
+            { label: 'Obligations', value: smartTransfers.monthlyObligations, color: 'text-yellow-400' },
+            { label: 'Available Surplus', value: smartTransfers.surplus, color: smartTransfers.surplus >= 0 ? 'text-accent' : 'text-negative' },
+          ].map(item => (
+            <div key={item.label} className="p-4 rounded-xl bg-white/5 border border-white/5">
+              <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2">{item.label}</p>
+              <p className={`text-lg font-bold font-mono ${item.color}`}>
+                {item.value.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency, maximumFractionDigits: 0 })}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {smartTransfers.surplus > 0 && smartTransfers.bestGoal ? (
+          <div className="p-6 rounded-2xl bg-accent/10 border border-accent/20">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <span className="text-3xl">{smartTransfers.bestGoal.emoji}</span>
+                <div>
+                  <p className="text-[10px] font-bold text-accent uppercase tracking-widest mb-1">Suggested Transfer</p>
+                  <p className="font-bold text-lg">
+                    Transfer {smartTransfers.suggestedAmount.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })} → {smartTransfers.bestGoal.name}
+                  </p>
+                  <p className="text-xs text-white/40 mt-1">
+                    30% of your {smartTransfers.surplus.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency, maximumFractionDigits: 0 })} surplus · Goal is {Math.round((smartTransfers.bestGoal.current / smartTransfers.bestGoal.target) * 100)}% funded
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setFundingGoal(smartTransfers.bestGoal!.id);
+                  setFundAmount(smartTransfers.suggestedAmount.toString());
+                }}
+                className="px-6 py-3 rounded-xl bg-accent text-white font-bold hover:bg-accent/80 transition-all text-sm shrink-0 flex items-center gap-2"
+              >
+                <Zap className="w-4 h-4" />
+                Apply Transfer
+              </button>
             </div>
           </div>
-          <div className="p-4 rounded-xl bg-white/5 border border-white/5">
-            <h4 className="text-xs font-bold uppercase tracking-widest text-white/40 mb-2">Smart Transfers</h4>
-            <p className="text-sm font-medium mb-4">Transfer surplus cash to high-yield vaults.</p>
-            <div className="flex justify-between items-center">
-              <span className="text-xs font-bold text-accent">Suggested</span>
-              <button onClick={() => onNavigate?.('accounts')} className="text-[10px] font-bold uppercase text-accent hover:underline">Review</button>
-            </div>
+        ) : smartTransfers.surplus <= 0 ? (
+          <div className="p-6 rounded-2xl bg-negative/10 border border-negative/20 text-center">
+            <p className="text-sm font-bold text-negative mb-1">No surplus this month</p>
+            <p className="text-xs text-white/40">Reduce expenses or increase income to unlock smart transfers.</p>
           </div>
+        ) : (
+          <div className="p-6 rounded-2xl bg-white/5 border border-white/10 text-center">
+            <p className="text-sm font-bold text-white/60 mb-1">Add a savings goal to get transfer suggestions</p>
+            <button onClick={() => setIsAdding(true)} className="text-xs text-accent font-bold hover:underline">Create Goal →</button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
           <div className="p-4 rounded-xl bg-white/5 border border-white/5">
             <h4 className="text-xs font-bold uppercase tracking-widest text-white/40 mb-2">Debt Snowball</h4>
-            <p className="text-sm font-medium mb-4">Prioritize high-interest debt repayment.</p>
-            <div className="flex justify-between items-center">
-              <span className="text-xs font-bold text-white/20">Inactive</span>
-              <button onClick={() => onNavigate?.('loans')} className="text-[10px] font-bold uppercase text-white/40 hover:text-white transition-colors">Setup</button>
-            </div>
+            <p className="text-sm font-medium mb-3">Prioritise high-interest debt repayment with a structured plan.</p>
+            <button onClick={() => onNavigate?.('loans')} className="text-[10px] font-bold uppercase text-accent hover:underline">Open Planner →</button>
+          </div>
+          <div className="p-4 rounded-xl bg-white/5 border border-white/5">
+            <h4 className="text-xs font-bold uppercase tracking-widest text-white/40 mb-2">All Accounts</h4>
+            <p className="text-sm font-medium mb-3">View balances and manually move funds between accounts.</p>
+            <button onClick={() => onNavigate?.('accounts')} className="text-[10px] font-bold uppercase text-accent hover:underline">View Accounts →</button>
           </div>
         </div>
       </div>

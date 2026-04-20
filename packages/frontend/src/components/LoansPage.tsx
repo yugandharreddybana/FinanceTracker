@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, TrendingDown, X, Landmark, Calculator, ArrowLeftRight, ChevronRight, Calendar, CreditCard, Info, AlertCircle, Pencil, Trash2 } from 'lucide-react';
+import { Plus, TrendingDown, X, Landmark, Calculator, ArrowLeftRight, ChevronRight, Calendar, CreditCard, Info, AlertCircle, Pencil, Trash2, Snowflake, TrendingUp, CheckCircle2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useFinance } from '../context/FinanceContext';
 import { Loan } from '../types';
@@ -53,6 +53,9 @@ export const LoansPage: React.FC = () => {
   const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
+  const [isSnowballOpen, setIsSnowballOpen] = useState(false);
+  const [snowballMethod, setSnowballMethod] = useState<'avalanche' | 'snowball'>('avalanche');
+  const [extraPayment, setExtraPayment] = useState('1000');
   const [selectedLoanForSchedule, setSelectedLoanForSchedule] = useState<Loan | null>(null);
   const [selectedLoanForPayment, setSelectedLoanForPayment] = useState<Loan | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -90,6 +93,59 @@ export const LoansPage: React.FC = () => {
     const totalInterest = totalRepayment - p;
     return { emi, totalRepayment, totalInterest };
   }, [calcForm]);
+
+  // Debt Snowball/Avalanche computation
+  const snowballResults = useMemo(() => {
+    if (loans.length === 0) return null;
+    const extra = parseFloat(extraPayment) || 0;
+
+    // Sort loans: avalanche = highest interest first; snowball = lowest balance first
+    const sorted = [...loans].sort((a, b) =>
+      snowballMethod === 'avalanche'
+        ? b.interestRate - a.interestRate
+        : a.remainingAmount - b.remainingAmount
+    );
+
+    // Simulate month-by-month payoff
+    let balances = sorted.map(l => ({ ...l, balance: l.remainingAmount }));
+    let month = 0;
+    let totalInterestPaid = 0;
+    const schedule: { month: number; paid: string; remaining: number }[] = [];
+
+    while (balances.some(b => b.balance > 0.01) && month < 600) {
+      month++;
+      let availableExtra = extra;
+
+      balances = balances.map(loan => {
+        if (loan.balance <= 0) return loan;
+        const r = loan.interestRate / 12 / 100;
+        const interest = loan.balance * r;
+        totalInterestPaid += interest;
+        const minPayment = Math.min(loan.monthlyEMI, loan.balance + interest);
+        let payment = minPayment;
+        if (balances.filter(b => b.balance > 0.01)[0]?.id === loan.id) {
+          payment = Math.min(loan.balance + interest, minPayment + availableExtra);
+          availableExtra = 0;
+        }
+        const newBalance = Math.max(0, loan.balance - (payment - interest));
+        return { ...loan, balance: newBalance };
+      });
+
+      const remaining = balances.reduce((s, b) => s + b.balance, 0);
+      if (month <= 12 || month % 3 === 0) {
+        schedule.push({ month, paid: balances.find(b => b.balance <= 0.01 && schedule.every(s => s.month !== month))?.name || '', remaining: Math.round(remaining) });
+      }
+    }
+
+    return {
+      months: month,
+      years: Math.floor(month / 12),
+      remainingMonths: month % 12,
+      totalInterestPaid: Math.round(totalInterestPaid),
+      order: sorted.map(l => l.name),
+      schedule: schedule.slice(0, 12),
+    };
+  }, [loans, snowballMethod, extraPayment]);
 
   const handleMakePayment = async () => {
     if (!selectedLoanForPayment || !paymentAmount) return;
@@ -229,14 +285,21 @@ export const LoansPage: React.FC = () => {
           <p className="text-white/40 font-medium">Track your liabilities and repayment schedules with precision</p>
         </div>
         <div className="flex gap-3">
-          <button 
+          <button
+            onClick={() => setIsSnowballOpen(true)}
+            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-white/5 border border-white/10 text-white/60 text-sm font-bold hover:bg-white/10 transition-all"
+          >
+            <Snowflake className="w-4 h-4" />
+            <span>Debt Payoff</span>
+          </button>
+          <button
             onClick={() => setIsCalculatorOpen(true)}
             className="flex items-center gap-2 px-6 py-3 rounded-xl bg-white/5 border border-white/10 text-white/60 text-sm font-bold hover:bg-white/10 transition-all"
           >
             <Calculator className="w-4 h-4" />
             <span>Estimator</span>
           </button>
-          <button 
+          <button
             onClick={() => setIsCompareOpen(true)}
             className="flex items-center gap-2 px-6 py-3 rounded-xl bg-white/5 border border-white/10 text-white/60 text-sm font-bold hover:bg-white/10 transition-all"
           >
@@ -919,6 +982,131 @@ export const LoansPage: React.FC = () => {
               <div className="p-6 bg-white/[0.02] border-t border-white/5 flex items-center gap-3">
                 <AlertCircle className="w-4 h-4 text-white/20" />
                 <p className="text-[10px] text-white/20 font-medium">Showing first 120 months (10 years) of the schedule. Actual schedule length depends on loan tenure.</p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Debt Snowball / Avalanche Modal */}
+      <AnimatePresence>
+        {isSnowballOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setIsSnowballOpen(false)} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+            <motion.div initial={{ opacity: 0, scale: 0.9, y: 30 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 30 }}
+              className="relative glass-card w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden border-accent/20">
+              <div className="p-8 border-b border-white/5 flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center text-accent">
+                    <Snowflake className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold">Debt Payoff Planner</h3>
+                    <p className="text-xs text-white/40">Snowball & Avalanche strategies</p>
+                  </div>
+                </div>
+                <button title="Close" onClick={() => setIsSnowballOpen(false)} className="p-2 hover:bg-white/5 rounded-xl">
+                  <X className="w-5 h-5 text-white/20 hover:text-white" />
+                </button>
+              </div>
+
+              <div className="p-8 space-y-6 overflow-y-auto flex-1">
+                {loans.length === 0 ? (
+                  <div className="text-center py-12 text-white/40">
+                    <Snowflake className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                    <p>Add at least one loan to run the payoff planner.</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Controls */}
+                    <div className="flex flex-col md:flex-row gap-4">
+                      <div className="flex-1 space-y-2">
+                        <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Strategy</label>
+                        <div className="flex rounded-xl overflow-hidden border border-white/10">
+                          <button
+                            onClick={() => setSnowballMethod('avalanche')}
+                            className={`flex-1 py-3 text-xs font-bold transition-all ${snowballMethod === 'avalanche' ? 'bg-accent text-white' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
+                          >
+                            🏔 Avalanche (Least Interest)
+                          </button>
+                          <button
+                            onClick={() => setSnowballMethod('snowball')}
+                            className={`flex-1 py-3 text-xs font-bold transition-all ${snowballMethod === 'snowball' ? 'bg-accent text-white' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
+                          >
+                            ❄️ Snowball (Smallest First)
+                          </button>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Extra Monthly Payment</label>
+                        <input
+                          type="number"
+                          value={extraPayment}
+                          onChange={e => setExtraPayment(e.target.value)}
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-accent transition-all font-mono"
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Result summary */}
+                    {snowballResults && (
+                      <>
+                        <div className="grid grid-cols-3 gap-4">
+                          <div className="glass-card p-6 text-center border-accent/20 bg-accent/[0.02]">
+                            <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2">Debt Free In</p>
+                            <p className="text-2xl font-bold font-mono text-accent">
+                              {snowballResults.years > 0 && `${snowballResults.years}y `}{snowballResults.remainingMonths}m
+                            </p>
+                          </div>
+                          <div className="glass-card p-6 text-center border-negative/20 bg-negative/[0.02]">
+                            <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2">Total Interest</p>
+                            <p className="text-2xl font-bold font-mono text-negative">
+                              {snowballResults.totalInterestPaid.toLocaleString(undefined, { style: 'currency', currency: loans[0]?.currency || 'INR', maximumFractionDigits: 0 })}
+                            </p>
+                          </div>
+                          <div className="glass-card p-6 text-center border-positive/20 bg-positive/[0.02]">
+                            <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2">Payoff Order</p>
+                            <p className="text-xs font-bold text-positive leading-relaxed">
+                              {snowballResults.order.slice(0, 2).join(' → ')}
+                              {snowballResults.order.length > 2 && ` → +${snowballResults.order.length - 2} more`}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Payoff order visual */}
+                        <div>
+                          <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-4">Recommended Payoff Order</p>
+                          <div className="space-y-3">
+                            {snowballResults.order.map((name, i) => {
+                              const loan = loans.find(l => l.name === name);
+                              return (
+                                <div key={name} className="flex items-center gap-4">
+                                  <span className="w-6 h-6 rounded-full bg-accent/20 text-accent text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                                  <div className="flex-1">
+                                    <div className="flex justify-between items-center mb-1">
+                                      <span className="text-sm font-bold">{name}</span>
+                                      <div className="flex items-center gap-3 text-xs">
+                                        <span className="text-negative font-mono">{loan?.interestRate}% APR</span>
+                                        <span className="text-white/40 font-mono">{loan?.remainingAmount.toLocaleString(undefined, { style: 'currency', currency: loan?.currency || 'INR', maximumFractionDigits: 0 })}</span>
+                                      </div>
+                                    </div>
+                                    <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                      <div
+                                        className="h-full bg-accent rounded-full"
+                                        style={{ width: `${Math.max(10, 100 - i * 25)}%`, opacity: 1 - i * 0.2 }}
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
               </div>
             </motion.div>
           </div>

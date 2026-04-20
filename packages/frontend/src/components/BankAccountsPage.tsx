@@ -726,8 +726,11 @@ export const BankAccountsPage: React.FC = () => {
                         >
                           Manual Entry
                         </button>
-                        <button onClick={() => alert('Secure bank linking requires a production API key. Use Manual Entry for now.')} className="flex-[2] py-4 rounded-2xl bg-accent text-white font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow">
-                          Continue to Secure Login
+                        <button
+                          onClick={() => setIsManual(true)}
+                          className="flex-[2] py-4 rounded-2xl bg-accent text-white font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow"
+                        >
+                          Enter Account Details
                         </button>
                       </div>
                     </motion.div>

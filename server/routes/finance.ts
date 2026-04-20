@@ -143,6 +143,16 @@ router.delete("/user-profiles/by-email/:email", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Family Accounts
+// ---------------------------------------------------------------------------
+
+router.get("/family", (req, res) => proxyToBackend(req, res, "/family"));
+router.post("/family", (req, res) => proxyToBackend(req, res, "/family"));
+router.get("/family/:id", (req, res) => proxyToBackend(req, res, `/family/${req.params.id}`));
+router.put("/family/:id", (req, res) => proxyToBackend(req, res, `/family/${req.params.id}`));
+router.delete("/family/:id", (req, res) => proxyToBackend(req, res, `/family/${req.params.id}`));
+
+// ---------------------------------------------------------------------------
 // Sync transactions cache (used by MCP fallback)
 // ---------------------------------------------------------------------------
 

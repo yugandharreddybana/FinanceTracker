@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Sparkles, Mail, ArrowRight, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { MIDDLEWARE_BASE } from '../services/api';
 
 interface ForgotPasswordPageProps {
   onBackToLogin: () => void;
@@ -28,11 +29,20 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBackTo
     }
 
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      const res = await fetch(`${MIDDLEWARE_BASE}/api/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      // Even if backend returns 404 (email not found), we show success for security
       setIsLoading(false);
       setIsSent(true);
-    }, 1500);
+    } catch {
+      // Show success anyway — don't leak whether email exists
+      setIsLoading(false);
+      setIsSent(true);
+    }
   };
 
   return (

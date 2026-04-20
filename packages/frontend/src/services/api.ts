@@ -227,6 +227,25 @@ export const financeApi = {
   deleteInvestment: (id: string): Promise<void> =>
     apiFetch(`${API_BASE}/investments/${id}`, { method: 'DELETE' }),
 
+  // User Profiles
+  getUserProfileByEmail: (email: string): Promise<any> =>
+    apiFetch(`${API_BASE}/user-profiles/by-email/${encodeURIComponent(email)}`),
+
+  createUserProfile: (profile: any): Promise<any> =>
+    apiFetch(`${API_BASE}/user-profiles`, { method: 'POST', body: JSON.stringify(profile) }),
+
+  updateUserProfile: (id: string, updates: any): Promise<any> =>
+    apiFetch(`${API_BASE}/user-profiles/${id}`, { method: 'PUT', body: JSON.stringify(updates) }),
+
+  // Family Accounts
+  getFamilyAccounts: (): Promise<any[]> => apiFetch(`${API_BASE}/family`),
+  createFamilyAccount: (family: any): Promise<any> =>
+    apiFetch(`${API_BASE}/family`, { method: 'POST', body: JSON.stringify(family) }),
+  updateFamilyAccount: (id: string, updates: any): Promise<any> =>
+    apiFetch(`${API_BASE}/family/${id}`, { method: 'PUT', body: JSON.stringify(updates) }),
+  deleteFamilyAccount: (id: string): Promise<void> =>
+    apiFetch(`${API_BASE}/family/${id}`, { method: 'DELETE' }),
+
   // AI Insights
   getAIInsights: (transactions: any[], selectedBank: string): Promise<any[]> =>
     apiFetch(`${MIDDLEWARE_BASE}/api/ai/insights`, {

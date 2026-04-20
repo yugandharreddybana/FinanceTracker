@@ -1,0 +1,30 @@
+# .claudeignore
+# Lock files — massive, never useful to read
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# Dependencies
+node_modules/
+
+# Editor and OS
+.vscode/
+.DS_Store
+*.log
+*.map
+
+# Static seed / mock data — only read when explicitly working on seed scripts
+data/
+
+# Utility scripts — only read when modifying a specific script
+scripts/
+
+# Skills and agents metadata — only read when working on AI integrations
+skills/
+skills-lock.json
