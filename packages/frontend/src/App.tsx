@@ -199,7 +199,7 @@ function MainApp() {
     };
   }, [isLoggedIn]);
 
-  const handleLogin = (email: string, token?: string, name?: string) => {
+  const handleLogin = (email: string, token?: string, name?: string, createdAt?: string) => {
     // Store auth token for API calls
     if (token) localStorage.setItem('auth_token', token);
     // Session persistent for 1 hr
@@ -207,14 +207,23 @@ function MainApp() {
       timestamp: Date.now() 
     }));
     clearDataForNewUser();
-    updateUserProfile({ email, name: name || email.split('@')[0] });
+    
+    // Parse createdAt into memberSince format (e.g., "Apr 2026")
+    const memberSinceDate = createdAt ? new Date(createdAt) : new Date();
+    const memberSinceStr = memberSinceDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    
+    updateUserProfile({ 
+      email, 
+      name: name || email.split('@')[0],
+      memberSince: memberSinceStr 
+    });
     setIsLoggedIn(true);
     setActiveTab('dashboard');
     refreshData();
     navigate('/dashboard');
   };
 
-  const handleSignup = (name: string, email: string, token?: string) => {
+  const handleSignup = (name: string, email: string, token?: string, createdAt?: string) => {
     // Store auth token for API calls
     if (token) localStorage.setItem('auth_token', token);
     // Session persistent for 1 hr
@@ -222,7 +231,16 @@ function MainApp() {
       timestamp: Date.now() 
     }));
     clearDataForNewUser();
-    updateUserProfile({ name, email });
+    
+    // Parse createdAt into memberSince format
+    const memberSinceDate = createdAt ? new Date(createdAt) : new Date();
+    const memberSinceStr = memberSinceDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+
+    updateUserProfile({ 
+      name, 
+      email,
+      memberSince: memberSinceStr
+    });
     setIsLoggedIn(true);
     setActiveTab('dashboard');
     refreshData();

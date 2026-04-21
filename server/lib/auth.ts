@@ -70,28 +70,29 @@ export function verifyToken(token: string): { uid: string; email: string; name: 
   }
 }
 
-export function registerUser(email: string, password: string, name: string): { user: { uid: string; email: string; name: string }; token: string } {
+export function registerUser(email: string, password: string, name: string): { user: { uid: string; email: string; name: string; createdAt: string }; token: string } {
   const users = loadUsers();
   if (users.find((u) => u.email === email)) {
     throw new Error("An account with this email already exists");
   }
   const salt = crypto.randomBytes(32).toString("hex");
   const uid = crypto.randomUUID();
+  const createdAt = new Date().toISOString();
   const user: StoredUser = {
     uid,
     email,
     name,
     passwordHash: hashPassword(password, salt),
     salt,
-    createdAt: new Date().toISOString(),
+    createdAt,
   };
   users.push(user);
   saveUsers(users);
   const token = createToken({ uid, email, name });
-  return { user: { uid, email, name }, token };
+  return { user: { uid, email, name, createdAt }, token };
 }
 
-export function loginUser(email: string, password: string): { user: { uid: string; email: string; name: string }; token: string } {
+export function loginUser(email: string, password: string): { user: { uid: string; email: string; name: string; createdAt: string }; token: string } {
   const users = loadUsers();
   const user = users.find((u) => u.email === email);
   if (!user) {
@@ -102,7 +103,7 @@ export function loginUser(email: string, password: string): { user: { uid: strin
     throw new Error("Invalid email or password");
   }
   const token = createToken({ uid: user.uid, email: user.email, name: user.name });
-  return { user: { uid: user.uid, email: user.email, name: user.name }, token };
+  return { user: { uid: user.uid, email: user.email, name: user.name, createdAt: user.createdAt }, token };
 }
 
 export function changeUserPassword(email: string, currentPassword: string, newPassword: string): void {

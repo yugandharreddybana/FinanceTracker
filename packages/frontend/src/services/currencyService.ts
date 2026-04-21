@@ -4,13 +4,8 @@ export interface ExchangeRates {
 
 class CurrencyService {
   private rates: ExchangeRates = {
-    USD: 1,
-    EUR: 0.92,
-    GBP: 0.79,
-    JPY: 151.6,
-    AUD: 1.52,
-    CAD: 1.35,
-    INR: 83.3,
+    EUR: 1,
+    INR: 90.5, // 1 EUR = ~90.5 INR
   };
 
   async fetchLatestRates(base: string = 'USD'): Promise<ExchangeRates> {

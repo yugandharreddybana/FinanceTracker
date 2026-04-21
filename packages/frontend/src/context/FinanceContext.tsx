@@ -108,6 +108,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     name: 'Guest User',
     email: 'guest@example.com',
     role: 'Member',
+    memberSince: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
     preferences: {
       theme: 'dark',
       currency: 'INR',
@@ -127,6 +128,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setInvestments([]);
     setAuditLogs([]);
     setFamilyAccount(null);
+    localStorage.removeItem('yugi_finance_data');
+    localStorage.removeItem('yugi_finance_avatar');
+    localStorage.removeItem('yugi_biometric_enabled');
+    localStorage.removeItem('yugi_biometric_registered');
   }, []);
 
   const [suggestions, setSuggestions] = useState<Record<string, { category: string; confidence: number }[]>>({});
@@ -284,6 +289,19 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     refreshData();
   }, [refreshData]);
 
+  // AUTO-SET CURRENCY: If user is on default INR but has ONLY EUR accounts, switch to EUR
+  useEffect(() => {
+    if (isDataLoaded && accounts.length > 0) {
+      const uniqueCurrencies = Array.from(new Set(accounts.map(a => a.currency).filter(Boolean)));
+      if (userProfile.preferences.currency === 'INR' && uniqueCurrencies.length === 1 && uniqueCurrencies[0] === 'EUR') {
+        setUserProfile(prev => ({
+          ...prev,
+          preferences: { ...prev.preferences, currency: 'EUR' }
+        }));
+      }
+    }
+  }, [accounts, isDataLoaded, userProfile.preferences.currency]);
+
   const addLog = useCallback((action: string, details: string, entityType: string, entityId: string) => {
     const newLog: AuditLog = {
       id: Math.random().toString(36).substr(2, 9),
@@ -393,9 +411,15 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       ...loans.map(l => l.currency).filter(Boolean),
     ])) as string[];
     // If no accounts/loans at all, fall back to user preference or INR
-    const currencies = rawCurrencies.length > 0
-      ? rawCurrencies
-      : [userProfile.preferences.currency || 'INR'];
+    const currencies = rawCurrencies
+      .filter(curr => ['INR', 'EUR'].includes(curr))
+      .length > 0
+        ? rawCurrencies.filter(curr => ['INR', 'EUR'].includes(curr))
+        : [userProfile.preferences.currency || 'INR'];
+    
+    // AUTO-CORRECTION: If user preference is INR but they ONLY have EUR accounts,
+    // we should ideally update the preference, but at minimum ensure EUR is available
+    // and considered the "primary" if it's the only one with data.
     
     currencies.forEach(c => {
       result[c] = { total: 0, assets: 0, liabilities: 0, change: 0 };
@@ -456,7 +480,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return last6Months.map(month => {
       const monthData: { month: string; [currency: string]: number | string } = { month };
       
-      const currencies = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
+      const currencies = Array.from(new Set(transactions.map(t => t.currency || 'INR')))
+        .filter(curr => ['INR', 'EUR'].includes(curr));
       currencies.forEach(curr => {
         const amount = transactions
           .filter(t => {
@@ -475,7 +500,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const healthMetricsByCurrency = React.useMemo(() => {
     const result: Record<string, { savingsRate: number; debtRatio: number; emergencyFund: number; budgetAdherence: number; overallScore: number }> = {};
     
-    const currencies = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
+    const currencies = Array.from(new Set(transactions.map(t => t.currency || 'INR')))
+      .filter(curr => ['INR', 'EUR'].includes(curr));
     
     currencies.forEach(curr => {
       const currBudgets = budgets.filter(b => (b.currency || 'INR') === curr);
@@ -533,7 +559,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const spendingDataByCurrency = React.useMemo(() => {
     const result: Record<string, { name: string, value: number, color: string }[]> = {};
-    const currencies = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
+    const currencies = Array.from(new Set(transactions.map(t => t.currency || 'INR')))
+      .filter(curr => ['INR', 'EUR'].includes(curr));
     
     currencies.forEach(curr => {
       const totals: Record<string, number> = {};

@@ -5,7 +5,7 @@ import { Sparkles, Mail, Lock, ArrowRight, Loader2, AlertCircle, Fingerprint } f
 import { MIDDLEWARE_BASE } from '../services/api';
 
 interface LoginPageProps {
-  onLogin: (email: string, token?: string, name?: string) => void;
+  onLogin: (email: string, token?: string, name?: string, createdAt?: string) => void;
   onSwitchToSignup: () => void;
   onForgotPassword: () => void;
   onBackToHome: () => void;
@@ -49,7 +49,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
       const userProfile = await verifyRes.json();
 
       setIsBiometricLoading(false);
-      onLogin(userProfile.email);
+      onLogin(userProfile.email, undefined, userProfile.name, userProfile.createdAt);
     } catch (err: any) {
       console.error('Biometric Login Error:', err);
       setError(err.message || 'Biometric authentication failed');
@@ -77,7 +77,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
       const result = await authApi.login(email, password);
       
       setIsLoading(false);
-      onLogin(result.user?.email || email, result.token, result.user?.name);
+      onLogin(result.user?.email || email, result.token, result.user?.name, result.user?.createdAt);
     } catch (err: any) {
       console.error('Login Error:', err);
       setError(err.message || 'Login failed. Please check your connection.');
@@ -172,41 +172,45 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
               )}
             </button>
 
-            <div className="relative py-4">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-white/5"></div>
-              </div>
-              <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-widest">
-                <span className="bg-[#050508] px-4 text-white/20">Or Secure Unlock</span>
-              </div>
-            </div>
-
-            <button 
-              type="button"
-              onClick={handleBiometricLogin}
-              disabled={isLoading || isBiometricLoading}
-              className="w-full py-4 rounded-xl bg-white/5 border border-white/10 text-white/60 font-bold hover:bg-white/10 transition-all flex items-center justify-center gap-3 group disabled:opacity-50"
-            >
-              {isBiometricLoading ? (
-                <div className="flex items-center gap-3">
-                  <div className="relative w-6 h-6">
-                    <Fingerprint className="w-6 h-6 text-accent animate-pulse" />
-                    <motion.div 
-                      initial={{ height: 0 }}
-                      animate={{ height: '100%' }}
-                      transition={{ duration: 2, ease: "linear" }}
-                      className="absolute top-0 left-0 w-full bg-accent/20 overflow-hidden"
-                    />
+            {localStorage.getItem('yugi_biometric_enabled') === 'true' && (
+              <>
+                <div className="relative py-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-white/5"></div>
                   </div>
-                  <span className="text-accent animate-pulse">Scanning Biometrics...</span>
+                  <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-widest">
+                    <span className="bg-[#050508] px-4 text-white/20">Or Secure Unlock</span>
+                  </div>
                 </div>
-              ) : (
-                <>
-                  <Fingerprint className="w-5 h-5 group-hover:text-accent transition-colors" />
-                  <span>Biometric Unlock</span>
-                </>
-              )}
-            </button>
+
+                <button 
+                  type="button"
+                  onClick={handleBiometricLogin}
+                  disabled={isLoading || isBiometricLoading}
+                  className="w-full py-4 rounded-xl bg-white/5 border border-white/10 text-white/60 font-bold hover:bg-white/10 transition-all flex items-center justify-center gap-3 group disabled:opacity-50"
+                >
+                  {isBiometricLoading ? (
+                    <div className="flex items-center gap-3">
+                      <div className="relative w-6 h-6">
+                        <Fingerprint className="w-6 h-6 text-accent animate-pulse" />
+                        <motion.div 
+                          initial={{ height: 0 }}
+                          animate={{ height: '100%' }}
+                          transition={{ duration: 2, ease: "linear" }}
+                          className="absolute top-0 left-0 w-full bg-accent/20 overflow-hidden"
+                        />
+                      </div>
+                      <span className="text-accent animate-pulse">Scanning Biometrics...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <Fingerprint className="w-5 h-5 group-hover:text-accent transition-colors" />
+                      <span>Biometric Unlock</span>
+                    </>
+                  )}
+                </button>
+              </>
+            )}
           </form>
 
           <div className="mt-8 pt-8 border-t border-white/5 text-center">

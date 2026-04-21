@@ -159,23 +159,10 @@ export const SettingsPage: React.FC = () => {
   const [showPasswords,  setShowPasswords]  = useState({ current: false, next: false, confirm: false });
   const [passwordStatus, setPasswordStatus] = useState<'idle' | 'success' | 'error' | 'mismatch'>('idle');
   const [twoFactorEnabled,  setTwoFactorEnabled]  = useState(false);
-  const [biometricEnabled,  setBiometricEnabled]  = useState(true);
+  const [biometricEnabled,  setBiometricEnabled]  = useState(localStorage.getItem('yugi_biometric_enabled') === 'true');
+  const [biometricRegistered, setBiometricRegistered] = useState(localStorage.getItem('yugi_biometric_registered') === 'true');
 
-  const handleToggleBiometric = async () => {
-    if (biometricEnabled) {
-      try {
-        const res = await fetch(
-          `${MIDDLEWARE_BASE}/api/auth/webauthn/credentials?email=${encodeURIComponent(userProfile.email)}`,
-          { method: 'DELETE', credentials: 'include' }
-        );
-        if (res.ok || res.status === 404) setBiometricEnabled(false);
-        else console.error('Disable biometric failed:', res.status);
-      } catch (err) {
-        console.error('Disable biometric error:', err);
-      }
-      return;
-    }
-
+  const handleRegisterBiometric = async () => {
     try {
       const optionsRes = await fetch(`${MIDDLEWARE_BASE}/api/auth/webauthn/register/options`, {
         method: 'POST',
@@ -195,10 +182,21 @@ export const SettingsPage: React.FC = () => {
         body: JSON.stringify(regResponse)
       });
 
-      if (verifyRes.ok) setBiometricEnabled(true);
+      if (verifyRes.ok) {
+        setBiometricRegistered(true);
+        setBiometricEnabled(true);
+        localStorage.setItem('yugi_biometric_registered', 'true');
+        localStorage.setItem('yugi_biometric_enabled', 'true');
+      }
     } catch (err) {
       console.error('Biometric registration failed:', err);
     }
+  };
+
+  const handleToggleBiometric = () => {
+    const nextValue = !biometricEnabled;
+    setBiometricEnabled(nextValue);
+    localStorage.setItem('yugi_biometric_enabled', nextValue ? 'true' : 'false');
   };
   const [privacyMode,       setPrivacyMode]       = useState(false);
 
@@ -436,7 +434,7 @@ export const SettingsPage: React.FC = () => {
                     <Hash className="w-3 h-3" /> UID: {userProfile.email.split('@')[0]}
                   </span>
                   <span className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-[10px] font-bold text-white/50 uppercase tracking-widest">
-                    <History className="w-3 h-3" /> Member since Apr 2024
+                    <History className="w-3 h-3" /> Member since {userProfile.memberSince || 'Apr 2024'}
                   </span>
                 </div>
               </div>
@@ -579,21 +577,42 @@ export const SettingsPage: React.FC = () => {
               <div className="space-y-4 pt-6 border-t border-white/5">
                 <h4 className="font-bold text-sm text-white/50 uppercase tracking-widest">Access Controls</h4>
                 {[
-                  { checked: twoFactorEnabled,  onChange: () => setTwoFactorEnabled((p)  => !p), Icon: SmartphoneNfc, label: 'Two-Factor Authentication', sub: twoFactorEnabled  ? 'Enabled · Shield Level 2'   : 'Disabled · Recommended',   color: twoFactorEnabled  ? 'text-accent'    : 'text-white/30', bg: twoFactorEnabled  ? 'bg-accent/20'    : 'bg-white/5' },
-                  { checked: biometricEnabled,  onChange: handleToggleBiometric, Icon: Fingerprint,   label: 'Biometric Login',           sub: biometricEnabled  ? 'Active · Synced with OS'    : 'Inactive',                  color: biometricEnabled  ? 'text-positive'  : 'text-white/30', bg: biometricEnabled  ? 'bg-positive/15'  : 'bg-white/5' },
-                  { checked: privacyMode,       onChange: () => setPrivacyMode((p)       => !p), Icon: Eye,           label: 'Privacy Mode',              sub: privacyMode       ? 'On · Amounts are masked'    : 'Off · Amounts visible',     color: privacyMode       ? 'text-yellow-400': 'text-white/30', bg: privacyMode       ? 'bg-yellow-500/15': 'bg-white/5' },
-                ].map(({ checked, onChange, Icon, label, sub, color, bg }) => (
+                  { checked: twoFactorEnabled, onChange: () => setTwoFactorEnabled((p) => !p), Icon: SmartphoneNfc, label: 'Two-Factor Authentication', sub: twoFactorEnabled ? 'Enabled · Shield Level 2' : 'Disabled · Recommended', color: twoFactorEnabled ? 'text-accent' : 'text-white/30', bg: twoFactorEnabled ? 'bg-accent/20' : 'bg-white/5' },
+                  { 
+                    checked: biometricEnabled, 
+                    onChange: handleToggleBiometric, 
+                    Icon: Fingerprint, 
+                    label: biometricRegistered ? 'Biometric Login' : 'Register Biometrics', 
+                    sub: biometricRegistered 
+                      ? (biometricEnabled ? 'Active · Synced with OS' : 'Inactive') 
+                      : 'Not Registered', 
+                    color: biometricEnabled ? 'text-positive' : 'text-white/30', 
+                    bg: biometricEnabled ? 'bg-positive/15' : 'bg-white/5',
+                    action: biometricRegistered ? null : (
+                      <button 
+                        onClick={handleRegisterBiometric}
+                        className="px-3 py-1.5 rounded-lg bg-accent text-[10px] font-bold text-white hover:bg-accent/80 transition-all font-sans"
+                      >
+                        Register Now
+                      </button>
+                    )
+                  },
+                  { checked: privacyMode, onChange: () => setPrivacyMode((p) => !p), Icon: Eye, label: 'Privacy Mode', sub: privacyMode ? 'On · Amounts are masked' : 'Off · Amounts visible', color: privacyMode ? 'text-yellow-400' : 'text-white/30', bg: privacyMode ? 'bg-yellow-500/15' : 'bg-white/5' },
+                ].map(({ checked, onChange, Icon, label, sub, color, bg, action }) => (
                   <div key={label} className="flex items-center justify-between p-5 rounded-2xl bg-white/[0.02] border border-white/10 hover:border-white/15 transition-all">
                     <div className="flex items-center gap-4">
                       <div className={cn('w-12 h-12 rounded-xl flex items-center justify-center transition-colors', bg)}>
                         <Icon className={cn('w-6 h-6 transition-colors', color)} />
                       </div>
                       <div>
-                        <p className="text-sm font-bold">{label}</p>
+                        <div className="flex items-center gap-3">
+                          <p className="text-sm font-bold">{label}</p>
+                          {action}
+                        </div>
                         <p className={cn('text-[10px] font-bold uppercase tracking-widest', color)}>{sub}</p>
                       </div>
                     </div>
-                    <Toggle checked={checked} onChange={onChange} ariaLabel={`Toggle ${label}`} />
+                    {(!biometricRegistered && label === 'Register Biometrics') ? null : <Toggle checked={checked} onChange={onChange} ariaLabel={`Toggle ${label}`} />}
                   </div>
                 ))}
               </div>

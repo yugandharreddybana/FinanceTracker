@@ -872,15 +872,14 @@ export const BankAccountsPage: React.FC = () => {
                         )}
                         <div className="space-y-2">
                           <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Currency</label>
-                          <select                           title="Currency"                            value={manualForm.currency || selectedCurrency}
+                          <select 
+                            title="Currency" 
+                            value={manualForm.currency || selectedCurrency}
                             onChange={(e) => setManualForm(prev => ({ ...prev, currency: e.target.value }))}
-                            className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all"
+                            className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all font-mono"
                           >
-                            {WORLD_CURRENCIES.map(curr => (
-                              <option key={curr.code} value={curr.code} className="bg-[#050508] text-white">
-                                {curr.code} ({curr.symbol}) - {curr.name}
-                              </option>
-                            ))}
+                            <option value="INR" className="bg-[#050508] text-white">INR (₹) - Indian Rupee</option>
+                            <option value="EUR" className="bg-[#050508] text-white">EUR (€) - Euro</option>
                           </select>
                         </div>
                       </div>

@@ -129,6 +129,7 @@ export interface UserProfile {
   email: string;
   role: string;
   avatar?: string;
+  memberSince?: string;
   preferences: {
     theme: 'dark' | 'light' | 'glass';
     currency: string;

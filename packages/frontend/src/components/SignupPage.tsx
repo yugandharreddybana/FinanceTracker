@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
-import { Sparkles, Mail, Lock, User, ArrowRight, Loader2, AlertCircle, ShieldCheck } from 'lucide-react';
+import { Sparkles, Mail, Lock, User, ArrowRight, Loader2, AlertCircle, ShieldCheck, Fingerprint, X, Shield } from 'lucide-react';
+import { MIDDLEWARE_BASE } from '../services/api';
 
 interface SignupPageProps {
-  onSignup: (name: string, email: string, token?: string) => void;
+  onSignup: (name: string, email: string, token?: string, createdAt?: string) => void;
   onSwitchToLogin: () => void;
   onBackToHome: () => void;
 }
@@ -15,6 +16,9 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onSwitchToLogi
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
+  const [signupResult, setSignupResult] = useState<{ name: string; email: string; token: string; createdAt: string } | null>(null);
+  const [isBiometricRegistering, setIsBiometricRegistering] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,12 +44,59 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onSwitchToLogi
       const { authApi } = await import('../services/api');
       const result = await authApi.register(name, email, password);
       
+      setIsLoading(true);
+      setSignupResult({ name, email: result.user?.email || email, token: result.token, createdAt: result.user?.createdAt });
+      setShowBiometricPrompt(true);
       setIsLoading(false);
-      onSignup(name, result.user?.email || email, result.token);
     } catch (err: any) {
       console.error('Signup Error:', err);
       setError(err.message || 'Registration failed. Please check your connection.');
       setIsLoading(false);
+    }
+  };
+
+  const handleRegisterBiometric = async () => {
+    if (!signupResult) return;
+    setIsBiometricRegistering(true);
+    try {
+      // 1. Get options from backend
+      const optionsRes = await fetch(`${MIDDLEWARE_BASE}/api/auth/webauthn/register/options`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email: signupResult.email, name: signupResult.name })
+      });
+      
+      if (!optionsRes.ok) throw new Error('Failed to get registration options');
+      const options = await optionsRes.json();
+
+      // 2. Start WebAuthn registration
+      const { startRegistration } = await import('@simplewebauthn/browser');
+      const regResponse = await startRegistration(options);
+
+      // 3. Verify in backend
+      const verifyRes = await fetch(`${MIDDLEWARE_BASE}/api/auth/webauthn/register/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(regResponse)
+      });
+
+      if (!verifyRes.ok) throw new Error('Biometric verification failed');
+      
+      // Successfully registered biometric
+      localStorage.setItem('yugi_biometric_enabled', 'true');
+      onSignup(signupResult.name, signupResult.email, signupResult.token, signupResult.createdAt);
+    } catch (err: any) {
+      console.error('Biometric Registration Error:', err);
+      setError(err.message || 'Biometric registration failed');
+      setIsBiometricRegistering(false);
+    }
+  };
+
+  const skipBiometric = () => {
+    if (signupResult) {
+      onSignup(signupResult.name, signupResult.email, signupResult.token, signupResult.createdAt);
     }
   };
 
@@ -163,6 +214,69 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onSwitchToLogi
           </div>
         </div>
       </motion.div>
+
+      <AnimatePresence>
+        {showBiometricPrompt && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+              onClick={skipBiometric}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-sm glass-card p-10 border-accent/30 shadow-[0_0_80px_rgba(124,110,250,0.2)] overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 p-4">
+                <button onClick={skipBiometric} className="text-white/20 hover:text-white transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="text-center">
+                <div className="w-20 h-20 rounded-3xl bg-accent/10 flex items-center justify-center mx-auto mb-8 relative">
+                  <Fingerprint className="w-10 h-10 text-accent" />
+                  <div className="absolute inset-0 bg-accent/20 rounded-3xl blur-xl animate-pulse" />
+                </div>
+                
+                <h3 className="text-2xl font-bold mb-3 tracking-tight">Security Upgrade</h3>
+                <p className="text-sm text-white/40 font-medium leading-relaxed mb-8">
+                  Enable biometric unlock to access your financial terminal with just your fingerprint or face. 
+                  <span className="block mt-2 text-white/20 text-[10px] uppercase font-bold tracking-widest">Powered by WebAuthn</span>
+                </p>
+
+                <div className="space-y-4">
+                  <button 
+                    onClick={handleRegisterBiometric}
+                    disabled={isBiometricRegistering}
+                    className="w-full py-4 rounded-xl bg-accent text-white font-bold hover:bg-accent/80 transition-all violet-glow flex items-center justify-center gap-3 disabled:opacity-50"
+                  >
+                    {isBiometricRegistering ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <>
+                        <Shield className="w-5 h-5" />
+                        <span>Enable Biometrics</span>
+                      </>
+                    )}
+                  </button>
+                  <button 
+                    onClick={skipBiometric}
+                    disabled={isBiometricRegistering}
+                    className="w-full py-4 rounded-xl bg-white/5 text-white/40 font-bold hover:bg-white/10 transition-all"
+                  >
+                    Maybe Later
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
