@@ -11,7 +11,8 @@
     "build:frontend": "npm run build -w packages/frontend",
     "build": "npm run build:frontend",
     "start": "npm run start:full",
-    "start:full": "concurrently \"npm run start:middleware\" \"npm run start:frontend\" \"java -jar backend/target/finance-tracker-backend-1.0.0.jar\"",
+    "start:full": "npx concurrently \"npm run start:middleware\" \"npm run start:frontend\" \"java -jar backend/target/finance-tracker-backend-1.0.0.jar\"",
+
     "start:middleware": "npm --prefix server run start",
     "start:frontend": "npm --prefix packages/frontend run dev",
     "test": "echo \"Error: no test specified\" && exit 1"

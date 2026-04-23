@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["jdk17", "maven"]
+
+[phases.install]
+cmds = ["mvn clean install -DskipTests"]
+
+[start]
+cmd = "java -jar target/finance-tracker-backend-1.0.0.jar"
