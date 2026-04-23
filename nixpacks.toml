@@ -1,0 +1,12 @@
+# Nixpacks configuration for a Java + Node.js monorepo
+[phases.setup]
+nixPkgs = ["nodejs", "jdk21", "maven"]
+
+[phases.install]
+cmds = ["npm install", "cd backend && mvn clean install -DskipTests"]
+
+[phases.build]
+cmds = ["npm run build:frontend"]
+
+[start]
+cmd = "npm run dev:full"
