@@ -17,6 +17,11 @@ public class IncomeSourceService {
         return repo.findAll();
     }
 
+    @Transactional(readOnly = true)
+    public List<IncomeSource> findAllByUserId(String userId) {
+        return repo.findAllByUserId(userId);
+    }
+
     @Transactional
     public IncomeSource create(IncomeSource income) {
         if (income.getId() == null || income.getId().isBlank()) {

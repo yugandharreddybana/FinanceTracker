@@ -1,9 +1,10 @@
 import { Router, Request, Response } from "express";
+import { verifyToken } from "../lib/auth";
 
 const router = Router();
 
 // Spring Boot backend URL — configured via environment variable
-const BACKEND_URL = process.env.VITE_API_URL || "http://localhost:8080";
+const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8080";
 const BACKEND_API = `${BACKEND_URL}/api/finance`;
 
 // ---------------------------------------------------------------------------
@@ -13,17 +14,29 @@ const BACKEND_API = `${BACKEND_URL}/api/finance`;
 async function proxyToBackend(req: Request, res: Response, path: string, method?: string) {
   try {
     const url = `${BACKEND_API}${path}`;
+    
+    // Extract userId from JWT if available
+    const authHeader = req.headers.authorization?.replace(/^Bearer\s+/i, "");
+    const decoded = authHeader ? verifyToken(authHeader) : null;
+    const userId = decoded?.uid;
+
     const options: RequestInit = {
       method: method || req.method,
       headers: {
         "Content-Type": "application/json",
         ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
+        ...(userId ? { "X-User-Id": userId } : {}),
       },
     };
 
     // Forward request body for POST/PUT/PATCH
     if (["POST", "PUT", "PATCH"].includes(options.method!)) {
-      options.body = JSON.stringify(req.body);
+      let body = req.body;
+      // Inject userId into body if missing and we have it from token
+      if (userId && typeof body === 'object' && body !== null) {
+        body = { ...body, userId: body.userId || userId };
+      }
+      options.body = JSON.stringify(body);
     }
 
     const response = await fetch(url, options);
@@ -49,7 +62,10 @@ router.get("/transactions", (req, res) => proxyToBackend(req, res, "/transaction
 router.post("/transactions", (req, res) => proxyToBackend(req, res, "/transactions"));
 router.put("/transactions/:id", (req, res) => proxyToBackend(req, res, `/transactions/${req.params.id}`));
 router.patch("/transactions/bulk", (req, res) => proxyToBackend(req, res, "/transactions/bulk"));
-router.post("/transactions/bulk-delete", (req, res) => proxyToBackend(req, res, "/transactions/bulk-delete"));
+router.delete("/transactions/bulk", (req, res) => {
+  const ids = (req.query.ids as string) || '';
+  proxyToBackend(req, res, `/transactions/bulk?ids=${ids}`);
+});
 router.delete("/transactions/:id", (req, res) => proxyToBackend(req, res, `/transactions/${req.params.id}`));
 
 // ---------------------------------------------------------------------------
@@ -130,12 +146,16 @@ router.delete("/user-profiles/:id", (req, res) => proxyToBackend(req, res, `/use
 // Convenience: delete by email — looks up the profile then deletes by id
 router.delete("/user-profiles/by-email/:email", async (req, res) => {
   try {
-    const lookup = await fetch(`${BACKEND_API}/user-profiles/by-email/${encodeURIComponent(req.params.email)}`);
-    if (lookup.status === 404) return res.status(404).json({ error: "User not found" });
-    if (!lookup.ok) return res.status(502).json({ error: "Backend lookup failed" });
-    const profile: any = await lookup.json();
-    if (!profile?.id) return res.status(404).json({ error: "User profile has no id" });
-    const del = await fetch(`${BACKEND_API}/user-profiles/${profile.id}`, { method: "DELETE" });
+    // 1. Delete by email (handles profile and cascade in backend)
+    const del = await fetch(`${BACKEND_API}/user-profiles/by-email/${encodeURIComponent(req.params.email)}`, { method: "DELETE" });
+    
+    // 2. Also try to purge by UID from token for extra safety (especially if profile email mismatch)
+    const authHeader = req.headers.authorization?.replace(/^Bearer\s+/i, "");
+    const decoded = authHeader ? verifyToken(authHeader) : null;
+    if (decoded?.uid) {
+      await fetch(`${BACKEND_API}/user-profiles/purge/${decoded.uid}`, { method: "DELETE" });
+    }
+    
     res.status(del.status).send();
   } catch (err: any) {
     res.status(502).json({ error: "Backend unavailable", details: err.message });

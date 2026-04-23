@@ -18,6 +18,11 @@ public class TransactionService {
         return repo.findAll();
     }
 
+    @Transactional(readOnly = true)
+    public List<Transaction> findAllByUserId(String userId) {
+        return repo.findAllByUserId(userId);
+    }
+
     @Transactional
     public Transaction create(Transaction tx) {
         if (tx.getId() == null || tx.getId().isBlank()) {
@@ -59,9 +64,14 @@ public class TransactionService {
     }
 
     @Transactional
-    public void syncTransactions(List<Transaction> transactions) {
-        repo.deleteAll();
-        repo.saveAll(transactions);
+    public void syncTransactions(String userId, List<Transaction> transactions) {
+        if (userId != null) {
+            repo.deleteByUserId(userId);
+            for (Transaction tx : transactions) {
+                tx.setUserId(userId);
+            }
+            repo.saveAll(transactions);
+        }
     }
 
     private void applyUpdates(Transaction tx, Map<String, Object> updates) {

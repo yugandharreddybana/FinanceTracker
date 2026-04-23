@@ -17,6 +17,11 @@ public class LoanService {
         return repo.findAll();
     }
 
+    @Transactional(readOnly = true)
+    public List<Loan> findAllByUserId(String userId) {
+        return repo.findAllByUserId(userId);
+    }
+
     @Transactional
     public Loan create(Loan loan) {
         if (loan.getId() == null || loan.getId().isBlank()) {

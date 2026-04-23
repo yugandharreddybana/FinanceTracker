@@ -17,6 +17,11 @@ public class BudgetService {
         return repo.findAll();
     }
 
+    @Transactional(readOnly = true)
+    public List<Budget> findAllByUserId(String userId) {
+        return repo.findAllByUserId(userId);
+    }
+
     @Transactional
     public Budget create(Budget budget) {
         if (budget.getId() == null || budget.getId().isBlank()) {

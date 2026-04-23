@@ -16,11 +16,20 @@ import { cn } from '../lib/utils';
 
 export const ForecastingPage: React.FC = () => {
   const { netWorthByCurrency, userProfile, incomeSources, recurringPayments } = useFinance();
+  const currencies = Object.keys(netWorthByCurrency);
+  const [selectedCurrency, setSelectedCurrency] = useState(userProfile.preferences.currency || 'INR');
+
+  useEffect(() => {
+    if (currencies.length > 0 && !currencies.includes(selectedCurrency)) {
+      setSelectedCurrency(currencies[0]);
+    }
+  }, [currencies, selectedCurrency]);
+
   const [forecasts, setForecasts] = useState<ForecastData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [riskProfile, setRiskProfile] = useState<'Conservative' | 'Moderate' | 'Aggressive'>('Moderate');
 
-  const currentCurrency = userProfile.preferences.currency;
+  const currentCurrency = selectedCurrency;
   const currentNetWorth = netWorthByCurrency[currentCurrency]?.total || 0;
   
   const totalIncome = incomeSources.reduce((sum, inc) => sum + inc.amount, 0);

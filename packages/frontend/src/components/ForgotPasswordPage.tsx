@@ -16,7 +16,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBackTo
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
+
     if (!email) {
       setError('Please enter your email address');
       return;
@@ -28,16 +28,27 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBackTo
     }
 
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.notImplemented) {
+        setError('Password reset unavailable — contact support.');
+      } else {
+        setIsSent(true);
+      }
+    } catch {
+      setError('Unable to reach server. Please try again.');
+    } finally {
       setIsLoading(false);
-      setIsSent(true);
-    }, 1500);
+    }
   };
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6 relative overflow-hidden">
-      {/* Background Effects */}
       <div className="fixed top-0 left-1/4 w-[800px] h-[800px] bg-accent/10 rounded-full blur-[160px] pointer-events-none -z-10" />
       <div className="fixed bottom-0 right-1/4 w-[600px] h-[600px] bg-positive/5 rounded-full blur-[140px] pointer-events-none -z-10" />
 
@@ -47,7 +58,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBackTo
         className="w-full max-w-md"
       >
         <div className="text-center mb-10">
-          <button 
+          <button
             onClick={onBackToHome}
             aria-label="Back to home"
             className="w-16 h-16 rounded-2xl bg-accent flex items-center justify-center mx-auto mb-6 violet-glow hover:scale-110 transition-transform"
@@ -76,8 +87,8 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBackTo
                 <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest ml-1">Email Address</label>
                 <div className="relative group">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-accent transition-colors" />
-                  <input 
-                    type="email" 
+                  <input
+                    type="email"
                     placeholder="name@company.com"
                     className="w-full bg-white/5 border border-white/10 rounded-xl py-4 pl-12 pr-4 outline-none focus:border-accent/50 transition-all font-medium"
                     value={email}
@@ -86,7 +97,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBackTo
                 </div>
               </div>
 
-              <button 
+              <button
                 type="submit"
                 disabled={isLoading}
                 className="w-full py-4 rounded-xl bg-accent text-white font-bold hover:bg-accent/80 transition-all violet-glow flex items-center justify-center gap-3 group disabled:opacity-50"
@@ -102,7 +113,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBackTo
               </button>
             </form>
           ) : (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               className="text-center py-4"
@@ -114,7 +125,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBackTo
               <p className="text-white/40 font-medium mb-8">
                 We've sent a password reset link to <span className="text-white">{email}</span>
               </p>
-              <button 
+              <button
                 onClick={onBackToLogin}
                 className="w-full py-4 rounded-xl bg-white/5 border border-white/10 text-white font-bold hover:bg-white/10 transition-all"
               >
@@ -125,7 +136,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBackTo
 
           {!isSent && (
             <div className="mt-8 pt-8 border-t border-white/5 text-center">
-              <button 
+              <button
                 onClick={onBackToLogin}
                 className="text-sm text-accent font-bold hover:text-white transition-colors"
               >

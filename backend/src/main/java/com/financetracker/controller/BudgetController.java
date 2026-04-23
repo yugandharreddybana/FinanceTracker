@@ -15,12 +15,18 @@ public class BudgetController {
     private final BudgetService service;
 
     @GetMapping
-    public List<Budget> getAll() {
+    public List<Budget> getAll(@RequestHeader(value = "X-User-Id", required = false) String userId) {
+        if (userId != null) {
+            return service.findAllByUserId(userId);
+        }
         return service.findAll();
     }
 
     @PostMapping
-    public ResponseEntity<Budget> create(@RequestBody Budget budget) {
+    public ResponseEntity<Budget> create(@RequestBody Budget budget, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        if (userId != null && budget.getUserId() == null) {
+            budget.setUserId(userId);
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(budget));
     }
 

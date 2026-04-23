@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, ExternalLink, RefreshCw, Shield, Lock, Globe, X, ChevronRight, Landmark, CreditCard, Wallet as WalletIcon, Check, ChevronDown, Pencil, Trash2, Users } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -11,7 +11,7 @@ import DeleteModal from './DeleteModal';
 const sparklineData = Array.from({ length: 20 }, (_, i) => ({ value: Math.random() * 100 }));
 
 export const BankAccountsPage: React.FC = () => {
-  const { accounts, addAccount, updateAccount, deleteAccount, transactions, netWorthByCurrency } = useFinance();
+  const { accounts, addAccount, updateAccount, deleteAccount, transactions, netWorthByCurrency, userProfile } = useFinance();
   const [isConnecting, setIsConnecting] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<BankAccount | null>(null);
   const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null);
@@ -20,7 +20,13 @@ export const BankAccountsPage: React.FC = () => {
   const [transactionFilter, setTransactionFilter] = useState('');
 
   const currencies = Object.keys(netWorthByCurrency);
-  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
+  const [selectedCurrency, setSelectedCurrency] = useState(userProfile.preferences.currency || 'INR');
+
+  useEffect(() => {
+    if (currencies.length > 0 && !currencies.includes(selectedCurrency)) {
+      setSelectedCurrency(currencies[0]);
+    }
+  }, [currencies, selectedCurrency]);
 
   const [manualForm, setManualForm] = useState({ 
     bank: '', 

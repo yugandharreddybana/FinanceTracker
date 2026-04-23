@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useFinance } from '../context/FinanceContext';
 import { ChevronDown } from 'lucide-react';
@@ -19,9 +19,15 @@ const CustomTooltip = ({ active, payload, currency }: any) => {
 };
 
 export const CashFlowForecast: React.FC = () => {
-  const { netWorthByCurrency, recurringPayments } = useFinance();
+  const { netWorthByCurrency, recurringPayments, userProfile } = useFinance();
   const currencies = Object.keys(netWorthByCurrency);
-  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
+  const [selectedCurrency, setSelectedCurrency] = useState(userProfile.preferences.currency || 'INR');
+
+  useEffect(() => {
+    if (currencies.length > 0 && !currencies.includes(selectedCurrency)) {
+      setSelectedCurrency(currencies[0]);
+    }
+  }, [currencies, selectedCurrency]);
   
   const netWorth = netWorthByCurrency[selectedCurrency] || { assets: 0 };
 

@@ -27,7 +27,7 @@ export { MIDDLEWARE_BASE };
 // ---------------------------------------------------------------------------
 
 const getAuthHeaders = (): Record<string, string> => {
-  const token = localStorage.getItem('auth_token');
+  const token = sessionStorage.getItem('auth_token');
   return {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -67,11 +67,15 @@ export const financeApi = {
   getTransactions: (): Promise<Transaction[]> =>
     apiFetch(`${API_BASE}/transactions`),
 
-  createTransaction: (transaction: Partial<Transaction>): Promise<Transaction> =>
-    apiFetch(`${API_BASE}/transactions`, {
+  createTransaction: (transaction: Partial<Transaction>): Promise<Transaction> => {
+    if (!transaction.amount || !transaction.date || !transaction.merchant) {
+      throw new Error('Transaction must have amount, date, and merchant');
+    }
+    return apiFetch(`${API_BASE}/transactions`, {
       method: 'POST',
       body: JSON.stringify(transaction),
-    }),
+    });
+  },
 
   updateTransaction: (id: string, updates: Partial<Transaction>): Promise<Transaction> =>
     apiFetch(`${API_BASE}/transactions/${id}`, {
@@ -89,10 +93,7 @@ export const financeApi = {
     apiFetch(`${API_BASE}/transactions/${id}`, { method: 'DELETE' }),
 
   bulkDeleteTransactions: (ids: string[]): Promise<void> =>
-    apiFetch(`${API_BASE}/transactions/bulk-delete`, {
-      method: 'POST',
-      body: JSON.stringify({ ids }),
-    }),
+    apiFetch(`${API_BASE}/transactions/bulk?ids=${ids.join(',')}`, { method: 'DELETE' }),
 
   // Accounts
   getAccounts: (): Promise<BankAccount[]> =>

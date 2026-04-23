@@ -163,7 +163,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Persistence
   useEffect(() => {
-    const savedData = localStorage.getItem('yugi_finance_data');
+    const storageKey = `yugi_finance_data_${userProfile.email}`;
+    const savedData = localStorage.getItem(storageKey);
     if (savedData) {
       try {
         const parsed = JSON.parse(savedData);
@@ -199,9 +200,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       userProfile,
       customCategories
     };
-    localStorage.setItem('yugi_finance_data', JSON.stringify(dataToSave));
+    const storageKey = `yugi_finance_data_${userProfile.email}`;
+    localStorage.setItem(storageKey, JSON.stringify(dataToSave));
   }, [transactions, savingsGoals, recurringPayments, loans, budgets, accounts, incomeSources, investments, userProfile, customCategories, isDataLoaded]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!!sessionStorage.getItem('auth_token'));
 
   // Refs to track latest state for sync-back logic without causing infinite loops
   const transactionsRef = useRef(transactions);
@@ -222,12 +224,13 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => { incomeSourcesRef.current = incomeSources; }, [incomeSources]);
   useEffect(() => { investmentsRef.current = investments; }, [investments]);
 
-  const hasInitialSyncBeenAttempted = useRef(false);
-
-  // Initial data fetch with sync-back logic
   const refreshData = useCallback(async () => {
-    // Only perform the smart sync-back once per session to prevent loops
-    const shouldSyncBack = !hasInitialSyncBeenAttempted.current;
+    const token = sessionStorage.getItem('auth_token');
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     
     try {
@@ -242,28 +245,23 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         financeApi.getInvestments()
       ]);
 
-      // Helper to handle sync-back for a specific entity type
-      const handleSync = async (fetched: any[], current: any[], createFn: (item: any) => Promise<any>, setFn: (data: any[]) => void) => {
-        if (shouldSyncBack && fetched.length === 0 && current.length > 0) {
-          // If backend is empty but we have local data, upload it
-          console.log(`Syncing ${current.length} items to fresh backend...`);
-          const created = await Promise.all(current.map(item => createFn(item)));
-          setFn(created);
-        } else {
-          setFn(fetched);
-        }
-      };
+      setTransactions(txs);
+      setSavingsGoals(goals);
+      setRecurringPayments(recs);
+      setLoans(lns);
+      setBudgets(bdgts);
+      setAccounts(accs);
+      setIncomeSources(incs);
+      setInvestments(invs);
 
-      await handleSync(txs, transactionsRef.current, financeApi.createTransaction, setTransactions);
-      await handleSync(goals, savingsGoalsRef.current, financeApi.createSavingsGoal, setSavingsGoals);
-      await handleSync(recs, recurringPaymentsRef.current, financeApi.createRecurringPayment, setRecurringPayments);
-      await handleSync(lns, loansRef.current, financeApi.createLoan, setLoans);
-      await handleSync(bdgts, budgetsRef.current, financeApi.createBudget, setBudgets);
-      await handleSync(accs, accountsRef.current, financeApi.createAccount, setAccounts);
-      await handleSync(incs, incomeSourcesRef.current, financeApi.createIncomeSource, setIncomeSources);
-      await handleSync(invs, investmentsRef.current, financeApi.createInvestment, setInvestments);
+      // Detect primary account currency and update userProfile default if still on INR
+      const loaded = accs.length > 0 ? accs : accountsRef.current;
+      if (loaded[0]?.currency && loaded[0].currency !== 'INR') {
+        setUserProfile(p => p.preferences.currency === 'INR'
+          ? { ...p, preferences: { ...p.preferences, currency: loaded[0].currency } }
+          : p);
+      }
 
-      hasInitialSyncBeenAttempted.current = true;
     } catch (error) {
       console.error('Failed to fetch/sync data:', error);
     } finally {
@@ -271,15 +269,13 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, []); // Dependencies removed to prevent infinite loops
 
-  useEffect(() => {
-    refreshData();
-  }, [refreshData]);
+
 
   const addLog = useCallback((action: string, details: string, entityType: string, entityId: string) => {
     const newLog: AuditLog = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
-      userId: 'user-1',
+      userId: userProfile.email,
       userName: userProfile.name,
       action,
       details,
@@ -321,7 +317,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const createFamily = useCallback((name: string) => {
     const newFamily: FamilyAccount = {
-      id: 'fam-' + Math.random().toString(36).substr(2, 9),
+      id: 'fam-' + crypto.randomUUID(),
       name,
       members: [{ uid: 'user-1', name: userProfile.name, role: 'Admin' }],
       sharedBudgets: [],
@@ -347,7 +343,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const addFamilyMember = useCallback((name: string, role: string) => {
     if (familyAccount) {
-      const newMember = { uid: 'user-' + Math.random().toString(36).substr(2, 6), name, role: role as 'Admin' | 'Member' };
+      const newMember = { uid: 'user-' + crypto.randomUUID(), name, role: role as 'Admin' | 'Member' };
       setFamilyAccount(prev => prev ? {
         ...prev,
         members: [...prev.members, newMember]
@@ -499,9 +495,15 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Sync transactions to server for MCP tools
   React.useEffect(() => {
+    if (!sessionStorage.getItem('auth_token') || transactions.length === 0) return;
+
+    const authToken = sessionStorage.getItem('auth_token');
     fetch(`${MIDDLEWARE_BASE}/api/finance/sync-transactions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
       body: JSON.stringify({ transactions })
     }).catch(err => console.error('Failed to sync transactions:', err));
   }, [transactions]);

@@ -15,12 +15,18 @@ public class InvestmentController {
     private final InvestmentService service;
 
     @GetMapping
-    public List<Investment> getAll() {
+    public List<Investment> getAll(@RequestHeader(value = "X-User-Id", required = false) String userId) {
+        if (userId != null) {
+            return service.findAllByUserId(userId);
+        }
         return service.findAll();
     }
 
     @PostMapping
-    public ResponseEntity<Investment> create(@RequestBody Investment investment) {
+    public ResponseEntity<Investment> create(@RequestBody Investment investment, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        if (userId != null && investment.getUserId() == null) {
+            investment.setUserId(userId);
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(investment));
     }
 

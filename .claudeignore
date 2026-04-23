@@ -1,0 +1,74 @@
+# Dependencies — never needed
+node_modules/
+**/node_modules/
+backend/target/
+**/.gradle/
+**/build/
+**/.mvn/
+
+# Lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+skills-lock.json
+
+# Build output
+dist/
+**/dist/
+out/
+**/out/
+.next/
+**/.next/
+
+# Config files — low value
+.vscode/
+.idea/
+*.iml
+.DS_Store
+**/.DS_Store
+
+# Deployment configs — read-only
+vercel.json
+railway.json
+server/railway.json
+packages/frontend/vercel.json
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+**/logs/
+
+# Test snapshots and coverage
+coverage/
+**/coverage/
+**/__snapshots__/
+
+# Assets — binary files
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.gif
+**/*.svg
+**/*.ico
+**/*.woff
+**/*.woff2
+**/*.ttf
+
+# Java compiled
+**/*.class
+**/*.jar
+backend/target/
+
+# Skills agent files
+.agents/
+skills/
+
+# Misc
+You are a senior full-stack archite.txt
+data/
+scripts/

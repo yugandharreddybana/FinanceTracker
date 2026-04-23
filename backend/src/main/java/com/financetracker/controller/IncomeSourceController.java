@@ -15,13 +15,19 @@ public class IncomeSourceController {
     private final IncomeSourceService service;
 
     @GetMapping
-    public List<IncomeSource> getAll() {
+    public List<IncomeSource> getAll(@RequestHeader(value = "X-User-Id", required = false) String userId) {
+        if (userId != null) {
+            return service.findAllByUserId(userId);
+        }
         return service.findAll();
     }
 
     @PostMapping
-    public ResponseEntity<IncomeSource> create(@RequestBody IncomeSource income) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(income));
+    public ResponseEntity<IncomeSource> create(@RequestBody IncomeSource source, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        if (userId != null && source.getUserId() == null) {
+            source.setUserId(userId);
+        }
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(source));
     }
 
     @PutMapping("/{id}")

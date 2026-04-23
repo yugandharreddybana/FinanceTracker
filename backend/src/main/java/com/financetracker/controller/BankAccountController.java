@@ -15,12 +15,18 @@ public class BankAccountController {
     private final BankAccountService service;
 
     @GetMapping
-    public List<BankAccount> getAll() {
+    public List<BankAccount> getAll(@RequestHeader(value = "X-User-Id", required = false) String userId) {
+        if (userId != null) {
+            return service.findAllByUserId(userId);
+        }
         return service.findAll();
     }
 
     @PostMapping
-    public ResponseEntity<BankAccount> create(@RequestBody BankAccount account) {
+    public ResponseEntity<BankAccount> create(@RequestBody BankAccount account, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        if (userId != null && account.getUserId() == null) {
+            account.setUserId(userId);
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(account));
     }
 

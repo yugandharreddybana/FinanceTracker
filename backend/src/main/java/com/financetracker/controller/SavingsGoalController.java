@@ -15,12 +15,18 @@ public class SavingsGoalController {
     private final SavingsGoalService service;
 
     @GetMapping
-    public List<SavingsGoal> getAll() {
+    public List<SavingsGoal> getAll(@RequestHeader(value = "X-User-Id", required = false) String userId) {
+        if (userId != null) {
+            return service.findAllByUserId(userId);
+        }
         return service.findAll();
     }
 
     @PostMapping
-    public ResponseEntity<SavingsGoal> create(@RequestBody SavingsGoal goal) {
+    public ResponseEntity<SavingsGoal> create(@RequestBody SavingsGoal goal, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        if (userId != null && goal.getUserId() == null) {
+            goal.setUserId(userId);
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(goal));
     }
 

@@ -112,7 +112,7 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
       });
     } else {
       const newInvestment: Investment = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: crypto.randomUUID(),
         symbol: symbol.toUpperCase(),
         name: name || symbol.toUpperCase(),
         type,

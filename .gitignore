@@ -22,3 +22,6 @@ backend/data/
 
 # Server compiled output
 server/dist/
+
+# Scratch/notes files
+*.txt

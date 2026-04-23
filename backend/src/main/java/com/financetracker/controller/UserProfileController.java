@@ -36,7 +36,12 @@ public class UserProfileController {
     }
 
     @PostMapping
-    public ResponseEntity<UserProfile> create(@RequestBody UserProfile profile) {
+    public ResponseEntity<UserProfile> create(
+            @RequestBody UserProfile profile,
+            @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        if ((profile.getId() == null || profile.getId().isBlank()) && userId != null) {
+            profile.setId(userId);
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(profile));
     }
 
@@ -48,6 +53,18 @@ public class UserProfileController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable String id) {
         service.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/by-email/{email}")
+    public ResponseEntity<Void> deleteByEmail(@PathVariable String email) {
+        service.deleteByEmail(email);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/purge/{userId}")
+    public ResponseEntity<Void> purgeUserData(@PathVariable String userId) {
+        service.purgeUserData(userId);
         return ResponseEntity.noContent().build();
     }
 }

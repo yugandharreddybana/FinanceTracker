@@ -18,12 +18,18 @@ public class TransactionController {
     private final TransactionService service;
 
     @GetMapping
-    public List<Transaction> getAll() {
+    public List<Transaction> getAll(@RequestHeader(value = "X-User-Id", required = false) String userId) {
+        if (userId != null) {
+            return service.findAllByUserId(userId);
+        }
         return service.findAll();
     }
 
     @PostMapping
-    public ResponseEntity<Transaction> create(@RequestBody Transaction tx) {
+    public ResponseEntity<Transaction> create(@RequestBody Transaction tx, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        if (userId != null && tx.getUserId() == null) {
+            tx.setUserId(userId);
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(tx));
     }
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { motion } from 'motion/react';
 import { useFinance } from '../context/FinanceContext';
@@ -17,9 +17,15 @@ const CustomTooltip = ({ active, payload, currency }: any) => {
 };
 
 export const SpendingPulse: React.FC = () => {
-  const { spendingDataByCurrency } = useFinance();
+  const { spendingDataByCurrency, userProfile } = useFinance();
   const currencies = Object.keys(spendingDataByCurrency);
-  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
+  const [selectedCurrency, setSelectedCurrency] = useState(userProfile.preferences.currency || 'INR');
+
+  useEffect(() => {
+    if (currencies.length > 0 && !currencies.includes(selectedCurrency)) {
+      setSelectedCurrency(currencies[0]);
+    }
+  }, [currencies, selectedCurrency]);
   
   const spendingData = spendingDataByCurrency[selectedCurrency] || [];
 

@@ -17,6 +17,11 @@ public class SavingsGoalService {
         return repo.findAll();
     }
 
+    @Transactional(readOnly = true)
+    public List<SavingsGoal> findAllByUserId(String userId) {
+        return repo.findAllByUserId(userId);
+    }
+
     @Transactional
     public SavingsGoal create(SavingsGoal goal) {
         if (goal.getId() == null || goal.getId().isBlank()) {

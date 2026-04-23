@@ -64,21 +64,35 @@ public class UserProfileService {
 
     @Transactional
     public void delete(String id) {
+        purgeUserData(id);
+    }
+
+    @Transactional
+    public void deleteByEmail(String email) {
+        repo.findByEmail(email).ifPresent(profile -> purgeUserData(profile.getId()));
+    }
+
+    @Transactional
+    public void purgeUserData(String userId) {
         // Cascade delete all mapping data
-        transactionRepo.deleteByUserId(id);
-        bankAccountRepo.deleteByUserId(id);
-        budgetRepo.deleteByUserId(id);
-        auditLogRepo.deleteByUserId(id);
-        authenticatorRepo.deleteByUserId(id);
-        familyAccountRepo.deleteByOwnerId(id);
-        incomeSourceRepo.deleteByUserId(id);
-        investmentRepo.deleteByUserId(id);
-        loanRepo.deleteByUserId(id);
-        recurringPaymentRepo.deleteByUserId(id);
-        savingsGoalRepo.deleteByUserId(id);
+        transactionRepo.deleteByUserId(userId);
+        bankAccountRepo.deleteByUserId(userId);
+        budgetRepo.deleteByUserId(userId);
+        auditLogRepo.deleteByUserId(userId);
+        authenticatorRepo.deleteByUserId(userId);
+        familyAccountRepo.deleteByOwnerId(userId);
+        incomeSourceRepo.deleteByUserId(userId);
+        investmentRepo.deleteByUserId(userId);
+        loanRepo.deleteByUserId(userId);
+        recurringPaymentRepo.deleteByUserId(userId);
+        savingsGoalRepo.deleteByUserId(userId);
         
         // Finally delete profile and credentials
-        repo.deleteById(id);
-        appUserRepo.deleteById(id);
+        if (repo.existsById(userId)) {
+            repo.deleteById(userId);
+        }
+        if (appUserRepo.existsById(userId)) {
+            appUserRepo.deleteById(userId);
+        }
     }
 }

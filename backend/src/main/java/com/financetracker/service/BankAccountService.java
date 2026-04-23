@@ -17,6 +17,11 @@ public class BankAccountService {
         return repo.findAll();
     }
 
+    @Transactional(readOnly = true)
+    public List<BankAccount> findAllByUserId(String userId) {
+        return repo.findAllByUserId(userId);
+    }
+
     @Transactional
     public BankAccount create(BankAccount account) {
         if (account.getId() == null || account.getId().isBlank()) {

@@ -17,6 +17,11 @@ public class RecurringPaymentService {
         return repo.findAll();
     }
 
+    @Transactional(readOnly = true)
+    public List<RecurringPayment> findAllByUserId(String userId) {
+        return repo.findAllByUserId(userId);
+    }
+
     @Transactional
     public RecurringPayment create(RecurringPayment payment) {
         if (payment.getId() == null || payment.getId().isBlank()) {

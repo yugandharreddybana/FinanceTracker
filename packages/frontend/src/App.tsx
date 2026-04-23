@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { TransactionsPage } from './components/TransactionsPage';
@@ -59,10 +59,10 @@ function MainApp() {
   useEffect(() => {
     localStorage.setItem('yugi_finance_active_tab', activeTab);
   }, [activeTab]);
+
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
-    // Persistent Login: Check if a session and auth token both exist
     const session = localStorage.getItem('yugi_finance_session');
-    const token = localStorage.getItem('auth_token');
+    const token = sessionStorage.getItem('auth_token');
     if (session && token) {
       const { timestamp } = JSON.parse(session);
       const oneHour = 60 * 60 * 1000;
@@ -79,13 +79,12 @@ function MainApp() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isAIProcessing, setIsAIProcessing] = useState(false);
 
-  // Sync activeTab with URL if user is logged in
+  // Sync activeTab with URL path
   useEffect(() => {
     if (isLoggedIn) {
-      const path = location.pathname.split('/').pop() || 'dashboard';
-      if (path !== 'dashboard' && path !== '' && location.pathname.startsWith('/dashboard')) {
-        setActiveTab(path);
-      }
+      const segments = location.pathname.split('/');
+      const tab = segments[2] || 'dashboard';
+      setActiveTab(tab);
     }
   }, [location.pathname, isLoggedIn]);
 
@@ -96,56 +95,38 @@ function MainApp() {
     }
   }, [isLoggedIn, refreshData]);
 
-  // Sync session timestamp on activity
+  // Track latest transactions in a ref to avoid stale closure in AI insights polling
+  const txRef = useRef(transactions);
+  useEffect(() => { txRef.current = transactions; }, [transactions]);
+
+  // Sync AI Insights as real-time notifications — deps on isLoggedIn only; reads txRef.current inside
   useEffect(() => {
     if (!isLoggedIn) return;
 
-    const updateSession = () => {
-      localStorage.setItem('yugi_finance_session', JSON.stringify({ 
-        timestamp: Date.now() 
-      }));
-    };
-
-    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
-    events.forEach(event => document.addEventListener(event, updateSession));
-    
-    // Initial update
-    updateSession();
-
-    return () => {
-      events.forEach(event => document.removeEventListener(event, updateSession));
-    };
-  }, [isLoggedIn]);
-
-  // Sync AI Insights as real-time notifications
-  useEffect(() => {
-    if (!isLoggedIn || transactions.length < 5) return;
-
     const fetchRealTimeInsights = async () => {
+      if (txRef.current.length < 5) return;
       setIsAIProcessing(true);
       try {
-        const insights = await aiService.getInsights(transactions.slice(0, 50));
-        
-        // Convert AI Insights to UI Notifications
+        const insights = await aiService.getInsights(txRef.current.slice(0, 50));
+
         const newNotifications: AppNotification[] = insights.map((insight: AIInsight) => ({
-          id: insight.id || Math.random().toString(36).substr(2, 9),
+          id: crypto.randomUUID(),
           title: insight.title,
           message: insight.description,
-          type: insight.type === 'ALERT' ? 'warning' : 
-                insight.type === 'WIN' ? 'success' : 
-                insight.type === 'TIP' ? 'info' : 'alert',
+          type: insight.type === 'ALERT' ? 'warning' :
+            insight.type === 'WIN' ? 'success' :
+              insight.type === 'TIP' ? 'info' : 'alert',
           time: insight.date || 'Just now',
           read: false,
-          icon: insight.type === 'ALERT' ? AlertTriangle : 
-                insight.type === 'WIN' ? TrendingUp : 
-                insight.type === 'TIP' ? Sparkles : BarChart3
+          icon: insight.type === 'ALERT' ? AlertTriangle :
+            insight.type === 'WIN' ? TrendingUp :
+              insight.type === 'TIP' ? Sparkles : BarChart3
         }));
 
         setNotifications(prev => {
-          // Avoid duplicate titles in recent notifications
           const existingTitles = new Set(prev.slice(0, 10).map(n => n.title));
           const uniqueNew = newNotifications.filter(n => !existingTitles.has(n.title));
-          return [...uniqueNew, ...prev].slice(0, 50); // Keep last 50
+          return [...uniqueNew, ...prev].slice(0, 50);
         });
       } catch (err) {
         console.error("Failed to fetch real-time insights:", err);
@@ -154,13 +135,10 @@ function MainApp() {
       }
     };
 
-    // Initial fetch
     fetchRealTimeInsights();
-
-    // Poll for new insights every 5 minutes
     const interval = setInterval(fetchRealTimeInsights, 300000);
     return () => clearInterval(interval);
-  }, [isLoggedIn, transactions.length]); // Re-run when transactions change significantly
+  }, [isLoggedIn]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -174,80 +152,95 @@ function MainApp() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Auto-logout logic (1 hour of inactivity)
-  useEffect(() => {
-    if (!isLoggedIn) return;
-
-    let timeoutId: NodeJS.Timeout;
-
-    const resetTimer = () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        handleLogout();
-        alert("You have been logged out due to 1 hour of inactivity.");
-      }, 3600000); // 1 hour
-    };
-
-    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
-    events.forEach(event => document.addEventListener(event, resetTimer));
-    
-    resetTimer();
-
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      events.forEach(event => document.removeEventListener(event, resetTimer));
-    };
-  }, [isLoggedIn]);
-
   const handleLogin = (email: string, token?: string, name?: string) => {
-    // Store auth token for API calls
-    if (token) localStorage.setItem('auth_token', token);
-    // Session persistent for 1 hr
-    localStorage.setItem('yugi_finance_session', JSON.stringify({ 
-      timestamp: Date.now() 
-    }));
+    if (token) sessionStorage.setItem('auth_token', token);
+    localStorage.setItem('yugi_finance_session', JSON.stringify({ timestamp: Date.now() }));
     clearDataForNewUser();
     updateUserProfile({ email, name: name || email.split('@')[0] });
     setIsLoggedIn(true);
     setActiveTab('dashboard');
-    refreshData();
+    setTimeout(() => refreshData(), 0);
     navigate('/dashboard');
   };
 
   const handleSignup = (name: string, email: string, token?: string) => {
-    // Store auth token for API calls
-    if (token) localStorage.setItem('auth_token', token);
-    // Session persistent for 1 hr
-    localStorage.setItem('yugi_finance_session', JSON.stringify({ 
-      timestamp: Date.now() 
-    }));
+    if (token) sessionStorage.setItem('auth_token', token);
+    localStorage.setItem('yugi_finance_session', JSON.stringify({ timestamp: Date.now() }));
     clearDataForNewUser();
     updateUserProfile({ name, email });
     setIsLoggedIn(true);
     setActiveTab('dashboard');
-    refreshData();
+    setTimeout(() => refreshData(), 0);
     navigate('/dashboard');
   };
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     localStorage.removeItem('yugi_finance_session');
-    localStorage.removeItem('auth_token');
+    sessionStorage.removeItem('auth_token');
     clearDataForNewUser();
     setIsLoggedIn(false);
     navigate('/');
-  };
+  }, [clearDataForNewUser, navigate]);
+
+  // Merged session-timestamp sync + auto-logout (1 hour inactivity)
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const updateSession = () => {
+      localStorage.setItem('yugi_finance_session', JSON.stringify({ timestamp: Date.now() }));
+    };
+
+    let timeoutId: NodeJS.Timeout;
+    const resetTimer = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        setNotifications(prev => [...prev, {
+          id: crypto.randomUUID(),
+          title: 'Session Expired',
+          message: 'You have been logged out due to 1 hour of inactivity.',
+          type: 'warning' as const,
+          time: 'Just now',
+          read: false,
+          icon: AlertTriangle
+        }]);
+        handleLogout();
+      }, 3600000);
+    };
+
+    const handleActivity = () => {
+      updateSession();
+      resetTimer();
+    };
+
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    events.forEach(event => document.addEventListener(event, handleActivity));
+
+    updateSession();
+    resetTimer();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      events.forEach(event => document.removeEventListener(event, handleActivity));
+    };
+  }, [isLoggedIn, handleLogout]);
+
+  // Navigate to a tab and update the URL simultaneously
+  const handleNavigate = useCallback((tab: string) => {
+    setActiveTab(tab);
+    navigate(`/dashboard/${tab}`);
+  }, [navigate]);
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard': return <Dashboard key="dashboard" setActiveTab={setActiveTab} />;
+      case 'dashboard': return <Dashboard key="dashboard" setActiveTab={handleNavigate} />;
       case 'transactions': return <TransactionsPage key="transactions" />;
       case 'accounts': return <BankAccountsPage key="accounts" />;
-      case 'budgets': return <BudgetsPage key="budgets" setActiveTab={setActiveTab} />;
-      case 'savings': return <SavingsPage key="savings" onNavigate={setActiveTab} />;
+      case 'budgets': return <BudgetsPage key="budgets" setActiveTab={handleNavigate} />;
+      case 'savings': return <SavingsPage key="savings" onNavigate={handleNavigate} />;
       case 'recurring': return <RecurringPage key="recurring" />;
       case 'loans': return <LoansPage key="loans" />;
-      case 'networth': return <NetWorthPage key="networth" onNavigate={setActiveTab} />;
-      case 'health': return <HealthScorePage key="health" onNavigate={setActiveTab} />;
+      case 'networth': return <NetWorthPage key="networth" onNavigate={handleNavigate} />;
+      case 'health': return <HealthScorePage key="health" onNavigate={handleNavigate} />;
       case 'carbon': return <CarbonFootprintPage key="carbon" />;
       case 'categories': return <CategoriesPage key="categories" />;
       case 'insights': return <AIInsightsPage key="insights" />;
@@ -260,7 +253,7 @@ function MainApp() {
       case 'audit': return <AuditLogPage key="audit" />;
       case 'family': return <FamilyPage key="family" />;
       case 'settings': return <SettingsPage key="settings" />;
-      default: return <Dashboard key="dashboard" setActiveTab={setActiveTab} />;
+      default: return <Dashboard key="dashboard" setActiveTab={handleNavigate} />;
     }
   };
 
@@ -269,81 +262,81 @@ function MainApp() {
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={
-            !isLoggedIn ? (
-              <LandingPage 
-                key="landing" 
-                onGetStarted={() => navigate('/signup')} 
-                onLogin={() => navigate('/login')} 
-                onWatchDemo={() => setShowDemo(true)}
-              />
-            ) : <Navigate to="/dashboard" replace />
-          } />
-          <Route path="/login" element={
-            !isLoggedIn ? (
-              <LoginPage 
-                key="login" 
-                onLogin={handleLogin} 
-                onSwitchToSignup={() => navigate('/signup')}
-                onForgotPassword={() => navigate('/forgot-password')}
-                onBackToHome={() => navigate('/')}
-              />
-            ) : <Navigate to="/dashboard" replace />
-          } />
-          <Route path="/signup" element={
-            !isLoggedIn ? (
-              <SignupPage 
-                key="signup" 
-                onSignup={handleSignup} 
-                onSwitchToLogin={() => navigate('/login')}
-                onBackToHome={() => navigate('/')}
-              />
-            ) : <Navigate to="/dashboard" replace />
-          } />
-          <Route path="/forgot-password" element={
-            !isLoggedIn ? (
-              <ForgotPasswordPage 
-                key="forgot-password"
-                onBackToLogin={() => navigate('/login')}
-                onBackToHome={() => navigate('/')}
-              />
-            ) : <Navigate to="/dashboard" replace />
-          } />
+          !isLoggedIn ? (
+            <LandingPage
+              key="landing"
+              onGetStarted={() => navigate('/signup')}
+              onLogin={() => navigate('/login')}
+              onWatchDemo={() => setShowDemo(true)}
+            />
+          ) : <Navigate to="/dashboard" replace />
+        } />
+        <Route path="/login" element={
+          !isLoggedIn ? (
+            <LoginPage
+              key="login"
+              onLogin={handleLogin}
+              onSwitchToSignup={() => navigate('/signup')}
+              onForgotPassword={() => navigate('/forgot-password')}
+              onBackToHome={() => navigate('/')}
+            />
+          ) : <Navigate to="/dashboard" replace />
+        } />
+        <Route path="/signup" element={
+          !isLoggedIn ? (
+            <SignupPage
+              key="signup"
+              onSignup={handleSignup}
+              onSwitchToLogin={() => navigate('/login')}
+              onBackToHome={() => navigate('/')}
+            />
+          ) : <Navigate to="/dashboard" replace />
+        } />
+        <Route path="/forgot-password" element={
+          !isLoggedIn ? (
+            <ForgotPasswordPage
+              key="forgot-password"
+              onBackToLogin={() => navigate('/login')}
+              onBackToHome={() => navigate('/')}
+            />
+          ) : <Navigate to="/dashboard" replace />
+        } />
 
-          {/* Protected App Routes */}
-          <Route path="/dashboard/*" element={
-            isLoggedIn ? (
-              <div key="app-main" className="min-h-screen">
-                <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
-                
-                <main className="pl-[80px] min-h-screen relative z-10 transition-all duration-500 ease-[0.22, 1, 0.36, 1]">
-                  {/* Fixed Header Bar */}
-                  <header className="fixed top-0 left-[80px] right-0 h-20 flex items-center justify-between px-10 border-b border-white/5 bg-background/80 backdrop-blur-xl z-[90]">
-                    <div className="flex items-center gap-4">
-                      <button 
-                        onClick={() => setIsCommandPaletteOpen(true)}
-                        className="flex items-center gap-3 px-4 py-2 rounded-2xl bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 transition-all group"
-                      >
-                        <Search className="w-4 h-4" />
-                        <span className="text-xs font-bold uppercase tracking-widest">Search anything...</span>
-                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] opacity-40 group-hover:opacity-100">
-                          <Command className="w-2.5 h-2.5" />
-                          <span>K</span>
-                        </div>
-                      </button>
-                    </div>
+        {/* Protected App Routes */}
+        <Route path="/dashboard/*" element={
+          isLoggedIn ? (
+            <div key="app-main" className="min-h-screen">
+              <Sidebar activeTab={activeTab} setActiveTab={handleNavigate} onLogout={handleLogout} />
 
-                    <div className="flex items-center gap-6">
-                      {isOffline && (
-                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-negative/10 border border-negative/20 text-negative">
+              <main className="pl-[80px] min-h-screen relative z-10 transition-all duration-500 ease-[0.22, 1, 0.36, 1]">
+                {/* Fixed Header Bar */}
+                <header className="fixed top-0 left-[80px] right-0 h-20 flex items-center justify-between px-10 border-b border-white/5 bg-background/80 backdrop-blur-xl z-[90]">
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => setIsCommandPaletteOpen(true)}
+                      className="flex items-center gap-3 px-4 py-2 rounded-2xl bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 transition-all group"
+                    >
+                      <Search className="w-4 h-4" />
+                      <span className="text-xs font-bold uppercase tracking-widest">Search anything...</span>
+                      <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] opacity-40 group-hover:opacity-100">
+                        <Command className="w-2.5 h-2.5" />
+                        <span>K</span>
+                      </div>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-6">
+                    {isOffline && (
+                      <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-negative/10 border border-negative/20 text-negative">
                         <WifiOff className="w-4 h-4" />
                         <span className="text-[10px] font-bold uppercase tracking-widest">Offline Mode</span>
                       </div>
                     )}
-                    <button 
+                    <button
                       onClick={() => setIsNotificationsOpen(true)}
                       className="relative p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group"
                     >
-                      <Bell className={cn("w-5 h-5 transition-colors", 
+                      <Bell className={cn("w-5 h-5 transition-colors",
                         isAIProcessing ? "text-accent animate-pulse" : "text-white/40 group-hover:text-white"
                       )} />
                       {notifications.some(n => !n.read) && (
@@ -364,28 +357,28 @@ function MainApp() {
                   </div>
                 </header>
 
-                <div className="pt-32 p-6 md:p-10 lg:p-12 pb-40">
+                <div className="pt-24 p-6 md:p-10 lg:p-12 pb-40" style={{ paddingTop: '96px' }}>
                   <AnimatePresence mode="wait">
                     {renderContent()}
                   </AnimatePresence>
                 </div>
 
-                <CommandPalette 
-                  isOpen={isCommandPaletteOpen} 
-                  onClose={() => setIsCommandPaletteOpen(false)} 
-                  onNavigate={setActiveTab} 
+                <CommandPalette
+                  isOpen={isCommandPaletteOpen}
+                  onClose={() => setIsCommandPaletteOpen(false)}
+                  onNavigate={handleNavigate}
                 />
 
-                <NotificationCenter 
-                  isOpen={isNotificationsOpen} 
-                  onClose={() => setIsNotificationsOpen(false)} 
+                <NotificationCenter
+                  isOpen={isNotificationsOpen}
+                  onClose={() => setIsNotificationsOpen(false)}
                   notifications={notifications}
                   onMarkAsRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))}
                   onClearAll={() => setNotifications([])}
                 />
 
-                <SmartAdd setActiveTab={setActiveTab} />
-                
+                <SmartAdd setActiveTab={handleNavigate} />
+
                 {/* Floating AI Insights Button */}
                 <motion.button
                   initial={{ opacity: 0, scale: 0.8 }}
@@ -423,18 +416,17 @@ function MainApp() {
         } />
       </Routes>
 
-      {/* Demo Modal outside of Routes to be accessible anywhere if needed, or keeping it separate */}
       <AnimatePresence>
         {showDemo && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowDemo(false)}
               className="absolute inset-0 bg-black/80 backdrop-blur-sm"
             />
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -454,7 +446,7 @@ function MainApp() {
                   </div>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => setShowDemo(false)}
                 title="Close demo"
                 className="absolute top-6 right-6 w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-all"

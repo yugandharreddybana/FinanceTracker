@@ -111,7 +111,7 @@ export const LoansPage: React.FC = () => {
     const newRemaining = Math.max(0, loan.remainingAmount - principal);
 
     await addManualTransaction({
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       merchant: `Loan Payment - ${loan.name}`,
       amount: -amount,
       type: 'expense',
@@ -147,7 +147,7 @@ export const LoansPage: React.FC = () => {
     const newRemaining = Math.max(0, loan.remainingAmount - principal);
 
     await addManualTransaction({
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       merchant: `EMI Payment - ${loan.name}`,
       amount: -amount,
       type: 'expense',

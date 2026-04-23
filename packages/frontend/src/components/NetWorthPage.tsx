@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { TrendingUp, ArrowUpRight, ArrowDownRight, Plus, ChevronDown } from 'lucide-react';
@@ -9,9 +9,15 @@ interface NetWorthPageProps {
 }
 
 export const NetWorthPage: React.FC<NetWorthPageProps> = ({ onNavigate }) => {
-  const { netWorthByCurrency, accounts, loans, investments } = useFinance();
+  const { netWorthByCurrency, accounts, loans, investments, userProfile } = useFinance();
   const currencies = Object.keys(netWorthByCurrency);
-  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
+  const [selectedCurrency, setSelectedCurrency] = useState(userProfile.preferences.currency || 'INR');
+
+  useEffect(() => {
+    if (currencies.length > 0 && !currencies.includes(selectedCurrency)) {
+      setSelectedCurrency(currencies[0]);
+    }
+  }, [currencies, selectedCurrency]);
   const [trendPeriod, setTrendPeriod] = useState('1M');
   
   const netWorth = netWorthByCurrency[selectedCurrency] || { total: 0, assets: 0, liabilities: 0, change: 0 };

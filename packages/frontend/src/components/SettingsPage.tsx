@@ -298,13 +298,16 @@ export const SettingsPage: React.FC = () => {
       requireConfirmText: 'DELETE',
       isDestructive: true,
       onConfirm: async () => {
-        const token = localStorage.getItem('auth_token') || '';
+        const token = sessionStorage.getItem('auth_token') || '';
         let backendOk = true;
         let authOk = true;
         try {
           const r1 = await fetch(
             `${MIDDLEWARE_BASE}/api/finance/user-profiles/by-email/${encodeURIComponent(userProfile.email)}`,
-            { method: 'DELETE' }
+            {
+              method: 'DELETE',
+              headers: token ? { Authorization: `Bearer ${token}` } : {},
+            }
           );
           backendOk = r1.ok || r1.status === 404;
         } catch (err) {
@@ -330,9 +333,14 @@ export const SettingsPage: React.FC = () => {
           return;
         }
         clearDataForNewUser();
+        // Remove all keys associated with this user
+        localStorage.removeItem(`yugi_finance_data_${userProfile.email}`);
         localStorage.removeItem('yugi_finance_data');
-        localStorage.removeItem('auth_token');
         localStorage.removeItem('yugi_finance_session');
+        localStorage.removeItem('yugi_finance_active_tab');
+        localStorage.removeItem('ft_audit_trash');
+        localStorage.removeItem('yugi_finance_report_widgets');
+        sessionStorage.clear();
         window.location.href = '/';
       }
     });

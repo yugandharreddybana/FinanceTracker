@@ -94,7 +94,7 @@ export const TransactionsPage: React.FC = () => {
     
     const transaction = {
       ...newTransactionForm,
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
     } as Transaction;
 
     await addManualTransaction(transaction);

@@ -8,7 +8,6 @@ export default defineConfig(({ mode }) => {
   // Load env from project root (two levels up from packages/frontend)
   const env = loadEnv(mode, path.resolve(__dirname, '../..'), '');
   return {
-    root: 'src',
     envDir: path.resolve(__dirname, '../..'),
     build: {
       outDir: path.resolve(__dirname, 'dist'),

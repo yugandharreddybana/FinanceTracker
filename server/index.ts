@@ -1,6 +1,19 @@
 import express from "express";
 import dotenv from "dotenv";
-dotenv.config();
+
+import fs from "fs";
+import path from "path";
+
+// Ensure environment variables are loaded even if started from server subdirectory
+if (!process.env.JWT_SECRET || !process.env.VITE_API_URL) {
+  const rootEnv = path.join(process.cwd(), "..", ".env");
+  const localEnv = path.join(process.cwd(), ".env");
+  if (fs.existsSync(rootEnv)) {
+    dotenv.config({ path: rootEnv });
+  } else if (fs.existsSync(localEnv)) {
+    dotenv.config({ path: localEnv });
+  }
+}
 
 import { financeRouter } from "./routes/finance.js";
 import { aiRouter } from "./routes/ai.js";
@@ -18,13 +31,24 @@ async function startServer() {
   console.log("- Node Version:", process.version);
   console.log("-------------------------------------------------------------------");
 
+  const ALLOWED_ORIGINS = [
+    process.env.FRONTEND_URL,
+    'http://localhost:5173',
+    'http://localhost:3000',
+  ].filter(Boolean) as string[];
+
+  if (!process.env.JAVA_BACKEND_URL && !process.env.BACKEND_URL) {
+    console.warn('[WARN] JAVA_BACKEND_URL is not set — auth and finance proxies will default to http://localhost:8080');
+  }
+
   // 1. MEGA LOGGER & CORS (Must be first line of code)
   app.use((req, res, next) => {
     const origin = req.headers.origin;
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - Origin: ${origin}`);
-    
+
+    const allowedOrigin = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
     // Nuclear CORS headers - set on EVERY request no matter what
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -52,7 +76,9 @@ async function startServer() {
   app.use((err: any, req: any, res: any, next: any) => {
     console.error('SERVER CRASH PREVENTED:', err.message);
     if (!res.headersSent) {
-      res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+      const errOrigin = req.headers.origin;
+      const allowedErrOrigin = errOrigin && ALLOWED_ORIGINS.includes(errOrigin) ? errOrigin : ALLOWED_ORIGINS[0];
+      res.setHeader('Access-Control-Allow-Origin', allowedErrOrigin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
     }
     res.status(500).json({ error: 'Server Error', message: err.message });

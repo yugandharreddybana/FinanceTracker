@@ -4,10 +4,20 @@ import fs from "fs";
 import path from "path";
 dotenv.config();
 
+// Ensure JWT_SECRET is available even if started from server subdirectory
+if (!process.env.JWT_SECRET) {
+  const rootEnv = path.join(process.cwd(), "..", ".env");
+  const localEnv = path.join(process.cwd(), ".env");
+  if (fs.existsSync(rootEnv)) {
+    dotenv.config({ path: rootEnv });
+  } else if (fs.existsSync(localEnv)) {
+    dotenv.config({ path: localEnv });
+  }
+}
+
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
-  // Try to find .env file manually if process.env is missing it
-  console.warn("JWT_SECRET missing from process.env, verifying .env presence...");
+  console.warn("JWT_SECRET missing from process.env! Auth will fail.");
 }
 const USERS_FILE = path.join(process.cwd(), "data", "users.json");
 
@@ -47,11 +57,13 @@ function hashPassword(password: string, salt: string): string {
 }
 
 export function createToken(payload: { uid: string; email: string; name: string }): string {
+  if (!JWT_SECRET) throw new Error("Internal Server Error: JWT_SECRET is not configured");
+  
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
   const body = Buffer.from(
     JSON.stringify({ ...payload, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 86400 })
   ).toString("base64url");
-  const signature = crypto.createHmac("sha256", JWT_SECRET!).update(`${header}.${body}`).digest("base64url");
+  const signature = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${body}`).digest("base64url");
   return `${header}.${body}.${signature}`;
 }
 
@@ -98,7 +110,7 @@ export function loginUser(email: string, password: string): { user: { uid: strin
     throw new Error("Invalid email or password");
   }
   const hash = hashPassword(password, user.salt);
-  if (!crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(user.passwordHash))) {
+  if (hash !== user.passwordHash) {
     throw new Error("Invalid email or password");
   }
   const token = createToken({ uid: user.uid, email: user.email, name: user.name });

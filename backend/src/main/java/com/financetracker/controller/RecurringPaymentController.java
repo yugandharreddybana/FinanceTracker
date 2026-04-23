@@ -15,12 +15,18 @@ public class RecurringPaymentController {
     private final RecurringPaymentService service;
 
     @GetMapping
-    public List<RecurringPayment> getAll() {
+    public List<RecurringPayment> getAll(@RequestHeader(value = "X-User-Id", required = false) String userId) {
+        if (userId != null) {
+            return service.findAllByUserId(userId);
+        }
         return service.findAll();
     }
 
     @PostMapping
-    public ResponseEntity<RecurringPayment> create(@RequestBody RecurringPayment payment) {
+    public ResponseEntity<RecurringPayment> create(@RequestBody RecurringPayment payment, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        if (userId != null && payment.getUserId() == null) {
+            payment.setUserId(userId);
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(payment));
     }
 

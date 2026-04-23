@@ -1,13 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { TrendingUp, TrendingDown, ChevronDown } from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
 import { cn } from '../lib/utils';
 
 export const NetWorthHero: React.FC = () => {
-  const { netWorthByCurrency, savingsGoals } = useFinance();
+  const { netWorthByCurrency, savingsGoals, userProfile } = useFinance();
   const currencies = Object.keys(netWorthByCurrency);
-  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
+  const [selectedCurrency, setSelectedCurrency] = useState(userProfile.preferences.currency || 'INR');
+
+  useEffect(() => {
+    // If the currently selected currency has no data, but others do, switch to the first one with data
+    // This handles the "first load" scenario where data arrives after the component mounts
+    if (currencies.length > 0 && !currencies.includes(selectedCurrency)) {
+      setSelectedCurrency(currencies[0]);
+    }
+  }, [currencies, selectedCurrency]);
   
   const netWorth = netWorthByCurrency[selectedCurrency] || { total: 0, assets: 0, liabilities: 0, change: 0 };
   

@@ -15,12 +15,18 @@ public class LoanController {
     private final LoanService service;
 
     @GetMapping
-    public List<Loan> getAll() {
+    public List<Loan> getAll(@RequestHeader(value = "X-User-Id", required = false) String userId) {
+        if (userId != null) {
+            return service.findAllByUserId(userId);
+        }
         return service.findAll();
     }
 
     @PostMapping
-    public ResponseEntity<Loan> create(@RequestBody Loan loan) {
+    public ResponseEntity<Loan> create(@RequestBody Loan loan, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        if (userId != null && loan.getUserId() == null) {
+            loan.setUserId(userId);
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(loan));
     }
 

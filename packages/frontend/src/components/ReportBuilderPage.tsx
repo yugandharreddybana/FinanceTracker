@@ -37,7 +37,7 @@ export const ReportBuilderPage: React.FC = () => {
 
   const addWidget = (type: ReportWidget['type']) => {
     const newWidget: ReportWidget = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       type,
       title: 'New Widget',
       metric: 'Expenses',

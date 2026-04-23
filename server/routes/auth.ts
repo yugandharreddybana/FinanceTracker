@@ -2,11 +2,11 @@ import { Router, Request, Response } from "express";
 import { rateLimit } from "express-rate-limit";
 import { registerUser, loginUser, findUserByEmail, changeUserPassword, deleteUserByEmail, verifyToken } from "../lib/auth.js";
 
-const BACKEND_URL = process.env.VITE_API_URL || "http://localhost:8080";
+const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8080";
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20,
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests, please try again later" },
@@ -72,21 +72,18 @@ router.post("/forgot-password", authLimiter, (req: Request, res: Response) => {
     return;
   }
 
-  // Always return success to prevent user enumeration
-  // In production, this would send an actual email
-  const user = findUserByEmail(email);
-  if (user) {
-    console.log(`Password reset requested for ${email} (not implemented - no email service)`);
-  }
-
-  res.json({ message: "If an account exists with that email, a reset link has been sent." });
+  res.status(501).json({ notImplemented: true, error: "Password reset is not available — contact support." });
 });
 
 router.post("/change-password", (req: Request, res: Response) => {
   try {
-    const { email, currentPassword, newPassword } = req.body || {};
-    if (!email || !currentPassword || !newPassword) {
-      return res.status(400).json({ error: "email, currentPassword, newPassword are required" });
+    const authHeader = req.headers.authorization?.replace(/^Bearer\s+/i, "");
+    const payload = authHeader ? verifyToken(authHeader) : null;
+    if (!payload) return res.status(401).json({ error: "Unauthorized" });
+    const { currentPassword, newPassword } = req.body || {};
+    const email = payload.email;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: "currentPassword and newPassword are required" });
     }
     if (newPassword.length < 8) {
       return res.status(400).json({ error: "New password must be at least 8 characters" });
@@ -100,13 +97,27 @@ router.post("/change-password", (req: Request, res: Response) => {
   }
 });
 
-router.delete("/account", (req: Request, res: Response) => {
+router.delete("/account", async (req: Request, res: Response) => {
   const auth = req.headers.authorization?.replace(/^Bearer\s+/i, "");
   const payload = auth ? verifyToken(auth) : null;
   const email = payload?.email || (req.body && req.body.email);
   if (!email) return res.status(401).json({ error: "Unauthorized" });
+  
+  const uid = payload?.uid;
   const ok = deleteUserByEmail(email);
   if (!ok) return res.status(404).json({ error: "User not found" });
+
+  // Trigger backend purge
+  try {
+    if (uid) {
+      await fetch(`${BACKEND_URL}/api/finance/user-profiles/purge/${uid}`, { method: "DELETE" });
+    } else {
+      await fetch(`${BACKEND_URL}/api/finance/user-profiles/by-email/${encodeURIComponent(email)}`, { method: "DELETE" });
+    }
+  } catch (err) {
+    console.error("Backend purge failed during account deletion:", err);
+  }
+
   res.json({ ok: true });
 });
 

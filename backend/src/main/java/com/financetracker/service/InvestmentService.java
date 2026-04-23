@@ -17,6 +17,11 @@ public class InvestmentService {
         return repo.findAll();
     }
 
+    @Transactional(readOnly = true)
+    public List<Investment> findAllByUserId(String userId) {
+        return repo.findAllByUserId(userId);
+    }
+
     @Transactional
     public Investment create(Investment inv) {
         if (inv.getId() == null || inv.getId().isBlank()) {
