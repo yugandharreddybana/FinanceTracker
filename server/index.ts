@@ -44,11 +44,16 @@ async function startServer() {
   // 1. MEGA LOGGER & CORS (Must be first line of code)
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - Origin: ${origin}`);
-
-    const allowedOrigin = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+    const isAllowed = origin && (
+      ALLOWED_ORIGINS.includes(origin) || 
+      origin.endsWith('.vercel.app') || 
+      origin.includes('localhost')
+    );
+    
+    const allowedOrigin = isAllowed ? origin : (ALLOWED_ORIGINS[0] || '*');
     // Nuclear CORS headers - set on EVERY request no matter what
-    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigin!);
+
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
