@@ -1,3 +1,5 @@
+import { MIDDLEWARE_BASE } from './api';
+
 export interface ForecastData {
   year: number;
   estimatedNetWorth: number;
@@ -20,8 +22,6 @@ export interface AIInsight {
   date: string;
 }
 
-import { MIDDLEWARE_BASE } from './api';
-
 const getAuthHeaders = (): Record<string, string> => {
   const token = sessionStorage.getItem('auth_token');
   return {
@@ -31,7 +31,9 @@ const getAuthHeaders = (): Record<string, string> => {
 };
 
 class AIService {
-  private readonly baseUrl = `${MIDDLEWARE_BASE}/api/ai`;
+  private get baseUrl() {
+    return `${MIDDLEWARE_BASE}/api/ai`;
+  }
 
   async getInsights(transactions: any[], selectedBank: string = 'ALL'): Promise<AIInsight[]> {
     try {
@@ -78,6 +80,5 @@ class AIService {
     }
   }
 }
-
 
 export const aiService = new AIService();

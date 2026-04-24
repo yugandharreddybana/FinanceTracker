@@ -7,7 +7,6 @@ import { Transaction, BankAccount, Budget, Loan, SavingsGoal, RecurringPayment, 
 const getMiddlewareBase = () => {
   let url = import.meta.env.VITE_MIDDLEWARE_URL;
   if (url) {
-    // Ensure it's an absolute URL
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       url = `https://${url}`;
     }
@@ -53,7 +52,6 @@ async function apiFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
     }
     throw new Error(errorMessage);
   }
-  // 204 No Content
   if (res.status === 204) return undefined as unknown as T;
   return res.json();
 }
@@ -93,11 +91,10 @@ export const financeApi = {
     apiFetch(`${API_BASE}/transactions/${id}`, { method: 'DELETE' }),
 
   bulkDeleteTransactions: (ids: string[]): Promise<void> =>
-    apiFetch(`${API_BASE}/transactions/bulk-delete`, { 
+    apiFetch(`${API_BASE}/transactions/bulk-delete`, {
       method: 'POST',
-      body: JSON.stringify({ ids })
+      body: JSON.stringify({ ids }),
     }),
-
 
   // Accounts
   getAccounts: (): Promise<BankAccount[]> =>
@@ -245,13 +242,17 @@ export const financeApi = {
       body: JSON.stringify({ message, history, transactions }),
     }),
 
-  processAIInput: (input: string, savingsGoals: any[]): Promise<any[]> =>
+  // ---------------------------------------------------------------------------
+  // Server-side AI endpoints (ISSUE-001 fix — no Gemini key on client)
+  // ---------------------------------------------------------------------------
+
+  processAIInput: (input: string, context: { savingsGoals: any[] }): Promise<any[]> =>
     apiFetch(`${MIDDLEWARE_BASE}/api/ai/process-input`, {
       method: 'POST',
-      body: JSON.stringify({ input, savingsGoals }),
+      body: JSON.stringify({ input, savingsGoals: context.savingsGoals }),
     }),
 
-  categorizeAI: (targets: any[]): Promise<Record<string, any[]>> =>
+  categorizeAI: (targets: { id: string; merchant: string; amount: number }[]): Promise<Record<string, { category: string; confidence: number }[]>> =>
     apiFetch(`${MIDDLEWARE_BASE}/api/ai/categorize`, {
       method: 'POST',
       body: JSON.stringify({ targets }),
@@ -263,13 +264,12 @@ export const financeApi = {
       body: JSON.stringify({ base64Data, mimeType, type }),
     }),
 
-  oracleChat: (message: string, history: any[]): Promise<{ content: string }> =>
+  oracleChat: (message: string, history: { role: string; content: string }[]): Promise<{ content: string }> =>
     apiFetch(`${MIDDLEWARE_BASE}/api/ai/oracle`, {
       method: 'POST',
       body: JSON.stringify({ message, history }),
     }),
 };
-
 
 // ---------------------------------------------------------------------------
 // Auth API
@@ -300,5 +300,17 @@ export const authApi = {
       throw new Error(data.error || 'Registration failed');
     }
     return res.json();
+  },
+
+  forgotPassword: async (email: string): Promise<void> => {
+    const res = await fetch(`${MIDDLEWARE_BASE}/api/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'Password reset failed');
+    }
   },
 };
