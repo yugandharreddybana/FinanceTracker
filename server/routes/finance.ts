@@ -221,23 +221,47 @@ router.post("/mcp/message", async (req, res) => {
             description: "Get all budget categories and limits",
             inputSchema: { type: "object", properties: {} },
           },
+          {
+            name: "create_transaction",
+            description: "Record a new financial transaction (expense or income)",
+            inputSchema: {
+              type: "object",
+              properties: {
+                merchant: { type: "string", description: "The merchant or source (e.g. Starbucks, Salary)" },
+                amount: { type: "number", description: "The transaction amount" },
+                currency: { type: "string", description: "The currency code (e.g. EUR, USD, INR)" },
+                date: { type: "string", description: "The date in YYYY-MM-DD format" },
+                category: { type: "string", description: "The category (e.g. Food, Transport, Rent)" },
+                type: { type: "string", enum: ["EXPENSE", "INCOME"], description: "The transaction type" },
+                account: { type: "string", description: "The bank account name (e.g. Revolut, Main Current)" }
+              },
+              required: ["merchant", "amount", "type"]
+            }
+          }
+
         ],
       };
     } else if (method === "tools/call") {
-      const { name } = params;
+      const { name, arguments: args } = params;
       // Proxy MCP tool calls to backend
-      const endpoint =
-        name === "get_transactions" ? "/transactions" :
-        name === "get_accounts" ? "/accounts" :
-        name === "get_budgets" ? "/budgets" : null;
+      const toolMap: Record<string, { endpoint: string, method: string }> = {
+        "get_transactions": { endpoint: "/transactions", method: "GET" },
+        "get_accounts": { endpoint: "/accounts", method: "GET" },
+        "get_budgets": { endpoint: "/budgets", method: "GET" },
+        "create_transaction": { endpoint: "/transactions", method: "POST" }
+      };
 
-      if (endpoint) {
-        const response = await fetch(`${BACKEND_API}${endpoint}`, {
+      const tool = toolMap[name];
+      if (tool) {
+        const response = await fetch(`${BACKEND_API}${tool.endpoint}`, {
+          method: tool.method,
           headers: {
             "Content-Type": "application/json",
             ...(req.headers.authorization ? { Authorization: req.headers.authorization as string } : {}),
           },
+          ...(tool.method === "POST" ? { body: JSON.stringify(args) } : {})
         });
+
         const data = await response.json();
         result = { content: [{ type: "text", text: JSON.stringify(data) }] };
       } else {

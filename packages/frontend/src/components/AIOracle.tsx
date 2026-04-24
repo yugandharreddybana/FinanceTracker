@@ -61,14 +61,15 @@ export const AIOracle: React.FC = () => {
         const now = new Date();
         const systemInstruction = `You are the Yugi Oracle, a premium financial AI. Today's date is ${now.toISOString().split('T')[0]}. 
         
-        Rules:
-        1. Access real-time data via MCP tools.
-        2. For dates like 'yesterday', calculate relative to today (${now.toISOString().split('T')[0]}).
-        3. If a user mentions a bank (e.g., Revolut), set the 'account' field to that bank name.
-        4. If a currency is mentioned (e.g., Euro), use that. Otherwise, match the currency to the bank mentioned.
-        5. You can handle multiple transactions in one input. Call the 'create_transaction' tool multiple times if needed.
-        6. Always return amounts as numbers, not strings.
-        7. Be professional, insightful, and proactive.`;
+        CRITICAL RULES:
+        1. ALWAYS use the 'create_transaction' tool to record new transactions. 
+        2. Before creating a transaction, call 'get_accounts' if you are unsure of the bank name.
+        3. If the user says 'euros', use 'EUR' as the currency. NEVER default to INR if a currency is specified.
+        4. If 'Revolut' is mentioned, set 'account' to 'Revolut'.
+        5. For 'yesterday', use ${new Date(now.getTime() - 86400000).toISOString().split('T')[0]}.
+        6. Handle multiple transactions by calling 'create_transaction' for each one.
+        7. Be proactive but precise.`;
+
 
         const initialAnalysisPrompt = "Perform a quick proactive analysis of my recent transactions and give me one high-impact insight or suggestion.";
         
@@ -214,14 +215,15 @@ export const AIOracle: React.FC = () => {
       const now = new Date();
       const systemInstruction = `You are the Yugi Oracle, a premium financial AI. Today's date is ${now.toISOString().split('T')[0]}. 
       
-      Rules:
-      1. Access real-time data via MCP tools.
-      2. For dates like 'yesterday', calculate relative to today (${now.toISOString().split('T')[0]}).
-      3. If a user mentions a bank (e.g., Revolut), set the 'account' field to that bank name.
-      4. If a currency is mentioned (e.g., Euro), use that. Otherwise, match the currency to the bank mentioned.
-      5. You can handle multiple transactions in one input. Call the 'create_transaction' tool multiple times if needed.
-      6. Always return amounts as numbers, not strings.
-      7. Be professional, insightful, and proactive.`;
+      CRITICAL RULES:
+      1. ALWAYS use the 'create_transaction' tool to record new transactions. 
+      2. Before creating a transaction, call 'get_accounts' if you are unsure of the bank name.
+      3. If the user says 'euros', use 'EUR' as the currency. NEVER default to INR if a currency is specified.
+      4. If 'Revolut' is mentioned, set 'account' to 'Revolut'.
+      5. For 'yesterday', use ${new Date(now.getTime() - 86400000).toISOString().split('T')[0]}.
+      6. Handle multiple transactions by calling 'create_transaction' for each one.
+      7. Be proactive but precise.`;
+
 
       
       // Get tools from MCP

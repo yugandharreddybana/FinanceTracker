@@ -55,7 +55,8 @@ public class TransactionService {
     private void updateBankBalance(Transaction tx, boolean isDeleting) {
         if (tx.getAccount() == null || tx.getAccount().isBlank()) return;
         
-        bankRepo.findByNameAndUserId(tx.getAccount(), tx.getUserId()).ifPresent(bank -> {
+        bankRepo.findByNameIgnoreCaseAndUserId(tx.getAccount(), tx.getUserId()).ifPresent(bank -> {
+
             java.math.BigDecimal amount = tx.getAmount();
             if (amount == null) return;
 
