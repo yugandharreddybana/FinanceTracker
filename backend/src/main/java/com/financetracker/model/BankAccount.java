@@ -48,4 +48,6 @@ public class BankAccount {
     private String cardNumberLast4;
 
     private Boolean isJoint;
+    private Boolean isPrimary;
 }
+

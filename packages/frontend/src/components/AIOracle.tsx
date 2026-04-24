@@ -63,12 +63,19 @@ export const AIOracle: React.FC = () => {
         
         CRITICAL RULES:
         1. ALWAYS use the 'create_transaction' tool to record new transactions. 
-        2. Before creating a transaction, call 'get_accounts' if you are unsure of the bank name.
-        3. If the user says 'euros', use 'EUR' as the currency. NEVER default to INR if a currency is specified.
-        4. If 'Revolut' is mentioned, set 'account' to 'Revolut'.
-        5. For 'yesterday', use ${new Date(now.getTime() - 86400000).toISOString().split('T')[0]}.
-        6. Handle multiple transactions by calling 'create_transaction' for each one.
-        7. Be proactive but precise.`;
+        2. CURRENCY HANDLING: 
+           - If the user says 'euros' or '€', use 'EUR'. 
+           - If 'dollars' or '$', use 'USD'. 
+           - If 'pounds' or '£', use 'GBP'. 
+           - NEVER default to INR if any currency hint is present.
+        3. BANK MAPPING: 
+           - If 'Revolut' is mentioned, use 'Revolut' as the account.
+           - If no bank is mentioned, leave 'account' null; the system will automatically use the user's Primary Account.
+        4. DATE CALCULATION: For 'yesterday', use ${new Date(now.getTime() - 86400000).toISOString().split('T')[0]}.
+        5. MULTIPLE TRANSACTIONS: Process each transaction separately. For "Coffee for 5 euros; Table for 10 euros", call 'create_transaction' twice.
+        6. PRECISION: Extract the exact numeric value (e.g., "5 euros" -> amount: 5, currency: "EUR").
+        7. NO BALANCES: Do not hallucinate bank balances. If asked, call 'get_accounts'.`;
+
 
 
         const initialAnalysisPrompt = "Perform a quick proactive analysis of my recent transactions and give me one high-impact insight or suggestion.";
@@ -217,12 +224,19 @@ export const AIOracle: React.FC = () => {
       
       CRITICAL RULES:
       1. ALWAYS use the 'create_transaction' tool to record new transactions. 
-      2. Before creating a transaction, call 'get_accounts' if you are unsure of the bank name.
-      3. If the user says 'euros', use 'EUR' as the currency. NEVER default to INR if a currency is specified.
-      4. If 'Revolut' is mentioned, set 'account' to 'Revolut'.
-      5. For 'yesterday', use ${new Date(now.getTime() - 86400000).toISOString().split('T')[0]}.
-      6. Handle multiple transactions by calling 'create_transaction' for each one.
-      7. Be proactive but precise.`;
+      2. CURRENCY HANDLING: 
+         - If the user says 'euros' or '€', use 'EUR'. 
+         - If 'dollars' or '$', use 'USD'. 
+         - If 'pounds' or '£', use 'GBP'. 
+         - NEVER default to INR if any currency hint is present.
+      3. BANK MAPPING: 
+         - If 'Revolut' is mentioned, use 'Revolut' as the account.
+         - If no bank is mentioned, leave 'account' null; the system will automatically use the user's Primary Account.
+      4. DATE CALCULATION: For 'yesterday', use ${new Date(now.getTime() - 86400000).toISOString().split('T')[0]}.
+      5. MULTIPLE TRANSACTIONS: Process each transaction separately. For "Coffee for 5 euros; Table for 10 euros", call 'create_transaction' twice.
+      6. PRECISION: Extract the exact numeric value (e.g., "5 euros" -> amount: 5, currency: "EUR").
+      7. NO BALANCES: Do not hallucinate bank balances. If asked, call 'get_accounts'.`;
+
 
 
       

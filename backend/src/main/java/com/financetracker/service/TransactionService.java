@@ -30,11 +30,30 @@ public class TransactionService {
         if (tx.getId() == null || tx.getId().isBlank()) {
             tx.setId("tx-" + System.currentTimeMillis());
         }
+
+        // 1. Default to Primary Account if missing
+        if ((tx.getAccount() == null || tx.getAccount().isBlank()) && tx.getUserId() != null) {
+            bankRepo.findByUserIdAndIsPrimaryTrue(tx.getUserId()).ifPresent(bank -> {
+                tx.setAccount(bank.getName());
+                // 2. Default currency to bank's currency if still null
+                if (tx.getCurrency() == null || tx.getCurrency().isBlank()) {
+                    tx.setCurrency(bank.getCurrency());
+                }
+            });
+        }
+
+        // 3. If account is present but currency is missing, try to fetch account currency
+        if ((tx.getCurrency() == null || tx.getCurrency().isBlank()) && tx.getAccount() != null && tx.getUserId() != null) {
+            bankRepo.findByNameIgnoreCaseAndUserId(tx.getAccount(), tx.getUserId()).ifPresent(bank -> {
+                tx.setCurrency(bank.getCurrency());
+            });
+        }
         
         Transaction saved = repo.save(tx);
         updateBankBalance(saved, false); // false = not deleting
         return saved;
     }
+
 
     @SuppressWarnings("null")
     @Transactional

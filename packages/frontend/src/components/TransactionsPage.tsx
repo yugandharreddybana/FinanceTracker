@@ -23,15 +23,17 @@ export const TransactionsPage: React.FC = () => {
     setIsAddTransactionModalOpen
   } = useFinance();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const primaryAccount = accounts.find(a => a.isPrimary) || accounts[0];
   const [newTransactionForm, setNewTransactionForm] = useState<Partial<Transaction>>({
     date: new Date().toISOString().split('T')[0],
     merchant: '',
     amount: 0,
     category: 'Others',
     type: 'expense',
-    account: accounts[0]?.name || 'Main Current',
+    account: primaryAccount?.name || 'Main Current',
     status: 'pending'
   });
+
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showBulkActions, setShowBulkActions] = useState(false);
@@ -105,7 +107,7 @@ export const TransactionsPage: React.FC = () => {
       amount: 0,
       category: 'Others',
       type: 'expense',
-      account: accounts[0]?.name || 'Main Current',
+      account: primaryAccount?.name || 'Main Current',
       status: 'pending'
     });
   };
