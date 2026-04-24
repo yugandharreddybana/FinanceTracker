@@ -9,7 +9,8 @@ import java.util.List;
 
 @Data
 @Entity
-@Table(name = "family_accounts")
+@Table(name = "family_accounts", schema = "finance_app")
+
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder

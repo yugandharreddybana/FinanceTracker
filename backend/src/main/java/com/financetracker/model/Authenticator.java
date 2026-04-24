@@ -5,7 +5,8 @@ import lombok.*;
 
 @Data
 @Entity
-@Table(name = "authenticators")
+@Table(name = "authenticators", schema = "finance_app")
+
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder

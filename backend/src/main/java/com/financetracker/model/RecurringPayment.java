@@ -11,7 +11,8 @@ import java.util.List;
 
 @Data
 @Entity
-@Table(name = "recurring_payments")
+@Table(name = "recurring_payments", schema = "finance_app")
+
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder

@@ -7,7 +7,8 @@ import java.math.BigDecimal;
 
 @Data
 @Entity
-@Table(name = "investments")
+@Table(name = "investments", schema = "finance_app")
+
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder

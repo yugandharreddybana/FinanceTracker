@@ -9,7 +9,8 @@ import java.util.Map;
 
 @Data
 @Entity
-@Table(name = "user_profiles")
+@Table(name = "user_profiles", schema = "finance_app")
+
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
