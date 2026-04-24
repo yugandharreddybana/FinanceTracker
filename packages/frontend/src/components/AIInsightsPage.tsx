@@ -138,6 +138,8 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
 
     const recognition = new SpeechRecognition();
     recognition.lang = 'en-US';
+    recognition.continuous = true;
+    recognition.interimResults = true;
     recognition.onstart = () => {
       setIsListening(true);
       setIsVoiceMode(true);
@@ -154,14 +156,20 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
         setMessages(prev => [...prev, { role: 'ai', content: `Speech recognition encountered an error: ${event.error}` }]);
       }
     };
+    
+    let finalTranscript = '';
     recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setInput(transcript);
-      // Auto-send after a short delay
-      setTimeout(() => {
-        document.getElementById('insights-send-btn')?.click();
-      }, 500);
+      let interimTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        } else {
+          interimTranscript += event.results[i][0].transcript;
+        }
+      }
+      setInput(finalTranscript + interimTranscript);
     };
+
     recognition.start();
   };
 

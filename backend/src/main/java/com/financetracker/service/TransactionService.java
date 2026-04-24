@@ -12,6 +12,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class TransactionService {
     private final TransactionRepository repo;
+    private final com.financetracker.repository.BankAccountRepository bankRepo;
+
 
     @Transactional(readOnly = true)
     public List<Transaction> findAll() {
@@ -28,7 +30,10 @@ public class TransactionService {
         if (tx.getId() == null || tx.getId().isBlank()) {
             tx.setId("tx-" + System.currentTimeMillis());
         }
-        return repo.save(tx);
+        
+        Transaction saved = repo.save(tx);
+        updateBankBalance(saved, false); // false = not deleting
+        return saved;
     }
 
     @SuppressWarnings("null")
@@ -41,8 +46,31 @@ public class TransactionService {
 
     @Transactional
     public void delete(String id) {
-        repo.deleteById(id);
+        repo.findById(id).ifPresent(tx -> {
+            updateBankBalance(tx, true); // true = deleting (reverse the effect)
+            repo.delete(tx);
+        });
     }
+
+    private void updateBankBalance(Transaction tx, boolean isDeleting) {
+        if (tx.getAccount() == null || tx.getAccount().isBlank()) return;
+        
+        bankRepo.findByNameAndUserId(tx.getAccount(), tx.getUserId()).ifPresent(bank -> {
+            java.math.BigDecimal amount = tx.getAmount();
+            if (amount == null) return;
+
+            // If deleting, we reverse the sign
+            java.math.BigDecimal finalAmount = isDeleting ? amount.negate() : amount;
+
+            if ("EXPENSE".equalsIgnoreCase(tx.getType())) {
+                bank.setBalance(bank.getBalance().subtract(finalAmount));
+            } else if ("INCOME".equalsIgnoreCase(tx.getType())) {
+                bank.setBalance(bank.getBalance().add(finalAmount));
+            }
+            bankRepo.save(bank);
+        });
+    }
+
 
     @SuppressWarnings("null")
     @Transactional

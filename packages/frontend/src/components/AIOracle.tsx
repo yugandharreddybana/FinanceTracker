@@ -58,7 +58,18 @@ export const AIOracle: React.FC = () => {
 
         // Proactive initial analysis
         setIsLoading(true);
-        const systemInstruction = "You are the Yugi Oracle, a premium financial AI. You have access to real-time transaction data via MCP tools. Use these tools to provide accurate, data-driven insights. Always be professional, insightful, and proactive.";
+        const now = new Date();
+        const systemInstruction = `You are the Yugi Oracle, a premium financial AI. Today's date is ${now.toISOString().split('T')[0]}. 
+        
+        Rules:
+        1. Access real-time data via MCP tools.
+        2. For dates like 'yesterday', calculate relative to today (${now.toISOString().split('T')[0]}).
+        3. If a user mentions a bank (e.g., Revolut), set the 'account' field to that bank name.
+        4. If a currency is mentioned (e.g., Euro), use that. Otherwise, match the currency to the bank mentioned.
+        5. You can handle multiple transactions in one input. Call the 'create_transaction' tool multiple times if needed.
+        6. Always return amounts as numbers, not strings.
+        7. Be professional, insightful, and proactive.`;
+
         const initialAnalysisPrompt = "Perform a quick proactive analysis of my recent transactions and give me one high-impact insight or suggestion.";
         
         const userContent = { role: 'user', parts: [{ text: initialAnalysisPrompt }] };
@@ -149,7 +160,8 @@ export const AIOracle: React.FC = () => {
 
     const recognition = new SpeechRecognition();
     recognition.lang = 'en-US';
-    recognition.interimResults = false;
+    recognition.continuous = true;
+    recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => setIsListening(true);
@@ -171,10 +183,19 @@ export const AIOracle: React.FC = () => {
       }
     };
 
+    let finalTranscript = '';
     recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setInput(prev => prev + (prev ? ' ' : '') + transcript);
+      let interimTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        } else {
+          interimTranscript += event.results[i][0].transcript;
+        }
+      }
+      setInput(finalTranscript + interimTranscript);
     };
+
 
     recognition.start();
   };
@@ -190,7 +211,18 @@ export const AIOracle: React.FC = () => {
     try {
       if (!aiRef.current || !mcpClientRef.current) throw new Error("AI not initialized");
 
-      const systemInstruction = "You are the Yugi Oracle, a premium financial AI. You have access to real-time transaction data via MCP tools. Use these tools to provide accurate, data-driven insights. Always be professional, insightful, and proactive.";
+      const now = new Date();
+      const systemInstruction = `You are the Yugi Oracle, a premium financial AI. Today's date is ${now.toISOString().split('T')[0]}. 
+      
+      Rules:
+      1. Access real-time data via MCP tools.
+      2. For dates like 'yesterday', calculate relative to today (${now.toISOString().split('T')[0]}).
+      3. If a user mentions a bank (e.g., Revolut), set the 'account' field to that bank name.
+      4. If a currency is mentioned (e.g., Euro), use that. Otherwise, match the currency to the bank mentioned.
+      5. You can handle multiple transactions in one input. Call the 'create_transaction' tool multiple times if needed.
+      6. Always return amounts as numbers, not strings.
+      7. Be professional, insightful, and proactive.`;
+
       
       // Get tools from MCP
       const mcpTools = await mcpClientRef.current.listTools();
