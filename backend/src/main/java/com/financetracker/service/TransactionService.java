@@ -63,11 +63,14 @@ public class TransactionService {
             java.math.BigDecimal finalAmount = isDeleting ? amount.negate() : amount;
 
             if ("EXPENSE".equalsIgnoreCase(tx.getType())) {
-                bank.setBalance(bank.getBalance().subtract(finalAmount));
+                java.math.BigDecimal currentBalance = bank.getBalance() != null ? bank.getBalance() : java.math.BigDecimal.ZERO;
+                bank.setBalance(currentBalance.subtract(finalAmount));
             } else if ("INCOME".equalsIgnoreCase(tx.getType())) {
-                bank.setBalance(bank.getBalance().add(finalAmount));
+                java.math.BigDecimal currentBalance = bank.getBalance() != null ? bank.getBalance() : java.math.BigDecimal.ZERO;
+                bank.setBalance(currentBalance.add(finalAmount));
             }
             bankRepo.save(bank);
+
         });
     }
 
