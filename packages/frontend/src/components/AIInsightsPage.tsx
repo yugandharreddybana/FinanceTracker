@@ -6,7 +6,8 @@ import { MCPClient } from '../services/mcpClient';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useFinance } from '../context/FinanceContext';
-import { financeApi } from '../services/api';
+import { financeApi, MIDDLEWARE_BASE } from '../services/api';
+
 import DeleteModal from './DeleteModal';
 
 interface Insight {
@@ -57,7 +58,8 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
   useEffect(() => {
     const initAI = async () => {
       try {
-        const mcp = new MCPClient('/api/finance/mcp/sse');
+        const mcp = new MCPClient(`${MIDDLEWARE_BASE}/api/finance/mcp/sse`);
+
         await mcp.connect();
         mcpClientRef.current = mcp;
 
