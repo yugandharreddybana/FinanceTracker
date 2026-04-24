@@ -62,10 +62,8 @@ router.get("/transactions", (req, res) => proxyToBackend(req, res, "/transaction
 router.post("/transactions", (req, res) => proxyToBackend(req, res, "/transactions"));
 router.put("/transactions/:id", (req, res) => proxyToBackend(req, res, `/transactions/${req.params.id}`));
 router.patch("/transactions/bulk", (req, res) => proxyToBackend(req, res, "/transactions/bulk"));
-router.delete("/transactions/bulk", (req, res) => {
-  const ids = (req.query.ids as string) || '';
-  proxyToBackend(req, res, `/transactions/bulk?ids=${ids}`);
-});
+router.post("/transactions/bulk-delete", (req, res) => proxyToBackend(req, res, "/transactions/bulk-delete"));
+
 router.delete("/transactions/:id", (req, res) => proxyToBackend(req, res, `/transactions/${req.params.id}`));
 
 // ---------------------------------------------------------------------------

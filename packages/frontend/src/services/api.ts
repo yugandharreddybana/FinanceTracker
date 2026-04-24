@@ -93,7 +93,11 @@ export const financeApi = {
     apiFetch(`${API_BASE}/transactions/${id}`, { method: 'DELETE' }),
 
   bulkDeleteTransactions: (ids: string[]): Promise<void> =>
-    apiFetch(`${API_BASE}/transactions/bulk?ids=${ids.join(',')}`, { method: 'DELETE' }),
+    apiFetch(`${API_BASE}/transactions/bulk-delete`, { 
+      method: 'POST',
+      body: JSON.stringify({ ids })
+    }),
+
 
   // Accounts
   getAccounts: (): Promise<BankAccount[]> =>

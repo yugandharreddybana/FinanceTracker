@@ -772,9 +772,10 @@ export const TransactionsPage: React.FC = () => {
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
-            className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[150] w-full max-w-2xl px-6"
+            className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[150] w-full max-w-4xl px-6"
           >
-            <div className="glass-card p-4 flex items-center justify-between shadow-2xl border-accent/30 bg-card/90 backdrop-blur-2xl">
+            <div className="glass-card p-4 flex flex-wrap md:flex-nowrap items-center justify-between gap-4 shadow-2xl border-accent/30 bg-card/90 backdrop-blur-2xl">
+
               <div className="flex items-center gap-4">
                 <div className="bg-accent text-white w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm shadow-lg violet-glow">
                   {selectedIds.length}
