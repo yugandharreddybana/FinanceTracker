@@ -62,7 +62,7 @@ function MainApp() {
 
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
     const session = localStorage.getItem('yugi_finance_session');
-    const token = sessionStorage.getItem('auth_token');
+    const token = localStorage.getItem('auth_token');
     if (session && token) {
       const { timestamp } = JSON.parse(session);
       const oneHour = 60 * 60 * 1000;
@@ -153,7 +153,7 @@ function MainApp() {
   }, []);
 
   const handleLogin = (email: string, token?: string, name?: string) => {
-    if (token) sessionStorage.setItem('auth_token', token);
+    if (token) localStorage.setItem('auth_token', token);
     localStorage.setItem('yugi_finance_session', JSON.stringify({ timestamp: Date.now() }));
     clearDataForNewUser();
     updateUserProfile({ email, name: name || email.split('@')[0] });
@@ -164,7 +164,7 @@ function MainApp() {
   };
 
   const handleSignup = (name: string, email: string, token?: string) => {
-    if (token) sessionStorage.setItem('auth_token', token);
+    if (token) localStorage.setItem('auth_token', token);
     localStorage.setItem('yugi_finance_session', JSON.stringify({ timestamp: Date.now() }));
     clearDataForNewUser();
     updateUserProfile({ name, email });
@@ -176,7 +176,7 @@ function MainApp() {
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem('yugi_finance_session');
-    sessionStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_token');
     clearDataForNewUser();
     setIsLoggedIn(false);
     navigate('/');
@@ -308,7 +308,7 @@ function MainApp() {
             <div key="app-main" className="min-h-screen">
               <Sidebar activeTab={activeTab} setActiveTab={handleNavigate} onLogout={handleLogout} />
 
-              <main className="pl-[80px] min-h-screen relative z-10 transition-all duration-500 ease-[0.22, 1, 0.36, 1]">
+              <main className="pl-[80px] min-h-screen relative z-10 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]">
                 {/* Fixed Header Bar */}
                 <header className="fixed top-0 left-[80px] right-0 h-20 flex items-center justify-between px-10 border-b border-white/5 bg-background/80 backdrop-blur-xl z-[90]">
                   <div className="flex items-center gap-4">
@@ -386,7 +386,7 @@ function MainApp() {
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={() => setIsChatOpen(true)}
-                  className="fixed bottom-32 right-8 w-16 h-16 rounded-2xl bg-accent flex items-center justify-center violet-glow z-[80] shadow-2xl border border-white/10"
+                  className="fixed bottom-48 right-8 w-16 h-16 rounded-2xl bg-accent flex items-center justify-center violet-glow z-[80] shadow-2xl border border-white/10"
                 >
                   <Sparkles className="w-8 h-8 text-white animate-pulse" />
                 </motion.button>
@@ -398,7 +398,7 @@ function MainApp() {
                       initial={{ opacity: 0, scale: 0.9, y: 20, x: 20 }}
                       animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
                       exit={{ opacity: 0, scale: 0.9, y: 20, x: 20 }}
-                      className="fixed bottom-32 right-8 w-[450px] h-[600px] z-[150] shadow-[0_0_50px_rgba(0,0,0,0.5)]"
+                      className="fixed bottom-48 right-8 w-[450px] h-[600px] z-[150] shadow-[0_0_50px_rgba(0,0,0,0.5)]"
                     >
                       <AIInsightsPage compact onClose={() => setIsChatOpen(false)} />
                     </motion.div>
@@ -432,19 +432,17 @@ function MainApp() {
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               className="relative w-full max-w-5xl aspect-video bg-card rounded-3xl overflow-hidden border border-white/10 shadow-2xl"
             >
-              <div className="absolute inset-0 flex items-center justify-center bg-accent/5">
-                <div className="text-center">
-                  <Sparkles className="w-20 h-20 text-accent mx-auto mb-6 animate-pulse" />
-                  <h2 className="text-4xl font-bold mb-4 tracking-tighter font-display">Yugi Finance Tracker Demo</h2>
-                  <p className="text-white/40 font-medium max-w-md mx-auto">
-                    Experience the future of wealth intelligence. Our neural engine is processing your request...
-                  </p>
-                  <div className="mt-10 flex justify-center gap-4">
-                    <div className="w-3 h-3 rounded-full bg-accent animate-bounce [animation-delay:0ms]" />
-                    <div className="w-3 h-3 rounded-full bg-accent animate-bounce [animation-delay:200ms]" />
-                    <div className="w-3 h-3 rounded-full bg-accent animate-bounce [animation-delay:400ms]" />
-                  </div>
-                </div>
+              <div className="absolute inset-0 flex items-center justify-center bg-black">
+                <iframe
+                  width="100%"
+                  height="100%"
+                  src="https://www.youtube.com/embed/YOUR_YOUTUBE_VIDEO_ID?autoplay=1"
+                  title="Yugi Finance Tracker Demo"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="w-full h-full"
+                />
               </div>
               <button
                 onClick={() => setShowDemo(false)}

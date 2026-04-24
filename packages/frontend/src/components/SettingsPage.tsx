@@ -90,26 +90,26 @@ export const SettingsPage: React.FC = () => {
     isOpen: false,
     title: '',
     description: '',
-    onConfirm: () => {},
+    onConfirm: () => { },
   });
 
   const closeModal = () => setModalState(prev => ({ ...prev, isOpen: false }));
   const openActionModal = (args: Omit<typeof modalState, 'isOpen'>) => setModalState({ ...args, isOpen: true });
 
-  const profileRef       = useRef<HTMLElement>(null);
-  const preferencesRef   = useRef<HTMLElement>(null);
+  const profileRef = useRef<HTMLElement>(null);
+  const preferencesRef = useRef<HTMLElement>(null);
   const notificationsRef = useRef<HTMLElement>(null);
-  const securityRef      = useRef<HTMLElement>(null);
-  const billingRef       = useRef<HTMLElement>(null);
-  const dataRef          = useRef<HTMLElement>(null);
+  const securityRef = useRef<HTMLElement>(null);
+  const billingRef = useRef<HTMLElement>(null);
+  const dataRef = useRef<HTMLElement>(null);
 
   const sectionRefs: Record<SectionId, React.RefObject<HTMLElement | null>> = {
-    profile:       profileRef,
-    preferences:   preferencesRef,
+    profile: profileRef,
+    preferences: preferencesRef,
     notifications: notificationsRef,
-    security:      securityRef,
-    billing:       billingRef,
-    data:          dataRef,
+    security: securityRef,
+    billing: billingRef,
+    data: dataRef,
   };
 
   const [activeTab, setActiveTab] = useState<SectionId>('profile');
@@ -127,7 +127,7 @@ export const SettingsPage: React.FC = () => {
       observers.push(obs);
     });
     return () => observers.forEach((o) => o.disconnect());
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const scrollTo = (id: SectionId) => {
@@ -136,30 +136,30 @@ export const SettingsPage: React.FC = () => {
   };
 
   const [profileForm, setProfileForm] = useState({ name: userProfile.name, email: userProfile.email });
-  
+
   // Sync profile form when userProfile changes (e.g. after login)
   useEffect(() => {
     setProfileForm({ name: userProfile.name, email: userProfile.email });
   }, [userProfile.name, userProfile.email]);
 
-  const [theme,    setTheme]    = useState(userProfile.preferences.theme    || 'dark');
+  const [theme, setTheme] = useState(userProfile.preferences.theme || 'dark');
   const [currency, setCurrency] = useState(userProfile.preferences.currency || 'INR');
   const [language, setLanguage] = useState(userProfile.preferences.language || 'English (US)');
 
   const [notifications, setNotifications] = useState<NotificationPrefs>({
-    global:    userProfile.preferences.notifications ?? true,
+    global: userProfile.preferences.notifications ?? true,
     anomalies: true,
-    budgets:   true,
+    budgets: true,
     recurring: true,
   });
   const toggleNotif = (key: keyof NotificationPrefs) =>
     setNotifications((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  const [passwordForm,   setPasswordForm]   = useState<PasswordForm>({ current: '', next: '', confirm: '' });
-  const [showPasswords,  setShowPasswords]  = useState({ current: false, next: false, confirm: false });
+  const [passwordForm, setPasswordForm] = useState<PasswordForm>({ current: '', next: '', confirm: '' });
+  const [showPasswords, setShowPasswords] = useState({ current: false, next: false, confirm: false });
   const [passwordStatus, setPasswordStatus] = useState<'idle' | 'success' | 'error' | 'mismatch'>('idle');
-  const [twoFactorEnabled,  setTwoFactorEnabled]  = useState(false);
-  const [biometricEnabled,  setBiometricEnabled]  = useState(true);
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(true);
 
   const handleToggleBiometric = async () => {
     if (biometricEnabled) {
@@ -200,12 +200,12 @@ export const SettingsPage: React.FC = () => {
       console.error('Biometric registration failed:', err);
     }
   };
-  const [privacyMode,       setPrivacyMode]       = useState(false);
+  const [privacyMode, setPrivacyMode] = useState(false);
 
   const handlePasswordChange = async () => {
-    if (!passwordForm.current)                            { setPasswordStatus('error');    return; }
-    if (passwordForm.next !== passwordForm.confirm)       { setPasswordStatus('mismatch');  return; }
-    if (passwordForm.next.length < 8)                     { setPasswordStatus('error');    return; }
+    if (!passwordForm.current) { setPasswordStatus('error'); return; }
+    if (passwordForm.next !== passwordForm.confirm) { setPasswordStatus('mismatch'); return; }
+    if (passwordForm.next.length < 8) { setPasswordStatus('error'); return; }
     try {
       const res = await fetch(`${MIDDLEWARE_BASE}/api/auth/change-password`, {
         method: 'POST',
@@ -226,10 +226,10 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  const [isSaving,    setIsSaving]    = useState(false);
-  const [saveStatus,  setSaveStatus]  = useState<'idle' | 'success' | 'error'>('idle');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const importRef    = useRef<HTMLInputElement>(null);
+  const importRef = useRef<HTMLInputElement>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(userProfile.avatar || null);
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -270,8 +270,8 @@ export const SettingsPage: React.FC = () => {
       exportedAt: new Date().toISOString(),
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url  = URL.createObjectURL(blob);
-    const a    = Object.assign(document.createElement('a'), { href: url, download: `yugi_backup_${new Date().toISOString().split('T')[0]}.json` });
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement('a'), { href: url, download: `yugi_backup_${new Date().toISOString().split('T')[0]}.json` });
     a.click(); URL.revokeObjectURL(url);
   }, [userProfile, transactions, accounts, budgets, investments, savingsGoals, recurringPayments, loans, incomeSources]);
 
@@ -298,7 +298,7 @@ export const SettingsPage: React.FC = () => {
       requireConfirmText: 'DELETE',
       isDestructive: true,
       onConfirm: async () => {
-        const token = sessionStorage.getItem('auth_token') || '';
+        const token = localStorage.getItem('auth_token') || '';
         let backendOk = true;
         let authOk = true;
         try {
@@ -340,19 +340,19 @@ export const SettingsPage: React.FC = () => {
         localStorage.removeItem('yugi_finance_active_tab');
         localStorage.removeItem('ft_audit_trash');
         localStorage.removeItem('yugi_finance_report_widgets');
-        sessionStorage.clear();
+        localStorage.clear();
         window.location.href = '/';
       }
     });
   };
 
   const navItems: { id: SectionId; label: string; icon: React.ElementType }[] = [
-    { id: 'profile',       label: 'Profile',       icon: User },
-    { id: 'preferences',   label: 'Preferences',   icon: Palette },
+    { id: 'profile', label: 'Profile', icon: User },
+    { id: 'preferences', label: 'Preferences', icon: Palette },
     { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'security',      label: 'Security',      icon: Shield },
-    { id: 'billing',       label: 'Subscription',  icon: CreditCard },
-    { id: 'data',          label: 'Data',          icon: Database },
+    { id: 'security', label: 'Security', icon: Shield },
+    { id: 'billing', label: 'Subscription', icon: CreditCard },
+    { id: 'data', label: 'Data', icon: Database },
   ];
 
   return (
@@ -514,8 +514,8 @@ export const SettingsPage: React.FC = () => {
                     className="appearance-none bg-white/5 border border-white/10 rounded-xl px-4 py-3 pr-10 text-sm font-bold outline-none focus:border-accent hover:bg-white/10 transition-all cursor-pointer min-w-[160px]">
                     <option value="English (US)" className="bg-[#0F0F19]">English (US)</option>
                     <option value="English (UK)" className="bg-[#0F0F19]">English (UK)</option>
-                    <option value="Hindi"        className="bg-[#0F0F19]">Hindi (हिन्दी)</option>
-                    <option value="German"       className="bg-[#0F0F19]">German</option>
+                    <option value="Hindi" className="bg-[#0F0F19]">Hindi (हिन्दी)</option>
+                    <option value="German" className="bg-[#0F0F19]">German</option>
                   </select>
                   <Languages className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30 pointer-events-none" />
                 </div>
@@ -527,10 +527,10 @@ export const SettingsPage: React.FC = () => {
           <Section sectionRef={notificationsRef} title="Notifications" description="Choose which alerts Yugi sends you" icon={Bell}>
             <div className="space-y-4">
               {([
-                { key: 'global'    as const, title: 'All Notifications',  desc: 'Master toggle — disabling mutes everything below',        value: notifications.global },
-                { key: 'anomalies' as const, title: 'Spend Anomalies',    desc: 'AI-detected unusual or suspicious transactions',           value: notifications.global && notifications.anomalies },
-                { key: 'budgets'   as const, title: 'Budget Thresholds',  desc: 'Alerts at 80 % and 100 % of a budget limit',              value: notifications.global && notifications.budgets },
-                { key: 'recurring' as const, title: 'Upcoming Bills',     desc: '3-day reminders before subscriptions and EMIs are due',   value: notifications.global && notifications.recurring },
+                { key: 'global' as const, title: 'All Notifications', desc: 'Master toggle — disabling mutes everything below', value: notifications.global },
+                { key: 'anomalies' as const, title: 'Spend Anomalies', desc: 'AI-detected unusual or suspicious transactions', value: notifications.global && notifications.anomalies },
+                { key: 'budgets' as const, title: 'Budget Thresholds', desc: 'Alerts at 80 % and 100 % of a budget limit', value: notifications.global && notifications.budgets },
+                { key: 'recurring' as const, title: 'Upcoming Bills', desc: '3-day reminders before subscriptions and EMIs are due', value: notifications.global && notifications.recurring },
               ]).map(({ key, title, desc, value }) => (
                 <div key={key} className={cn('flex items-center justify-between p-5 rounded-2xl border transition-all',
                   value ? 'bg-accent/[0.04] border-accent/10' : 'bg-white/[0.02] border-white/5 hover:border-white/10')}>
@@ -570,12 +570,12 @@ export const SettingsPage: React.FC = () => {
                 {passwordStatus !== 'idle' && (
                   <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                     className={cn('flex items-center gap-3 p-4 rounded-2xl text-sm font-bold',
-                      passwordStatus === 'success'  && 'bg-positive/10 border border-positive/20 text-positive',
+                      passwordStatus === 'success' && 'bg-positive/10 border border-positive/20 text-positive',
                       passwordStatus === 'mismatch' && 'bg-yellow-500/10 border border-yellow-500/20 text-yellow-400',
-                      passwordStatus === 'error'    && 'bg-negative/10 border border-negative/20 text-negative')}>
-                    {passwordStatus === 'success'  && <><CheckCircle2 className="w-5 h-5" /> Password updated successfully</>}
-                    {passwordStatus === 'mismatch' && <><AlertCircle  className="w-5 h-5" /> New passwords do not match</>}
-                    {passwordStatus === 'error'    && <><XCircle      className="w-5 h-5" /> Check current password — new must be ≥ 8 characters</>}
+                      passwordStatus === 'error' && 'bg-negative/10 border border-negative/20 text-negative')}>
+                    {passwordStatus === 'success' && <><CheckCircle2 className="w-5 h-5" /> Password updated successfully</>}
+                    {passwordStatus === 'mismatch' && <><AlertCircle className="w-5 h-5" /> New passwords do not match</>}
+                    {passwordStatus === 'error' && <><XCircle className="w-5 h-5" /> Check current password — new must be ≥ 8 characters</>}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -587,9 +587,9 @@ export const SettingsPage: React.FC = () => {
               <div className="space-y-4 pt-6 border-t border-white/5">
                 <h4 className="font-bold text-sm text-white/50 uppercase tracking-widest">Access Controls</h4>
                 {[
-                  { checked: twoFactorEnabled,  onChange: () => setTwoFactorEnabled((p)  => !p), Icon: SmartphoneNfc, label: 'Two-Factor Authentication', sub: twoFactorEnabled  ? 'Enabled · Shield Level 2'   : 'Disabled · Recommended',   color: twoFactorEnabled  ? 'text-accent'    : 'text-white/30', bg: twoFactorEnabled  ? 'bg-accent/20'    : 'bg-white/5' },
-                  { checked: biometricEnabled,  onChange: handleToggleBiometric, Icon: Fingerprint,   label: 'Biometric Login',           sub: biometricEnabled  ? 'Active · Synced with OS'    : 'Inactive',                  color: biometricEnabled  ? 'text-positive'  : 'text-white/30', bg: biometricEnabled  ? 'bg-positive/15'  : 'bg-white/5' },
-                  { checked: privacyMode,       onChange: () => setPrivacyMode((p)       => !p), Icon: Eye,           label: 'Privacy Mode',              sub: privacyMode       ? 'On · Amounts are masked'    : 'Off · Amounts visible',     color: privacyMode       ? 'text-yellow-400': 'text-white/30', bg: privacyMode       ? 'bg-yellow-500/15': 'bg-white/5' },
+                  { checked: twoFactorEnabled, onChange: () => setTwoFactorEnabled((p) => !p), Icon: SmartphoneNfc, label: 'Two-Factor Authentication', sub: twoFactorEnabled ? 'Enabled · Shield Level 2' : 'Disabled · Recommended', color: twoFactorEnabled ? 'text-accent' : 'text-white/30', bg: twoFactorEnabled ? 'bg-accent/20' : 'bg-white/5' },
+                  { checked: biometricEnabled, onChange: handleToggleBiometric, Icon: Fingerprint, label: 'Biometric Login', sub: biometricEnabled ? 'Active · Synced with OS' : 'Inactive', color: biometricEnabled ? 'text-positive' : 'text-white/30', bg: biometricEnabled ? 'bg-positive/15' : 'bg-white/5' },
+                  { checked: privacyMode, onChange: () => setPrivacyMode((p) => !p), Icon: Eye, label: 'Privacy Mode', sub: privacyMode ? 'On · Amounts are masked' : 'Off · Amounts visible', color: privacyMode ? 'text-yellow-400' : 'text-white/30', bg: privacyMode ? 'bg-yellow-500/15' : 'bg-white/5' },
                 ].map(({ checked, onChange, Icon, label, sub, color, bg }) => (
                   <div key={label} className="flex items-center justify-between p-5 rounded-2xl bg-white/[0.02] border border-white/10 hover:border-white/15 transition-all">
                     <div className="flex items-center gap-4">
@@ -627,7 +627,7 @@ export const SettingsPage: React.FC = () => {
                     onClick={() => openActionModal({
                       title: 'Billing Portal',
                       description: 'Directing you to the secure billing portal powered by Stripe and Razorpay. Here you can update your plan, view invoices, and manage payment methods.',
-                      onConfirm: () => {}
+                      onConfirm: () => { }
                     })}>
                     Manage Plan
                   </button>
@@ -648,7 +648,7 @@ export const SettingsPage: React.FC = () => {
                 onClick={() => openActionModal({
                   title: 'Update Payment',
                   description: 'You are now connecting to the secure payment processor to update your credit card or billing address.',
-                  onConfirm: () => {}
+                  onConfirm: () => { }
                 })}>
                 Update
               </button>
@@ -707,7 +707,7 @@ export const SettingsPage: React.FC = () => {
 
         </div>
       </div>
-      
+
       <DeleteModal
         isOpen={modalState.isOpen}
         onClose={closeModal}

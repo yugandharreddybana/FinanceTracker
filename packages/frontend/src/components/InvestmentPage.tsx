@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  TrendingUp, TrendingDown, Plus, Search, Filter, 
+import {
+  TrendingUp, TrendingDown, Plus, Search, Filter,
   ArrowUpRight, ArrowDownRight, RefreshCw, Wallet,
   PieChart, BarChart3, History, Shield, Globe, Coins, Pencil, Trash2, ChevronDown
 } from 'lucide-react';
@@ -11,9 +11,9 @@ import { currencyService } from '../services/currencyService';
 import { AddInvestmentModal } from './AddInvestmentModal';
 import { cn } from '../lib/utils';
 import DeleteModal from './DeleteModal';
-import { 
-  ResponsiveContainer, PieChart as RePieChart, Pie, Cell, 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip 
+import {
+  ResponsiveContainer, PieChart as RePieChart, Pie, Cell,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip
 } from 'recharts';
 
 export const InvestmentPage: React.FC = () => {
@@ -35,13 +35,13 @@ export const InvestmentPage: React.FC = () => {
       const cryptoIds = investments
         .filter(inv => inv.type === 'Crypto')
         .map(inv => inv.symbol === 'BTC' ? 'bitcoin' : inv.symbol === 'ETH' ? 'ethereum' : inv.symbol.toLowerCase());
-      
+
       const cryptoPrices = await investmentService.getCryptoPrices(cryptoIds.length > 0 ? cryptoIds : undefined);
-      
+
       // Fetch Stock Prices
       const stockInvestments = investments.filter(inv => inv.type === 'Stock' || inv.type === 'ETF');
       const stockPrices: Record<string, AssetPrice> = {};
-      
+
       for (const inv of stockInvestments) {
         const priceData = await investmentService.getStockPrice(inv.symbol);
         if (priceData) {
@@ -65,22 +65,22 @@ export const InvestmentPage: React.FC = () => {
 
   const filteredInvestments = investments.filter(inv => {
     const matchesFilter = filter === 'All' || inv.type === filter;
-    const matchesSearch = inv.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         inv.symbol.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = inv.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      inv.symbol.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesFilter && matchesSearch;
   });
 
   const totalValue = investments
     .filter(inv => (inv.currency || 'INR') === selectedCurrency)
     .reduce((sum, inv) => sum + (inv.quantity * (prices[inv.symbol]?.price || inv.currentPrice)), 0);
-    
+
   const totalCost = investments
     .filter(inv => (inv.currency || 'INR') === selectedCurrency)
     .reduce((sum, inv) => sum + (inv.quantity * inv.averagePrice), 0);
-    
+
   const totalGain = totalValue - totalCost;
   const totalGainPercent = totalCost > 0 ? (totalGain / totalCost) * 100 : 0;
-  
+
   const typeData = [
     { name: 'Stocks', value: investments.filter(i => i.type === 'Stock' && (i.currency || 'INR') === selectedCurrency).reduce((sum, i) => sum + (i.quantity * (prices[i.symbol]?.price || i.currentPrice)), 0) },
     { name: 'Crypto', value: investments.filter(i => i.type === 'Crypto' && (i.currency || 'INR') === selectedCurrency).reduce((sum, i) => sum + (i.quantity * (prices[i.symbol]?.price || i.currentPrice)), 0) },
@@ -121,9 +121,9 @@ export const InvestmentPage: React.FC = () => {
             )}
           </div>
         </div>
-        
+
         <div className="flex items-center gap-4">
-          <button 
+          <button
             onClick={refreshPrices}
             disabled={isRefreshing}
             aria-label="Refresh prices"
@@ -131,7 +131,7 @@ export const InvestmentPage: React.FC = () => {
           >
             <RefreshCw className={cn("w-5 h-5 text-white/40 group-hover:text-white transition-all", isRefreshing && "animate-spin")} />
           </button>
-          <button 
+          <button
             onClick={() => setIsAddModalOpen(true)}
             className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-accent text-white font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow"
           >
@@ -141,16 +141,16 @@ export const InvestmentPage: React.FC = () => {
         </div>
       </div>
 
-      <AddInvestmentModal 
-        isOpen={isAddModalOpen || !!editingInvestment} 
-        onClose={() => { setIsAddModalOpen(false); setEditingInvestment(null); }} 
+      <AddInvestmentModal
+        isOpen={isAddModalOpen || !!editingInvestment}
+        onClose={() => { setIsAddModalOpen(false); setEditingInvestment(null); }}
         onAdd={addInvestment}
         investmentToEdit={editingInvestment}
         onEdit={updateInvestment}
       />
 
       {/* Portfolio Overview Cards */}
-      <DeleteModal 
+      <DeleteModal
         isOpen={!!deleteConfirmId}
         onClose={() => setDeleteConfirmId(null)}
         onConfirm={() => { if (deleteConfirmId) { deleteInvestment(deleteConfirmId); setDeleteConfirmId(null); } }}
@@ -159,7 +159,7 @@ export const InvestmentPage: React.FC = () => {
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="glass-card p-8 relative overflow-hidden group"
@@ -183,7 +183,7 @@ export const InvestmentPage: React.FC = () => {
           </div>
         </motion.div>
 
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
@@ -206,7 +206,7 @@ export const InvestmentPage: React.FC = () => {
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: '#0F0F19', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
                   itemStyle={{ color: '#fff' }}
                 />
@@ -215,7 +215,7 @@ export const InvestmentPage: React.FC = () => {
           </div>
         </motion.div>
 
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
@@ -243,7 +243,7 @@ export const InvestmentPage: React.FC = () => {
           <div className="flex items-center gap-4">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
-              <input 
+              <input
                 type="text"
                 placeholder="Search assets..."
                 value={searchQuery}
@@ -289,7 +289,7 @@ export const InvestmentPage: React.FC = () => {
                 const profitPercent = (profit / costBasis) * 100;
 
                 return (
-                  <motion.tr 
+                  <motion.tr
                     key={inv.id}
                     layout
                     initial={{ opacity: 0 }}
@@ -336,7 +336,7 @@ export const InvestmentPage: React.FC = () => {
                           <span className="text-[10px] uppercase tracking-widest">{profit >= 0 ? '+' : ''}{profitPercent.toFixed(2)}%</span>
                         </div>
                         <div className="flex items-center gap-1 ml-auto opacity-0 group-hover:opacity-100">
-                          <button 
+                          <button
                             aria-label="Edit investment"
                             onClick={(e) => {
                               e.stopPropagation();
@@ -346,7 +346,7 @@ export const InvestmentPage: React.FC = () => {
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
-                          <button 
+                          <button
                             aria-label="Delete investment"
                             onClick={(e) => {
                               e.stopPropagation();

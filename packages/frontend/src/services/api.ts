@@ -26,7 +26,7 @@ export { MIDDLEWARE_BASE };
 // ---------------------------------------------------------------------------
 
 const getAuthHeaders = (): Record<string, string> => {
-  const token = sessionStorage.getItem('auth_token');
+  const token = localStorage.getItem('auth_token');
   return {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -269,6 +269,11 @@ export const financeApi = {
       method: 'POST',
       body: JSON.stringify({ message, history }),
     }),
+
+  getFamily: async (familyId: string) => {
+    const res = await apiFetch(`/api/family/${familyId}`);
+    return res;
+  },
 };
 
 // ---------------------------------------------------------------------------

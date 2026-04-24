@@ -23,7 +23,7 @@ export interface AIInsight {
 }
 
 const getAuthHeaders = (): Record<string, string> => {
-  const token = sessionStorage.getItem('auth_token');
+  const token = localStorage.getItem('auth_token');
   return {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),

@@ -1,4 +1,4 @@
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { rateLimit } from "express-rate-limit";
 import { registerUser, loginUser, findUserByEmail, changeUserPassword, deleteUserByEmail, verifyToken } from "../lib/auth.js";
 
@@ -11,6 +11,26 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many requests, please try again later" },
 });
+
+export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader?.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Unauthorized: missing token" });
+    return;
+  }
+
+  const token = authHeader.slice(7);
+  const payload = verifyToken(token);
+
+  if (!payload) {
+    res.status(401).json({ error: "Unauthorized: invalid or expired token" });
+    return;
+  }
+
+  (req as any).user = payload;
+  next();
+};
 
 const router = Router();
 
@@ -102,7 +122,7 @@ router.delete("/account", async (req: Request, res: Response) => {
   const payload = auth ? verifyToken(auth) : null;
   const email = payload?.email || (req.body && req.body.email);
   if (!email) return res.status(401).json({ error: "Unauthorized" });
-  
+
   const uid = payload?.uid;
   const ok = deleteUserByEmail(email);
   if (!ok) return res.status(404).json({ error: "User not found" });
@@ -119,6 +139,17 @@ router.delete("/account", async (req: Request, res: Response) => {
   }
 
   res.json({ ok: true });
+});
+
+router.get('/api/family/:id', authMiddleware, async (req, res) => {
+  // For now return a stub — replace with real DB lookup
+  res.json({
+    id: req.params.id,
+    name: 'Shared Family',
+    members: [],
+    sharedBudgets: [],
+    sharedAccounts: []
+  });
 });
 
 // ---------------------------------------------------------------------------

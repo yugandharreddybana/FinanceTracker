@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { Transaction, SavingsGoal, RecurringPayment, Loan, Budget, BankAccount, IncomeSource, UserProfile, Investment, AuditLog, FamilyAccount } from '../types';
 import { financeApi, MIDDLEWARE_BASE } from '../services/api';
-import { currencyService } from '../services/currencyService';
 
 interface FinanceContextType {
   transactions: Transaction[];
@@ -39,7 +38,7 @@ interface FinanceContextType {
     liabilities: number;
     change: number;
   }>;
-  monthlyTrends: { month: string; [currency: string]: number | string }[];
+  monthlyTrends: { month: string;[currency: string]: number | string }[];
   healthMetricsByCurrency: Record<string, {
     savingsRate: number;
     debtRatio: number;
@@ -144,7 +143,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     { name: 'Health', color: '#EF4444', icon: '🏥' },
     { name: 'Education', color: '#6366F1', icon: '🎓' },
   ]);
-  const isInitialMount = useRef(true);
+
   const [isDataLoaded, setIsDataLoaded] = useState(false);
 
   // Offline detection
@@ -178,6 +177,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (parsed.investments) setInvestments(parsed.investments);
         if (parsed.userProfile) setUserProfile(parsed.userProfile);
         if (parsed.customCategories) setCustomCategories(parsed.customCategories);
+        if (parsed.auditLogs) setAuditLogs(parsed.auditLogs);
       } catch (e) {
         console.error('Failed to load persisted data:', e);
       }
@@ -187,7 +187,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   useEffect(() => {
     if (!isDataLoaded) return;
-    
+
     const dataToSave = {
       transactions,
       savingsGoals,
@@ -198,12 +198,13 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       incomeSources,
       investments,
       userProfile,
-      customCategories
+      customCategories,
+      auditLogs
     };
     const storageKey = `yugi_finance_data_${userProfile.email}`;
     localStorage.setItem(storageKey, JSON.stringify(dataToSave));
-  }, [transactions, savingsGoals, recurringPayments, loans, budgets, accounts, incomeSources, investments, userProfile, customCategories, isDataLoaded]);
-  const [isLoading, setIsLoading] = useState(!!sessionStorage.getItem('auth_token'));
+  }, [transactions, savingsGoals, recurringPayments, loans, budgets, accounts, incomeSources, investments, userProfile, customCategories, auditLogs, isDataLoaded]);
+  const [isLoading, setIsLoading] = useState(!!localStorage.getItem('auth_token'));
 
   // Refs to track latest state for sync-back logic without causing infinite loops
   const transactionsRef = useRef(transactions);
@@ -225,14 +226,14 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => { investmentsRef.current = investments; }, [investments]);
 
   const refreshData = useCallback(async () => {
-    const token = sessionStorage.getItem('auth_token');
+    const token = localStorage.getItem('auth_token');
     if (!token) {
       setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
-    
+
     try {
       const [txs, goals, recs, lns, bdgts, accs, incs, invs] = await Promise.all([
         financeApi.getTransactions(),
@@ -328,9 +329,15 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     addLog('CREATE', `Created family ${name}`, 'Family', newFamily.id);
   }, [userProfile.name, addLog]);
 
-  const joinFamily = useCallback((familyId: string) => {
-    setUserProfile(prev => ({ ...prev, familyId }));
-    addLog('JOIN', `Joined family ${familyId}`, 'Family', familyId);
+  const joinFamily = useCallback(async (familyId: string) => {
+    try {
+      const family = await financeApi.getFamily(familyId);
+      setFamilyAccount(family);
+      setUserProfile(prev => ({ ...prev, familyId }));
+      addLog('JOIN', `Joined family ${familyId}`, 'Family', familyId);
+    } catch (error) {
+      console.error('Failed to join family:', error);
+    }
   }, [addLog]);
 
   const deleteFamily = useCallback(() => {
@@ -364,13 +371,13 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const netWorthByCurrency = React.useMemo(() => {
     const result: Record<string, { total: number; assets: number; liabilities: number; change: number }> = {};
-    
+
     // Net worth only includes bank accounts and loans - NOT investments
     const currencies = Array.from(new Set([
-      ...accounts.map(a => a.currency || 'INR'), 
+      ...accounts.map(a => a.currency || 'INR'),
       ...loans.map(l => l.currency || 'INR')
     ]));
-    
+
     currencies.forEach(c => {
       result[c] = { total: 0, assets: 0, liabilities: 0, change: 0 };
     });
@@ -409,7 +416,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return d.getMonth() === thisMonth && d.getFullYear() === thisYear && t.type === 'expense';
       })
       .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-    
+
     Object.keys(result).forEach(c => {
       const total = result[c].total;
       if (total > 0) {
@@ -424,22 +431,29 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const last6Months = Array.from({ length: 6 }).map((_, i) => {
       const d = new Date();
       d.setMonth(d.getMonth() - i);
-      return d.toLocaleString('default', { month: 'short' });
+      return {
+        label: d.toLocaleString('default', { month: 'short' }),
+        month: d.getMonth(),   // numeric month index (0–11)
+        year: d.getFullYear()  // full year
+      };
     }).reverse();
 
-    return last6Months.map(month => {
-      const monthData: { month: string; [currency: string]: number | string } = { month };
-      
+    return last6Months.map(m => {
+      const monthData: { month: string;[currency: string]: number | string } = { month: m.label };
+
       const currencies = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
       currencies.forEach(curr => {
         const amount = transactions
           .filter(t => {
             const tDate = new Date(t.date);
-            return tDate.toLocaleString('default', { month: 'short' }) === month && t.type === 'expense' && (t.currency || 'INR') === curr;
+            return tDate.getMonth() === m.month        // ← numeric comparison
+              && tDate.getFullYear() === m.year         // ← year check added
+              && t.type === 'expense'
+              && (t.currency || 'INR') === curr;
           })
           .reduce((acc, t) => acc + Math.abs(t.amount), 0);
-        
-        monthData[curr] = amount; // Show 0 if no data instead of fake numbers
+
+        monthData[curr] = amount;
       });
 
       return monthData;
@@ -448,9 +462,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const healthMetricsByCurrency = React.useMemo(() => {
     const result: Record<string, { savingsRate: number; debtRatio: number; emergencyFund: number; budgetAdherence: number; overallScore: number }> = {};
-    
+
     const currencies = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
-    
+
     currencies.forEach(curr => {
       const currBudgets = budgets.filter(b => (b.currency || 'INR') === curr);
       const totalBudget = currBudgets.reduce((acc, b) => acc + b.limit, 0);
@@ -460,25 +474,25 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const monthlyIncome = transactions
         .filter(t => t.type === 'income' && (t.currency || 'INR') === curr)
         .reduce((acc, t) => acc + t.amount, 0);
-      
+
       const monthlyExpenses = transactions
         .filter(t => t.type === 'expense' && (t.currency || 'INR') === curr)
         .reduce((acc, t) => acc + Math.abs(t.amount), 0);
 
       const savingsRate = monthlyIncome > 0 ? (monthlyIncome - monthlyExpenses) / monthlyIncome : 0;
-      
+
       const nw = netWorthByCurrency[curr] || { assets: 0, liabilities: 0 };
       const debtRatio = nw.assets > 0 ? nw.liabilities / nw.assets : 0;
-      
+
       // Emergency fund in months
-      const emergencyFund = monthlyExpenses > 0 ? nw.assets / monthlyExpenses : 6;
+      const emergencyFund = monthlyExpenses > 0 ? nw.assets / monthlyExpenses : 0;
       const emergencyFundScore = Math.min(1, emergencyFund / 6); // 6 months is 100%
 
       const overallScore = Math.round(
-        (budgetAdherence * 0.3 + 
-         Math.max(0, savingsRate) * 0.3 + 
-         (1 - Math.min(1, debtRatio)) * 0.2 + 
-         emergencyFundScore * 0.2) * 100
+        (budgetAdherence * 0.3 +
+          Math.max(0, savingsRate) * 0.3 +
+          (1 - Math.min(1, debtRatio)) * 0.2 +
+          emergencyFundScore * 0.2) * 100
       );
 
       result[curr] = {
@@ -495,9 +509,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Sync transactions to server for MCP tools
   React.useEffect(() => {
-    if (!sessionStorage.getItem('auth_token') || transactions.length === 0) return;
+    if (!localStorage.getItem('auth_token') || transactions.length === 0) return;
 
-    const authToken = sessionStorage.getItem('auth_token');
+    const authToken = localStorage.getItem('auth_token');
     fetch(`${MIDDLEWARE_BASE}/api/finance/sync-transactions`, {
       method: 'POST',
       headers: {
@@ -511,7 +525,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const spendingDataByCurrency = React.useMemo(() => {
     const result: Record<string, { name: string, value: number, color: string }[]> = {};
     const currencies = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
-    
+
     currencies.forEach(curr => {
       const totals: Record<string, number> = {};
       transactions.forEach(t => {
@@ -526,7 +540,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         color: customCategories.find(c => c.name === name)?.color || CATEGORY_COLORS[name] || '#6B7280'
       })).sort((a, b) => b.value - a.value);
     });
-    
+
     return result;
   }, [transactions, customCategories]);
 
@@ -565,7 +579,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       const results = await financeApi.processAIInput(input, savingsGoals.map(g => ({ id: g.id, name: g.name })));
 
-      
+
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
@@ -689,6 +703,12 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   const addManualTransaction = useCallback(async (transaction: Partial<Transaction>) => {
+    if (!transaction.account) {
+      const primaryAccount = accounts.find(acc => acc.isPrimary);
+      if (primaryAccount) {
+        transaction.account = primaryAccount.name;
+      }
+    }
     try {
       const newTx = await financeApi.createTransaction({
         ...transaction,
@@ -713,11 +733,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.error('Failed to add manual transaction:', error);
       throw error;
     }
-  }, []);
+  }, [addLog]);
 
   const deleteTransaction = useCallback(async (id: string) => {
     try {
-      const txToDelete = transactions.find(t => t.id === id);
+      const txToDelete = transactionsRef.current.find(t => t.id === id);
       await financeApi.deleteTransaction(id);
       setTransactions(prev => prev.filter(t => t.id !== id));
 
@@ -735,14 +755,14 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } catch (error) {
       console.error('Failed to delete transaction:', error);
     }
-  }, [transactions]);
+  }, [addLog]);
 
   const bulkDeleteTransactions = useCallback(async (ids: string[]) => {
     try {
-      const txsToDelete = transactions.filter(t => ids.includes(t.id));
+      const txsToDelete = transactionsRef.current.filter(t => ids.includes(t.id));
       // First call API to ensure it's deleted on server
       await financeApi.bulkDeleteTransactions(ids);
-      
+
       // Update local state: transactions
       setTransactions(prev => prev.filter(t => !ids.includes(t.id)));
 
@@ -766,7 +786,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } catch (error) {
       console.error('Failed to bulk delete transactions:', error);
     }
-  }, [transactions]);
+  }, [addLog]);
 
   const addSavingsGoal = useCallback(async (goal: SavingsGoal) => {
     try {
@@ -1019,10 +1039,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [addLog]);
 
   return (
-    <FinanceContext.Provider value={{ 
-      transactions, 
-      savingsGoals, 
-      recurringPayments, 
+    <FinanceContext.Provider value={{
+      transactions,
+      savingsGoals,
+      recurringPayments,
       loans,
       budgets,
       accounts,
@@ -1034,11 +1054,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       updateUserProfile,
       clearDataForNewUser,
       refreshData,
-      spendingDataByCurrency, 
+      spendingDataByCurrency,
       isLoading,
-      addTransactions, 
+      addTransactions,
       addManualTransaction,
-      analyzeFile, 
+      analyzeFile,
       deleteTransaction,
       bulkDeleteTransactions,
       updateTransaction,

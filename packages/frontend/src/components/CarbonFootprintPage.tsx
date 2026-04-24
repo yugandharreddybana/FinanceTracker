@@ -70,8 +70,8 @@ export const CarbonFootprintPage: React.FC = () => {
       prevTotalCarbon += (amount / 1000) * getCarbonFactor(cat);
     });
 
-    const changePercent = prevTotalCarbon > 0 
-      ? Math.round(((totalCarbon - prevTotalCarbon) / prevTotalCarbon) * 100) 
+    const changePercent = prevTotalCarbon > 0
+      ? Math.round(((totalCarbon - prevTotalCarbon) / prevTotalCarbon) * 100)
       : 0;
 
     // Driving equivalent: avg car emits ~120g CO₂/km
@@ -118,7 +118,10 @@ export const CarbonFootprintPage: React.FC = () => {
       <div className="flex justify-between items-end mb-12">
         <div>
           <h1 className="text-4xl font-bold tracking-tight mb-2">Carbon Footprint</h1>
-          <p className="text-white/40">Environmental impact analysis of your spending</p>
+          <p className="text-white/40">
+            Estimated from spending categories — not actual activity data.{' '}
+            <span className="text-yellow-400/60 text-xs font-bold uppercase tracking-widest">Indicative only</span>
+          </p>
         </div>
       </div>
 
@@ -131,6 +134,10 @@ export const CarbonFootprintPage: React.FC = () => {
       ) : (
         <>
           <div className="glass-card p-10 mb-12 relative overflow-hidden bg-gradient-to-br from-green-500/10 to-transparent border-green-500/20">
+            <div className="flex items-center gap-2 mb-6 px-4 py-2 rounded-xl bg-yellow-400/10 border border-yellow-400/20 text-yellow-400 text-xs font-bold w-fit">
+              <Info className="w-3 h-3 shrink-0" />
+              <span>Figures are estimates based on spend amounts, not actual emissions data (e.g. flight miles, fuel litres).</span>
+            </div>
             <div className="flex flex-col md:flex-row justify-between items-center gap-12 relative z-10">
               <div className="space-y-4">
                 <p className="text-green-500/50 text-sm font-medium tracking-wider uppercase">Monthly Impact</p>
@@ -169,7 +176,7 @@ export const CarbonFootprintPage: React.FC = () => {
                 <span>Estimated from spending categories</span>
               </div>
             </div>
-            
+
             {data.sortedCategories.length > 0 && (
               <div className="h-6 w-full bg-white/5 rounded-full overflow-hidden mb-8 flex">
                 {data.sortedCategories.map((cat, i) => (
