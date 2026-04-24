@@ -49,7 +49,9 @@ export interface BankAccount {
   cardNetwork?: 'Visa' | 'Mastercard' | 'Amex' | 'Discover';
   cardNumberLast4?: string;
   isJoint?: boolean;
+  isPrimary?: boolean;
 }
+
 
 export interface Budget {
   id: string;

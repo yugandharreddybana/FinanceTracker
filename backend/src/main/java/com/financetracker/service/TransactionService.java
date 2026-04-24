@@ -47,7 +47,15 @@ public class TransactionService {
             bankRepo.findByNameIgnoreCaseAndUserId(tx.getAccount(), tx.getUserId()).ifPresent(bank -> {
                 tx.setCurrency(bank.getCurrency());
             });
+            // Try by bank name if currency still null
+            if (tx.getCurrency() == null || tx.getCurrency().isBlank()) {
+                bankRepo.findFirstByBankIgnoreCaseAndUserId(tx.getAccount(), tx.getUserId()).ifPresent(bank -> {
+                    tx.setCurrency(bank.getCurrency());
+                    tx.setAccount(bank.getName()); // Standardize to account name
+                });
+            }
         }
+
         
         Transaction saved = repo.save(tx);
         updateBankBalance(saved, false); // false = not deleting
@@ -59,9 +67,19 @@ public class TransactionService {
     @Transactional
     public Transaction update(String id, Map<String, Object> updates) {
         Transaction tx = repo.findById(id).orElseThrow(() -> new RuntimeException("Transaction not found: " + id));
+        
+        // Before applying updates, reverse the current balance effect
+        updateBankBalance(tx, true); // Reverse old values
+        
         applyUpdates(tx, updates);
-        return repo.save(tx);
+        
+        Transaction saved = repo.save(tx);
+        // Apply the new balance effect
+        updateBankBalance(saved, false); // Apply new values
+        
+        return saved;
     }
+
 
     @Transactional
     public void delete(String id) {

@@ -28,11 +28,11 @@ export const BankAccountsPage: React.FC = () => {
     }
   }, [currencies, selectedCurrency]);
 
-  const [manualForm, setManualForm] = useState({ 
-    bank: '', 
-    name: '', 
-    balance: '', 
-    type: 'Current' as any, 
+  const [manualForm, setManualForm] = useState({
+    bank: '',
+    name: '',
+    balance: '',
+    type: 'Current' as any,
     currency: selectedCurrency,
     creditLimit: '',
     dueDate: '',
@@ -44,7 +44,7 @@ export const BankAccountsPage: React.FC = () => {
     isPrimary: false
   });
 
-  
+
   const netWorth = netWorthByCurrency[selectedCurrency] || { total: 0, assets: 0, liabilities: 0, change: 0 };
 
   const cashAccounts = accounts.filter(a => a.type !== 'Credit');
@@ -56,7 +56,7 @@ export const BankAccountsPage: React.FC = () => {
 
   const handleManualSubmit = () => {
     if (!manualForm.bank || !manualForm.balance) return;
-    
+
     const accountData = {
       name: manualForm.name || manualForm.bank,
       bank: manualForm.bank,
@@ -84,15 +84,15 @@ export const BankAccountsPage: React.FC = () => {
         ...accountData,
       });
     }
-    
+
     setIsManual(false);
     setIsConnecting(false);
     setEditingAccount(null);
-    setManualForm({ 
-      bank: '', 
-      name: '', 
-      balance: '', 
-      type: 'Current', 
+    setManualForm({
+      bank: '',
+      name: '',
+      balance: '',
+      type: 'Current',
       currency: 'INR',
       creditLimit: '',
       dueDate: '',
@@ -171,7 +171,7 @@ export const BankAccountsPage: React.FC = () => {
           { label: 'Credit Utilization', value: creditUtilization.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency }), color: 'text-negative' },
           { label: 'Active Links', value: `${accounts.length} Institutions`, color: 'text-positive' }
         ].map((stat, i) => (
-          <motion.div 
+          <motion.div
             key={stat.label}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -202,17 +202,17 @@ export const BankAccountsPage: React.FC = () => {
             >
               {/* Mesh Gradient Background */}
               <div className="absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity duration-700">
-                <div 
-                  className="absolute top-[-20%] right-[-10%] w-[60%] h-[80%] blur-[80px] rounded-full [background-color:var(--ac)]" 
+                <div
+                  className="absolute top-[-20%] right-[-10%] w-[60%] h-[80%] blur-[80px] rounded-full [background-color:var(--ac)]"
                   style={{ '--ac': account.color } as React.CSSProperties}
                 />
               </div>
-              
-              <div 
-                className="absolute top-0 left-0 w-full h-1.5 opacity-60 [background-color:var(--ac)]" 
+
+              <div
+                className="absolute top-0 left-0 w-full h-1.5 opacity-60 [background-color:var(--ac)]"
                 style={{ '--ac': account.color } as React.CSSProperties}
               />
-              
+
               <div className="flex justify-between items-start mb-8 relative z-10">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-xl font-bold border border-white/5 group-hover:border-white/20 transition-all">
@@ -223,16 +223,16 @@ export const BankAccountsPage: React.FC = () => {
                     <p className="text-xs text-white/30 font-medium">{account.bank}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity mr-2">
-                    <button 
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
                       title="Edit account"
                       onClick={(e) => startEdit(e, account)}
                       className="p-1.5 rounded-lg bg-white/5 hover:bg-accent/20 text-white/40 hover:text-accent transition-all"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
-                    <button 
+                    <button
                       title="Delete account"
                       onClick={(e) => handleDelete(e, account.id)}
                       className="p-1.5 rounded-lg bg-white/5 hover:bg-negative/20 text-white/40 hover:text-negative transition-all"
@@ -240,6 +240,7 @@ export const BankAccountsPage: React.FC = () => {
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
+
                   <span className="px-3 py-1 rounded-lg bg-white/5 border border-white/5 text-[10px] font-bold uppercase tracking-widest text-white/40">
                     {account.type}
                   </span>
@@ -270,15 +271,15 @@ export const BankAccountsPage: React.FC = () => {
                   <AreaChart data={sparklineData}>
                     <defs>
                       <linearGradient id={`grad-${account.id}`} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={account.color} stopOpacity={0.4}/>
-                        <stop offset="100%" stopColor={account.color} stopOpacity={0}/>
+                        <stop offset="0%" stopColor={account.color} stopOpacity={0.4} />
+                        <stop offset="100%" stopColor={account.color} stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <Area 
-                      type="monotone" 
-                      dataKey="value" 
-                      stroke={account.color} 
-                      fill={`url(#grad-${account.id})`} 
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke={account.color}
+                      fill={`url(#grad-${account.id})`}
                       strokeWidth={3}
                       animationDuration={2000}
                     />
@@ -291,7 +292,7 @@ export const BankAccountsPage: React.FC = () => {
                   <RefreshCw className="w-3.5 h-3.5 animate-spin-slow" />
                   <span>{account.lastSynced}</span>
                 </div>
-                <button 
+                <button
                   onClick={() => setSelectedAccount(account)}
                   className="flex items-center gap-2 text-[10px] text-accent font-bold uppercase tracking-[0.2em] hover:text-white transition-colors group/btn"
                 >
@@ -347,14 +348,14 @@ export const BankAccountsPage: React.FC = () => {
                 </div>
                 <div className="flex flex-col items-end">
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity mb-2">
-                    <button 
+                    <button
                       title="Edit card"
                       onClick={(e) => startEdit(e, card)}
                       className="p-1.5 rounded-lg bg-white/5 hover:bg-accent/20 text-white/40 hover:text-accent transition-all"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
-                    <button 
+                    <button
                       title="Delete card"
                       onClick={(e) => handleDelete(e, card.id)}
                       className="p-1.5 rounded-lg bg-white/5 hover:bg-negative/20 text-white/40 hover:text-negative transition-all"
@@ -387,7 +388,7 @@ export const BankAccountsPage: React.FC = () => {
                     </p>
                   </div>
                   <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                    <motion.div 
+                    <motion.div
                       initial={{ width: 0 }}
                       animate={{ width: `${Math.min(100, (Math.abs(card.balance) / card.creditLimit) * 100)}%` }}
                       className={cn(
@@ -419,7 +420,7 @@ export const BankAccountsPage: React.FC = () => {
                   <RefreshCw className="w-3.5 h-3.5 animate-spin-slow" />
                   <span>{card.lastSynced}</span>
                 </div>
-                <button 
+                <button
                   onClick={() => setSelectedAccount(card)}
                   className="flex items-center gap-2 text-[10px] text-accent font-bold uppercase tracking-[0.2em] hover:text-white transition-colors group/btn"
                 >
@@ -448,7 +449,7 @@ export const BankAccountsPage: React.FC = () => {
       </div>
 
       {/* Account Details Modal */}
-      <DeleteModal 
+      <DeleteModal
         isOpen={!!deleteConfirmId}
         onClose={() => setDeleteConfirmId(null)}
         onConfirm={() => { if (deleteConfirmId) deleteAccount(deleteConfirmId); }}
@@ -459,7 +460,7 @@ export const BankAccountsPage: React.FC = () => {
       <AnimatePresence>
         {selectedAccount && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -474,7 +475,7 @@ export const BankAccountsPage: React.FC = () => {
             >
               <div className="p-8 border-b border-white/5 bg-accent/5 flex justify-between items-center">
                 <div className="flex items-center gap-6">
-                  <div 
+                  <div
                     className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-bold border shadow-lg [background-color:var(--sac-bg)] [border-color:var(--sac-bd)] [color:var(--sac-tx)]"
                     style={{ '--sac-bg': `${selectedAccount.color}15`, '--sac-bd': `${selectedAccount.color}30`, '--sac-tx': selectedAccount.color } as React.CSSProperties}
                   >
@@ -554,7 +555,7 @@ export const BankAccountsPage: React.FC = () => {
                   <h4 className="text-sm font-bold uppercase tracking-widest text-white/60 mb-6">Income vs Expense (Last 7 Days)</h4>
                   <div className="h-48 w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart 
+                      <BarChart
                         data={Array.from({ length: 7 }).map((_, i) => {
                           const d = new Date();
                           d.setDate(d.getDate() - (6 - i));
@@ -571,7 +572,7 @@ export const BankAccountsPage: React.FC = () => {
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                         <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 700 }} dy={10} />
                         <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 700 }} />
-                        <Tooltip 
+                        <Tooltip
                           contentStyle={{ backgroundColor: '#0F0F19', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold', color: '#fff' }}
                           cursor={{ fill: 'rgba(255,255,255,0.05)' }}
                         />
@@ -586,7 +587,7 @@ export const BankAccountsPage: React.FC = () => {
                   <div className="flex justify-between items-center">
                     <h4 className="text-sm font-bold uppercase tracking-widest text-white/60">Recent Transactions</h4>
                     <div className="relative">
-                      <input 
+                      <input
                         type="text"
                         title="Filter transactions"
                         placeholder="Filter transactions..."
@@ -611,7 +612,7 @@ export const BankAccountsPage: React.FC = () => {
                         <tbody>
                           {transactions
                             .filter(t => t.account === selectedAccount.name)
-                            .filter(t => 
+                            .filter(t =>
                               t.merchant.toLowerCase().includes(transactionFilter.toLowerCase()) ||
                               t.category.toLowerCase().includes(transactionFilter.toLowerCase())
                             )
@@ -647,7 +648,7 @@ export const BankAccountsPage: React.FC = () => {
       <AnimatePresence>
         {isConnecting && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -731,7 +732,7 @@ export const BankAccountsPage: React.FC = () => {
                       </div>
 
                       <div className="flex gap-4">
-                        <button 
+                        <button
                           onClick={() => setIsManual(true)}
                           className="flex-1 py-4 rounded-2xl bg-white/5 font-bold hover:bg-white/10 transition-all text-white/40"
                         >
@@ -753,7 +754,7 @@ export const BankAccountsPage: React.FC = () => {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
                           <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Bank Name *</label>
-                          <input 
+                          <input
                             type="text"
                             required
                             value={manualForm.bank}
@@ -764,7 +765,7 @@ export const BankAccountsPage: React.FC = () => {
                         </div>
                         <div className="space-y-2">
                           <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Account Name *</label>
-                          <input 
+                          <input
                             type="text"
                             required
                             value={manualForm.name}
@@ -775,7 +776,7 @@ export const BankAccountsPage: React.FC = () => {
                         </div>
                         <div className="space-y-2">
                           <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Current Balance *</label>
-                          <input 
+                          <input
                             type="number"
                             required
                             value={manualForm.balance}
@@ -786,7 +787,7 @@ export const BankAccountsPage: React.FC = () => {
                         </div>
                         <div className="space-y-2">
                           <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Account Type</label>
-                          <select 
+                          <select
                             title="Account type"
                             value={manualForm.type}
                             onChange={(e) => setManualForm(prev => ({ ...prev, type: e.target.value as any }))}
@@ -802,7 +803,7 @@ export const BankAccountsPage: React.FC = () => {
                             <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Joint Account</label>
                             <p className="text-[10px] text-white/20 mt-0.5">Shared with family members</p>
                           </div>
-                          <div 
+                          <div
                             onClick={() => setManualForm(prev => ({ ...prev, isJoint: !prev.isJoint }))}
                             className={cn(
                               "w-10 h-5 rounded-full relative transition-colors cursor-pointer",
@@ -817,20 +818,21 @@ export const BankAccountsPage: React.FC = () => {
                         </div>
 
 
+
                         <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10 group relative">
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
                               <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Primary Account</label>
-                              <div className="group/tooltip relative">
+                              <div className="group-tooltip-container relative">
                                 <Shield className="w-3 h-3 text-white/20 cursor-help" />
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-card border border-white/10 rounded-lg text-[9px] font-medium text-white/60 w-48 opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-50 shadow-2xl">
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-card border border-white/10 rounded-lg text-[9px] font-medium text-white/60 w-48 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-2xl">
                                   Default account for transactions and AI tracking when no specific bank is mentioned.
                                 </div>
                               </div>
                             </div>
                             <p className="text-[10px] text-white/20 mt-0.5">Set as default for new transactions</p>
                           </div>
-                          <div 
+                          <div
                             onClick={() => setManualForm(prev => ({ ...prev, isPrimary: !prev.isPrimary }))}
                             className={cn(
                               "w-10 h-5 rounded-full relative transition-colors cursor-pointer",
@@ -845,11 +847,13 @@ export const BankAccountsPage: React.FC = () => {
                         </div>
 
 
+
+
                         {manualForm.type === 'Credit' && (
                           <>
                             <div className="space-y-2">
                               <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Credit Limit *</label>
-                              <input 
+                              <input
                                 type="number"
                                 required
                                 value={manualForm.creditLimit}
@@ -860,7 +864,7 @@ export const BankAccountsPage: React.FC = () => {
                             </div>
                             <div className="space-y-2">
                               <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Next Due Date *</label>
-                              <input 
+                              <input
                                 type="date"
                                 required
                                 title="Next due date"
@@ -872,7 +876,7 @@ export const BankAccountsPage: React.FC = () => {
                             </div>
                             <div className="space-y-2">
                               <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">APR (%)</label>
-                              <input 
+                              <input
                                 type="number"
                                 value={manualForm.apr}
                                 onChange={(e) => setManualForm(prev => ({ ...prev, apr: e.target.value }))}
@@ -882,7 +886,7 @@ export const BankAccountsPage: React.FC = () => {
                             </div>
                             <div className="space-y-2">
                               <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Card Network</label>
-                              <select 
+                              <select
                                 title="Card network"
                                 value={manualForm.cardNetwork}
                                 onChange={(e) => setManualForm(prev => ({ ...prev, cardNetwork: e.target.value as any }))}
@@ -896,7 +900,7 @@ export const BankAccountsPage: React.FC = () => {
                             </div>
                             <div className="space-y-2">
                               <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Last 4 Digits</label>
-                              <input 
+                              <input
                                 type="text"
                                 maxLength={4}
                                 value={manualForm.cardNumberLast4}
@@ -909,7 +913,7 @@ export const BankAccountsPage: React.FC = () => {
                         )}
                         <div className="space-y-2">
                           <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Currency</label>
-                          <select                           title="Currency"                            value={manualForm.currency || selectedCurrency}
+                          <select title="Currency" value={manualForm.currency || selectedCurrency}
                             onChange={(e) => setManualForm(prev => ({ ...prev, currency: e.target.value }))}
                             className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all"
                           >
@@ -923,15 +927,15 @@ export const BankAccountsPage: React.FC = () => {
                       </div>
 
                       <div className="flex gap-4">
-                        <button 
+                        <button
                           onClick={() => {
                             setIsManual(false);
                             setEditingAccount(null);
-                            setManualForm({ 
-                              bank: '', 
-                              name: '', 
-                              balance: '', 
-                              type: 'Current', 
+                            setManualForm({
+                              bank: '',
+                              name: '',
+                              balance: '',
+                              type: 'Current',
                               currency: selectedCurrency,
                               creditLimit: '',
                               dueDate: '',
@@ -939,14 +943,15 @@ export const BankAccountsPage: React.FC = () => {
                               minPayment: '',
                               cardNetwork: 'Visa',
                               cardNumberLast4: '',
-                              isJoint: false
+                              isJoint: false,
+                              isPrimary: false
                             });
                           }}
                           className="flex-1 py-4 rounded-2xl bg-white/5 font-bold hover:bg-white/10 transition-all text-white/40"
                         >
                           Back to Auto
                         </button>
-                        <button 
+                        <button
                           onClick={handleManualSubmit}
                           className="flex-[2] py-4 rounded-2xl bg-accent text-white font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow"
                         >

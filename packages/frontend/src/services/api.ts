@@ -244,7 +244,32 @@ export const financeApi = {
       method: 'POST',
       body: JSON.stringify({ message, history, transactions }),
     }),
+
+  processAIInput: (input: string, savingsGoals: any[]): Promise<any[]> =>
+    apiFetch(`${MIDDLEWARE_BASE}/api/ai/process-input`, {
+      method: 'POST',
+      body: JSON.stringify({ input, savingsGoals }),
+    }),
+
+  categorizeAI: (targets: any[]): Promise<Record<string, any[]>> =>
+    apiFetch(`${MIDDLEWARE_BASE}/api/ai/categorize`, {
+      method: 'POST',
+      body: JSON.stringify({ targets }),
+    }),
+
+  analyzeAIFile: (base64Data: string, mimeType: string, type: 'bill' | 'statement'): Promise<any[]> =>
+    apiFetch(`${MIDDLEWARE_BASE}/api/ai/analyze-file`, {
+      method: 'POST',
+      body: JSON.stringify({ base64Data, mimeType, type }),
+    }),
+
+  oracleChat: (message: string, history: any[]): Promise<{ content: string }> =>
+    apiFetch(`${MIDDLEWARE_BASE}/api/ai/oracle`, {
+      method: 'POST',
+      body: JSON.stringify({ message, history }),
+    }),
 };
+
 
 // ---------------------------------------------------------------------------
 // Auth API

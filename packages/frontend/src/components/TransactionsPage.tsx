@@ -23,7 +23,9 @@ export const TransactionsPage: React.FC = () => {
     setIsAddTransactionModalOpen
   } = useFinance();
   const [editingId, setEditingId] = useState<string | null>(null);
-  const primaryAccount = accounts.find(a => a.isPrimary) || accounts[0];
+  const primaryAccount = (accounts || []).find(a => a.isPrimary) || (accounts && accounts[0]);
+
+
   const [newTransactionForm, setNewTransactionForm] = useState<Partial<Transaction>>({
     date: new Date().toISOString().split('T')[0],
     merchant: '',
@@ -702,8 +704,8 @@ export const TransactionsPage: React.FC = () => {
                         </>
                       )}
                       <div className={cn(
-                        "flex gap-2 transition-all",
-                        editingId === tx.id ? "opacity-100" : "opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0"
+                        "flex gap-2 transition-all ml-auto",
+                        editingId === tx.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                       )}>
                         {editingId === tx.id ? (
                           <>
@@ -719,6 +721,7 @@ export const TransactionsPage: React.FC = () => {
                       </div>
                     </div>
                   </td>
+
                 </motion.tr>
                 <AnimatePresence>
                   {expandedId === tx.id && (

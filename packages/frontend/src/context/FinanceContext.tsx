@@ -563,74 +563,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const addTransactions = useCallback(async (input: string) => {
     try {
-      const { GoogleGenAI, Type } = await import("@google/genai");
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-      
-      const prompt = `Analyze this natural language input for financial data: "${input}". 
-      
-      CRITICAL INSTRUCTIONS:
-      1. SPELLING CORRECTION: Automatically correct any spelling mistakes in merchant names, categories, or goal names.
-      2. INTELLIGENT CATEGORIZATION: 
-         - For EXPENSES: Housing, Food & Drink, Transport, Entertainment, Shopping, Electronics, Utilities, Health, Education, Others.
-         - For INCOME: Salary, Freelance, Investment, Gift, Refund, Others. Intelligently categorize based on source (e.g., "Google" -> "Salary", "Upwork" -> "Freelance").
-      3. SAVINGS TRANSFERS: Detect if the user wants to move money to a savings goal (e.g., "Save ₹500 for Hawaii", "Move ₹1000 to car fund"). 
-         - If detected, set intent to "SAVINGS_TRANSFER".
-      4. Available Savings Goals: ${JSON.stringify(savingsGoals.map(g => ({ id: g.id, name: g.name })))}
-      
-      The input could be a TRANSACTION, a SAVINGS_GOAL, a RECURRING_PAYMENT, a LOAN, or a SAVINGS_TRANSFER.
-      
-      - For TRANSACTION: Extract merchant (corrected), amount, date, category (intelligent), type (income/expense), and confidence (0-1).
-      - For SAVINGS_GOAL: Extract name (corrected), target amount, emoji, and deadline (if any).
-      - For RECURRING_PAYMENT: Extract name (corrected), amount, date (day of month), category (intelligent), and frequency (Monthly/Weekly/Annual).
-      - For LOAN: Extract name (corrected), totalAmount, monthlyEMI, interestRate, startDate, endDate, and category (intelligent).
-      - For SAVINGS_TRANSFER: Extract amount and goalId (match with available goals).
-      
-      Multiple entries may be separated by semicolons, commas, or new lines.
-      Return as a JSON array of objects. Each object MUST have an "intent" field: "TRANSACTION" | "SAVINGS_GOAL" | "RECURRING_PAYMENT" | "LOAN" | "SAVINGS_TRANSFER".`;
+      const results = await financeApi.processAIInput(input, savingsGoals.map(g => ({ id: g.id, name: g.name })));
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
-        contents: [{ parts: [{ text: prompt }] }],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                intent: { type: Type.STRING, enum: ["TRANSACTION", "SAVINGS_GOAL", "RECURRING_PAYMENT", "LOAN", "SAVINGS_TRANSFER"] },
-                // Transaction fields
-                merchant: { type: Type.STRING },
-                amount: { type: Type.NUMBER },
-                date: { type: Type.STRING },
-                category: { type: Type.STRING },
-                type: { type: Type.STRING, enum: ["income", "expense"] },
-                confidence: { type: Type.NUMBER },
-                // Savings Goal fields
-                name: { type: Type.STRING },
-                target: { type: Type.NUMBER },
-                emoji: { type: Type.STRING },
-                deadline: { type: Type.STRING },
-                // Recurring fields
-                frequency: { type: Type.STRING, enum: ["Monthly", "Weekly", "Annual"] },
-                dayOfMonth: { type: Type.NUMBER },
-                // Loan fields
-                totalAmount: { type: Type.NUMBER },
-                monthlyEMI: { type: Type.NUMBER },
-                interestRate: { type: Type.NUMBER },
-                startDate: { type: Type.STRING },
-                endDate: { type: Type.STRING },
-                // Savings Transfer fields
-                goalId: { type: Type.STRING }
-              },
-              required: ["intent"]
-            }
-          }
-        }
-      });
-
-      const results = JSON.parse(response.text ?? '[]');
-      if (!Array.isArray(results)) throw new Error("AI returned invalid format");
       
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -702,23 +636,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
     } catch (error) {
       console.error("Error parsing smart add:", error);
-      const separators = /[;,\n]/;
-      const entries = input.split(separators).map(e => e.trim()).filter(e => e.length > 0);
-      for (const entry of entries) {
-        const newTx = await financeApi.createTransaction({
-          date: new Date().toISOString().split('T')[0],
-          merchant: entry.split(' ')[0] || 'Unknown',
-          amount: -10,
-          category: 'Uncategorized',
-          type: 'expense',
-          status: 'confirmed',
-          aiTag: 'Manual Entry',
-          account: 'Main Current',
-          confidence: 0.5
-        });
-        setTransactions(prev => [newTx, ...prev]);
-      }
+      throw error; // Surface to UI
     }
+
   }, [accounts, savingsGoals, transferToSavings]);
 
   const analyzeFile = useCallback(async (file: File, type: 'bill' | 'statement') => {
@@ -733,44 +653,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const base64Data = await base64Promise;
 
     try {
-      const { GoogleGenAI, Type } = await import("@google/genai");
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-      
-      const prompt = type === 'bill' 
-        ? "Analyze this bill/receipt and extract the merchant, amount, date, and category. Return as a JSON array of transactions with a confidence score (0-1) for each."
-        : "Analyze this bank statement and extract all transactions (merchant, amount, date, category). Return as a JSON array of transactions with a confidence score (0-1) for each.";
+      const results = await financeApi.analyzeAIFile(base64Data, file.type, type);
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
-        contents: [
-          {
-            parts: [
-              { text: prompt },
-              { inlineData: { data: base64Data, mimeType: file.type } }
-            ]
-          }
-        ],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                merchant: { type: Type.STRING },
-                amount: { type: Type.NUMBER },
-                date: { type: Type.STRING },
-                category: { type: Type.STRING },
-                confidence: { type: Type.NUMBER }
-              },
-              required: ["merchant", "amount", "date", "confidence"]
-            }
-          }
-        }
-      });
-
-      const results = JSON.parse(response.text ?? '[]');
-      if (!Array.isArray(results)) throw new Error("AI returned invalid format");
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -1105,37 +989,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     setIsCategorizing(true);
     try {
-      const { GoogleGenAI, Type } = await import("@google/genai");
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-      
-      const prompt = `Categorize these transactions based on merchant names: ${JSON.stringify(targets.map(t => ({ id: t.id, merchant: t.merchant, currentCategory: t.category })))}. 
-      Available categories: Housing, Food & Drink, Transport, Entertainment, Shopping, Electronics, Utilities, Health, Education, Others.
-      Return as a JSON object where keys are transaction IDs and values are arrays of objects with "category" and "confidence" (0-1), providing up to 3 best fits.`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
-        contents: [{ parts: [{ text: prompt }] }],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            additionalProperties: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  category: { type: Type.STRING },
-                  confidence: { type: Type.NUMBER }
-                },
-                required: ["category", "confidence"]
-              }
-            }
-          }
-        }
-      });
-
-      const newSuggestions = JSON.parse(response.text ?? '{}');
+      const newSuggestions = await financeApi.categorizeAI(targets.map(t => ({ id: t.id, merchant: t.merchant, currentCategory: t.category })));
       setSuggestions(prev => ({ ...prev, ...newSuggestions }));
+
     } catch (error) {
       console.error("Categorization error:", error);
     } finally {

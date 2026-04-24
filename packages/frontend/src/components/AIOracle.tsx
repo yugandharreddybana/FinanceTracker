@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Send, X, MessageSquare, Loader2, Mic, MicOff } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { GoogleGenAI } from "@google/genai";
 import { MCPClient } from '../services/mcpClient';
-import { MIDDLEWARE_BASE } from '../services/api';
+import { MIDDLEWARE_BASE, financeApi } from '../services/api';
+
 import DeleteModal from './DeleteModal';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -25,8 +25,7 @@ export const AIOracle: React.FC = () => {
 
   const mcpClientRef = useRef<MCPClient | null>(null);
   const isInitializingRef = useRef(false);
-  const aiRef = useRef<any>(null);
-  const historyRef = useRef<any[]>([]);
+
 
   useEffect(() => {
     const initAI = async () => {
@@ -34,97 +33,15 @@ export const AIOracle: React.FC = () => {
       isInitializingRef.current = true;
       
       try {
-        // Initialize MCP Client
+        // Initialize MCP Client (still needed for real-time SSE updates if any, but logic moved to server)
         const mcp = new MCPClient(`${MIDDLEWARE_BASE}/api/finance/mcp/sse`);
         await mcp.connect();
         mcpClientRef.current = mcp;
 
-        // Initialize Gemini
-        const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-        if (!apiKey) {
-          setMessages(prev => [...prev, { role: 'ai', content: "⚠️ Gemini API key not configured. Please set `VITE_GEMINI_API_KEY` in your `.env` file to enable AI Oracle." }]);
-          return;
-        }
-        const ai = new GoogleGenAI({ apiKey });
-        aiRef.current = ai;
-        
-        // Get tools from MCP
-        const mcpTools = await mcp.listTools();
-        const functionDeclarations = mcpTools.map(tool => ({
-          name: tool.name,
-          description: tool.description,
-          parameters: tool.inputSchema
-        }));
-
-        // Proactive initial analysis
+        // Proactive initial analysis (now via server)
         setIsLoading(true);
-        const now = new Date();
-        const systemInstruction = `You are the Yugi Oracle, a premium financial AI. Today's date is ${now.toISOString().split('T')[0]}. 
-        
-        CRITICAL RULES:
-        1. ALWAYS use the 'create_transaction' tool to record new transactions. 
-        2. CURRENCY HANDLING: 
-           - If the user says 'euros' or '€', use 'EUR'. 
-           - If 'dollars' or '$', use 'USD'. 
-           - If 'pounds' or '£', use 'GBP'. 
-           - NEVER default to INR if any currency hint is present.
-        3. BANK MAPPING: 
-           - If 'Revolut' is mentioned, use 'Revolut' as the account.
-           - If no bank is mentioned, leave 'account' null; the system will automatically use the user's Primary Account.
-        4. DATE CALCULATION: For 'yesterday', use ${new Date(now.getTime() - 86400000).toISOString().split('T')[0]}.
-        5. MULTIPLE TRANSACTIONS: Process each transaction separately. For "Coffee for 5 euros; Table for 10 euros", call 'create_transaction' twice.
-        6. PRECISION: Extract the exact numeric value (e.g., "5 euros" -> amount: 5, currency: "EUR").
-        7. NO BALANCES: Do not hallucinate bank balances. If asked, call 'get_accounts'.`;
-
-
-
-        const initialAnalysisPrompt = "Perform a quick proactive analysis of my recent transactions and give me one high-impact insight or suggestion.";
-        
-        const userContent = { role: 'user', parts: [{ text: initialAnalysisPrompt }] };
-        historyRef.current.push(userContent);
-
-        let response = await ai.models.generateContent({
-          model: "gemini-2.0-flash",
-          contents: historyRef.current,
-          config: {
-            systemInstruction,
-            tools: [{ functionDeclarations }]
-          }
-        });
-        
-        let functionCalls = response.functionCalls;
-        while (functionCalls) {
-          // Add AI's function call to history
-          historyRef.current.push(response.candidates![0].content);
-
-          const toolResults = await Promise.all(functionCalls.map(async (call: any) => {
-            const result = await mcp.callTool(call.name, call.args);
-            return {
-              functionResponse: {
-                name: call.name,
-                response: { content: result }
-              }
-            };
-          }));
-
-          // Add tool results to history
-          const toolContent = { role: 'user', parts: toolResults };
-          historyRef.current.push(toolContent);
-
-          response = await ai.models.generateContent({
-            model: "gemini-2.0-flash",
-            contents: historyRef.current,
-            config: {
-              systemInstruction,
-              tools: [{ functionDeclarations }]
-            }
-          });
-          functionCalls = response.functionCalls;
-        }
-
-        // Add final AI response to history
-        historyRef.current.push(response.candidates![0].content);
-        setMessages(prev => [...prev, { role: 'ai', content: response.text || "I've connected to your financial stream." }]);
+        const result = await financeApi.oracleChat("Perform a quick proactive analysis of my recent transactions and give me one high-impact insight or suggestion.", []);
+        setMessages(prev => [...prev, { role: 'ai', content: result.content }]);
       } catch (err) {
         console.error("Failed to initialize AI Oracle:", err);
       } finally {
@@ -217,83 +134,10 @@ export const AIOracle: React.FC = () => {
     setIsLoading(true);
 
     try {
-      if (!aiRef.current || !mcpClientRef.current) throw new Error("AI not initialized");
-
-      const now = new Date();
-      const systemInstruction = `You are the Yugi Oracle, a premium financial AI. Today's date is ${now.toISOString().split('T')[0]}. 
-      
-      CRITICAL RULES:
-      1. ALWAYS use the 'create_transaction' tool to record new transactions. 
-      2. CURRENCY HANDLING: 
-         - If the user says 'euros' or '€', use 'EUR'. 
-         - If 'dollars' or '$', use 'USD'. 
-         - If 'pounds' or '£', use 'GBP'. 
-         - NEVER default to INR if any currency hint is present.
-      3. BANK MAPPING: 
-         - If 'Revolut' is mentioned, use 'Revolut' as the account.
-         - If no bank is mentioned, leave 'account' null; the system will automatically use the user's Primary Account.
-      4. DATE CALCULATION: For 'yesterday', use ${new Date(now.getTime() - 86400000).toISOString().split('T')[0]}.
-      5. MULTIPLE TRANSACTIONS: Process each transaction separately. For "Coffee for 5 euros; Table for 10 euros", call 'create_transaction' twice.
-      6. PRECISION: Extract the exact numeric value (e.g., "5 euros" -> amount: 5, currency: "EUR").
-      7. NO BALANCES: Do not hallucinate bank balances. If asked, call 'get_accounts'.`;
-
-
-
-      
-      // Get tools from MCP
-      const mcpTools = await mcpClientRef.current.listTools();
-      const functionDeclarations = mcpTools.map(tool => ({
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.inputSchema
-      }));
-
-      const userContent = { role: 'user', parts: [{ text: userMessage }] };
-      historyRef.current.push(userContent);
-
-      let response = await aiRef.current.models.generateContent({
-        model: "gemini-2.0-flash",
-        contents: historyRef.current,
-        config: {
-          systemInstruction,
-          tools: [{ functionDeclarations }]
-        }
-      });
-      
-      // Handle potential tool calls (MCP loop)
-      let functionCalls = response.functionCalls;
-      while (functionCalls) {
-        // Add AI's function call to history
-        historyRef.current.push(response.candidates![0].content);
-
-        const toolResults = await Promise.all(functionCalls.map(async (call: any) => {
-          const result = await mcpClientRef.current?.callTool(call.name, call.args);
-          return {
-            functionResponse: {
-              name: call.name,
-              response: { content: result }
-            }
-          };
-        }));
-
-        // Add tool results to history
-        const toolContent = { role: 'user', parts: toolResults };
-        historyRef.current.push(toolContent);
-
-        response = await aiRef.current.models.generateContent({
-          model: "gemini-2.0-flash",
-          contents: historyRef.current,
-          config: {
-            systemInstruction,
-            tools: [{ functionDeclarations }]
-          }
-        });
-        functionCalls = response.functionCalls;
-      }
-
-      // Add final AI response to history
-      historyRef.current.push(response.candidates![0].content);
-      setMessages(prev => [...prev, { role: 'ai', content: response.text || "I've processed your request." }]);
+      // Map frontend message format to server format if needed
+      const history = messages.map(m => ({ role: m.role, content: m.content }));
+      const result = await financeApi.oracleChat(userMessage, history);
+      setMessages(prev => [...prev, { role: 'ai', content: result.content }]);
     } catch (err) {
       console.error("Oracle Error:", err);
       setMessages(prev => [...prev, { role: 'ai', content: "Forgive me, my connection to the financial stream was interrupted. Please try again." }]);
@@ -301,6 +145,7 @@ export const AIOracle: React.FC = () => {
       setIsLoading(false);
     }
   };
+
 
   return (
     <>

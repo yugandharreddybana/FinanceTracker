@@ -1,7 +1,10 @@
 {
   "name": "finance-tracker",
   "private": true,
-  "workspaces": ["packages/frontend", "server"],
+  "workspaces": [
+    "packages/frontend",
+    "server"
+  ],
   "scripts": {
     "dev:frontend": "npm run dev -w packages/frontend",
     "dev:server": "npm run dev -w server",
@@ -12,7 +15,6 @@
     "build": "npm run build:frontend",
     "start": "npm run start:middleware",
     "start:full": "npx concurrently \"npm run start:middleware\" \"npm run start:frontend\" \"java -jar backend/target/finance-tracker-backend-1.0.0.jar\"",
-
     "start:middleware": "npm --prefix server run start",
     "start:frontend": "npm --prefix packages/frontend run dev",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -21,5 +23,8 @@
     "concurrently": "^8.2.0",
     "tsx": "^4.16.2",
     "typescript": "^5.8.2"
+  },
+  "dependencies": {
+    "pg": "^8.20.0"
   }
 }

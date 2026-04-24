@@ -21,7 +21,13 @@ import { investmentRouter } from "./routes/investment.js";
 import { authRouter } from "./routes/auth.js";
 
 async function startServer() {
+  if (!process.env.GEMINI_API_KEY) {
+    console.error("FATAL ERROR: GEMINI_API_KEY is not defined in server/.env");
+    process.exit(1);
+  }
+
   const app = express();
+
   // Ensure PORT is a number for Railway's process environment
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4000;
 

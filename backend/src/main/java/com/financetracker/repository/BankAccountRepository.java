@@ -9,7 +9,9 @@ import java.util.List;
 public interface BankAccountRepository extends JpaRepository<BankAccount, String> {
     List<BankAccount> findAllByUserId(String userId);
     java.util.Optional<BankAccount> findByNameIgnoreCaseAndUserId(String name, String userId);
+    java.util.Optional<BankAccount> findFirstByBankIgnoreCaseAndUserId(String bank, String userId);
     java.util.Optional<BankAccount> findByUserIdAndIsPrimaryTrue(String userId);
+
 
 
 
