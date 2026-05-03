@@ -29,6 +29,11 @@ async function startServer() {
 
   const app = express();
 
+  // FIX: Trust Railway's reverse proxy so express-rate-limit can read X-Forwarded-For
+  // Railway sits behind a load balancer that sets X-Forwarded-For.
+  // Setting trust proxy to 1 tells Express to trust the first hop only.
+  app.set('trust proxy', 1);
+
   // Ensure PORT is a number for Railway's process environment
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4000;
 
@@ -36,16 +41,27 @@ async function startServer() {
   console.log("DEPLOYMENT DIAGNOSTICS");
   console.log("- Listening on PORT:", PORT);
   console.log("- Node Version:", process.version);
+  console.log("- Trust Proxy: enabled (1 hop)");
   console.log("-------------------------------------------------------------------");
 
+  // Build allowed origins list — supports multiple comma-separated values in FRONTEND_URL
+  const rawFrontendUrl = process.env.FRONTEND_URL || '';
+  const extraOrigins = rawFrontendUrl
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
   const ALLOWED_ORIGINS = [
-    process.env.FRONTEND_URL,
+    ...extraOrigins,
     'http://localhost:5173',
     'http://localhost:3000',
-  ].filter(Boolean) as string[];
+    'http://localhost:4173',
+  ].filter((v, i, arr) => v && arr.indexOf(v) === i) as string[];
 
-  if (ALLOWED_ORIGINS.length === 0) {
-    console.warn('[CORS] ALLOWED_ORIGINS is empty — all cross-origin requests will be blocked');
+  console.log('[CORS] Allowed origins:', ALLOWED_ORIGINS);
+
+  if (!process.env.FRONTEND_URL) {
+    console.warn('[CORS] FRONTEND_URL is not set — only localhost origins are allowed. Set FRONTEND_URL on Railway.');
   }
 
   if (!process.env.JAVA_BACKEND_URL && !process.env.BACKEND_URL) {
@@ -55,34 +71,29 @@ async function startServer() {
   // 1. CORS middleware — only allows exact origin matches; never uses wildcard with credentials
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    // Only allow origins explicitly listed in the allowlist (no loose patterns)
     const matchedOrigin = ALLOWED_ORIGINS.find(o => o === origin);
 
     if (matchedOrigin) {
-      // Use the allowlist value (not the raw request header) to prevent CORS header injection
       res.setHeader('Access-Control-Allow-Origin', matchedOrigin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
 
       if (req.method === 'OPTIONS') {
-        // S4: preflight caching
         res.setHeader('Access-Control-Max-Age', '86400');
-        console.log(`[CORS] Handled preflight for: ${req.path}`);
         return res.status(200).end();
       }
     } else if (req.method === 'OPTIONS') {
-      // Reject preflights from unknown origins
       return res.status(403).end();
     }
 
     next();
   });
 
-  // S3: Cookie parser — must come before routes so req.cookies is populated
+  // Cookie parser — must come before routes so req.cookies is populated
   app.use(cookieParser());
 
-  // S8: Body size limit — 2 MB
+  // Body size limit — 2 MB
   app.use(express.json({ limit: '2mb' }));
 
   // 2. Routes
@@ -92,15 +103,14 @@ async function startServer() {
   app.use("/api/investment", investmentRouter);
 
   app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok", port: PORT });
+    res.json({ status: "ok", port: PORT, trustProxy: true });
   });
 
   // 3. Last-Resort Error Handler
-  app.use((err: any, req: any, res: any, next: any) => {
+  app.use((err: any, req: any, res: any, _next: any) => {
     console.error('SERVER CRASH PREVENTED:', err.message);
     if (!res.headersSent) {
       const errOrigin = req.headers.origin;
-      // Only reflect an origin that is explicitly in the allowlist
       const matchedErrOrigin = errOrigin ? ALLOWED_ORIGINS.find(o => o === errOrigin) : undefined;
       if (matchedErrOrigin) {
         res.setHeader('Access-Control-Allow-Origin', matchedErrOrigin);
@@ -116,7 +126,7 @@ async function startServer() {
   });
 }
 
-// Global Process Shield - Catch errors that normally kill the server silently
+// Global Process Shield
 process.on('uncaughtException', (err) => {
   console.error('[STABILITY SHIELD] Uncaught Exception:', err);
 });
