@@ -30,6 +30,30 @@ export interface StoredUser {
   createdAt: string;
 }
 
+// ---------------------------------------------------------------------------
+// In-memory user cache — populated once from disk on module load
+// ---------------------------------------------------------------------------
+let userCache: StoredUser[] = [];
+
+// Async write queue — prevents concurrent file writes from corrupting the store
+let isSaving = false;
+const writeQueue: Array<{ data: string; resolve: () => void }> = [];
+
+function processWriteQueue() {
+  if (writeQueue.length === 0) {
+    isSaving = false;
+    return;
+  }
+  isSaving = true;
+  const { data, resolve } = writeQueue.shift()!;
+  ensureDataDir();
+  fs.writeFile(USERS_FILE, data, "utf-8", (err) => {
+    if (err) console.error("[auth] Failed to persist users:", err);
+    resolve();
+    processWriteQueue();
+  });
+}
+
 function ensureDataDir() {
   const dir = path.dirname(USERS_FILE);
   if (!fs.existsSync(dir)) {
@@ -38,19 +62,31 @@ function ensureDataDir() {
 }
 
 function loadUsers(): StoredUser[] {
-  ensureDataDir();
-  if (!fs.existsSync(USERS_FILE)) return [];
-  try {
-    return JSON.parse(fs.readFileSync(USERS_FILE, "utf-8"));
-  } catch {
-    return [];
-  }
+  return userCache;
 }
 
-function saveUsers(users: StoredUser[]) {
-  ensureDataDir();
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+function saveUsers(users: StoredUser[]): Promise<void> {
+  // Update in-memory cache immediately so subsequent reads are consistent
+  userCache = [...users];
+  const data = JSON.stringify(users, null, 2);
+  return new Promise<void>((resolve) => {
+    writeQueue.push({ data, resolve });
+    if (!isSaving) processWriteQueue();
+  });
 }
+
+// Initialise cache from disk on module load (runs once at startup)
+function initCache() {
+  ensureDataDir();
+  if (fs.existsSync(USERS_FILE)) {
+    try {
+      userCache = JSON.parse(fs.readFileSync(USERS_FILE, "utf-8"));
+    } catch {
+      userCache = [];
+    }
+  }
+}
+initCache();
 
 function hashPassword(password: string, salt: string): string {
   return crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
@@ -82,7 +118,7 @@ export function verifyToken(token: string): { uid: string; email: string; name: 
   }
 }
 
-export function registerUser(email: string, password: string, name: string): { user: { uid: string; email: string; name: string }; token: string } {
+export async function registerUser(email: string, password: string, name: string): Promise<{ user: { uid: string; email: string; name: string }; token: string }> {
   const users = loadUsers();
   if (users.find((u) => u.email === email)) {
     throw new Error("An account with this email already exists");
@@ -98,7 +134,7 @@ export function registerUser(email: string, password: string, name: string): { u
     createdAt: new Date().toISOString(),
   };
   users.push(user);
-  saveUsers(users);
+  await saveUsers(users);
   const token = createToken({ uid, email, name });
   return { user: { uid, email, name }, token };
 }
@@ -117,7 +153,7 @@ export function loginUser(email: string, password: string): { user: { uid: strin
   return { user: { uid: user.uid, email: user.email, name: user.name }, token };
 }
 
-export function changeUserPassword(email: string, currentPassword: string, newPassword: string): void {
+export async function changeUserPassword(email: string, currentPassword: string, newPassword: string): Promise<void> {
   const users = loadUsers();
   const idx = users.findIndex((u) => u.email === email);
   if (idx === -1) throw new Error("User not found");
@@ -128,14 +164,23 @@ export function changeUserPassword(email: string, currentPassword: string, newPa
   }
   const newSalt = crypto.randomBytes(32).toString("hex");
   users[idx] = { ...user, salt: newSalt, passwordHash: hashPassword(newPassword, newSalt) };
-  saveUsers(users);
+  await saveUsers(users);
 }
 
-export function deleteUserByEmail(email: string): boolean {
+export async function resetUserPassword(email: string, newPassword: string): Promise<void> {
+  const users = loadUsers();
+  const idx = users.findIndex((u) => u.email === email);
+  if (idx === -1) throw new Error("User not found");
+  const newSalt = crypto.randomBytes(32).toString("hex");
+  users[idx] = { ...users[idx], salt: newSalt, passwordHash: hashPassword(newPassword, newSalt) };
+  await saveUsers(users);
+}
+
+export async function deleteUserByEmail(email: string): Promise<boolean> {
   const users = loadUsers();
   const next = users.filter((u) => u.email !== email);
   if (next.length === users.length) return false;
-  saveUsers(next);
+  await saveUsers(next);
   return true;
 }
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Sparkles, Mail, ArrowRight, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Sparkles, Mail, ArrowRight, Loader2, AlertCircle, CheckCircle2, Lock, KeyRound } from 'lucide-react';
 import { MIDDLEWARE_BASE } from '../services/api';
 
 interface ForgotPasswordPageProps {
@@ -9,12 +9,15 @@ interface ForgotPasswordPageProps {
 }
 
 export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBackToLogin, onBackToHome }) => {
+  const [step, setStep] = useState<'email' | 'otp' | 'done'>('email');
   const [email, setEmail] = useState('');
+  const [otp, setOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [isSent, setIsSent] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -22,7 +25,6 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBackTo
       setError('Please enter your email address');
       return;
     }
-
     if (!/\S+@\S+\.\S+/.test(email)) {
       setError('Please enter a valid email address');
       return;
@@ -32,16 +34,53 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBackTo
     try {
       const res = await fetch(`${MIDDLEWARE_BASE}/api/auth/forgot-password`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       });
       const data = await res.json().catch(() => ({}));
-      if (data.notImplemented) {
-        setError('Password reset is not available — please contact support.');
-      } else if (!res.ok) {
-        setError(data.error || 'Unable to send reset link. Please try again.');
+      if (!res.ok) {
+        setError(data.error || 'Unable to send reset code. Please try again.');
       } else {
-        setIsSent(true);
+        setStep('otp');
+      }
+    } catch {
+      setError('Unable to reach server. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!otp || otp.length !== 6) {
+      setError('Please enter the 6-digit code sent to your email');
+      return;
+    }
+    if (!newPassword || newPassword.length < 8) {
+      setError('New password must be at least 8 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${MIDDLEWARE_BASE}/api/auth/reset-password`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, otp, newPassword }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Invalid or expired code. Please try again.');
+      } else {
+        setStep('done');
       }
     } catch {
       setError('Unable to reach server. Please try again.');
@@ -69,23 +108,35 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBackTo
             <Sparkles className="w-8 h-8 text-white" />
           </button>
           <h1 className="text-4xl font-bold tracking-tighter mb-2 font-display">Reset Password</h1>
-          <p className="text-white/40 font-medium">We'll send you a recovery link to your email</p>
+          <p className="text-white/40 font-medium">
+            {step === 'email' ? "We'll send a 6-digit code to your email" :
+             step === 'otp' ? `Enter the code sent to ${email}` :
+             'Password updated successfully'}
+          </p>
         </div>
 
         <div className="glass-card p-8 border-white/5 shadow-2xl">
-          {!isSent ? (
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="p-4 rounded-xl bg-negative/10 border border-negative/20 flex items-center gap-3 text-negative text-xs font-bold"
-                >
-                  <AlertCircle className="w-4 h-4" />
-                  <span>{error}</span>
-                </motion.div>
-              )}
+          {/* Step indicator */}
+          {step !== 'done' && (
+            <div className="flex items-center gap-2 mb-6">
+              <div className={`h-1 flex-1 rounded-full ${step === 'email' ? 'bg-accent' : 'bg-white/20'}`} />
+              <div className={`h-1 flex-1 rounded-full ${step === 'otp' ? 'bg-accent' : 'bg-white/10'}`} />
+            </div>
+          )}
 
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="mb-6 p-4 rounded-xl bg-negative/10 border border-negative/20 flex items-center gap-3 text-negative text-xs font-bold"
+            >
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{error}</span>
+            </motion.div>
+          )}
+
+          {step === 'email' && (
+            <form onSubmit={handleEmailSubmit} className="space-y-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest ml-1">Email Address</label>
                 <div className="relative group">
@@ -109,13 +160,86 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBackTo
                   <Loader2 className="w-5 h-5 animate-spin" />
                 ) : (
                   <>
-                    <span>Send Recovery Link</span>
+                    <span>Send Reset Code</span>
                     <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </>
                 )}
               </button>
             </form>
-          ) : (
+          )}
+
+          {step === 'otp' && (
+            <form onSubmit={handleOtpSubmit} className="space-y-5">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest ml-1">6-Digit Code</label>
+                <div className="relative group">
+                  <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-accent transition-colors" />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="123456"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-4 pl-12 pr-4 outline-none focus:border-accent/50 transition-all font-medium tracking-[0.5em]"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest ml-1">New Password</label>
+                <div className="relative group">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-accent transition-colors" />
+                  <input
+                    type="password"
+                    placeholder="Min. 8 characters"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-4 pl-12 pr-4 outline-none focus:border-accent/50 transition-all font-medium"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest ml-1">Confirm Password</label>
+                <div className="relative group">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-accent transition-colors" />
+                  <input
+                    type="password"
+                    placeholder="Repeat new password"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-4 pl-12 pr-4 outline-none focus:border-accent/50 transition-all font-medium"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-4 rounded-xl bg-accent text-white font-bold hover:bg-accent/80 transition-all violet-glow flex items-center justify-center gap-3 group disabled:opacity-50"
+              >
+                {isLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <>
+                    <span>Reset Password</span>
+                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setStep('email'); setError(''); }}
+                className="w-full text-sm text-white/40 hover:text-white/60 transition-colors text-center"
+              >
+                Didn't receive the code? Go back
+              </button>
+            </form>
+          )}
+
+          {step === 'done' && (
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -124,9 +248,9 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBackTo
               <div className="w-20 h-20 rounded-full bg-positive/10 flex items-center justify-center mx-auto mb-6">
                 <CheckCircle2 className="w-10 h-10 text-positive" />
               </div>
-              <h3 className="text-2xl font-bold mb-2 tracking-tight">Check your email</h3>
+              <h3 className="text-2xl font-bold mb-2 tracking-tight">Password Updated</h3>
               <p className="text-white/40 font-medium mb-8">
-                We've sent a password reset link to <span className="text-white">{email}</span>
+                Your password has been reset successfully. You can now log in with your new password.
               </p>
               <button
                 onClick={onBackToLogin}
@@ -137,7 +261,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBackTo
             </motion.div>
           )}
 
-          {!isSent && (
+          {step !== 'done' && (
             <div className="mt-8 pt-8 border-t border-white/5 text-center">
               <button
                 onClick={onBackToLogin}

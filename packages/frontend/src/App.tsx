@@ -34,6 +34,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { NotificationCenter, Notification as AppNotification } from './components/NotificationCenter';
 import { LayoutDashboard, Wallet, Receipt, CreditCard, PieChart, TrendingUp, Settings, LogOut, Bell, Sparkles, X, Command, Search, WifiOff, Activity, Leaf, Shield, History, Globe2, FileText, BarChart3, Calculator, UserCircle, Briefcase, HeartPulse, HelpCircle, AlertCircle, Calendar, CheckCircle2, AlertTriangle, TrendingDown } from 'lucide-react';
 import { aiService, AIInsight } from './services/aiService';
+import { authApi, MIDDLEWARE_BASE } from './services/api';
 
 export default function App() {
   return (
@@ -60,18 +61,23 @@ function MainApp() {
     localStorage.setItem('yugi_finance_active_tab', activeTab);
   }, [activeTab]);
 
-  const [isLoggedIn, setIsLoggedIn] = useState(() => {
-    const session = localStorage.getItem('yugi_finance_session');
-    const token = localStorage.getItem('auth_token');
-    if (session && token) {
-      const { timestamp } = JSON.parse(session);
-      const oneHour = 60 * 60 * 1000;
-      if (Date.now() - timestamp < oneHour) {
-        return true;
-      }
-    }
-    return false;
-  });
+  // S1/S2: Auth state is now driven by the httpOnly cookie via /me check — no localStorage
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  // Prevent redirect-to-login flash while the /me check is in flight
+  const [authChecking, setAuthChecking] = useState(true);
+
+  // Check session via cookie on every app load
+  useEffect(() => {
+    authApi.me()
+      .then(data => {
+        if (data?.user) {
+          updateUserProfile({ email: data.user.email, name: data.user.name });
+          setIsLoggedIn(true);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setAuthChecking(false));
+  }, []);
   const [showDemo, setShowDemo] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -152,9 +158,8 @@ function MainApp() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const handleLogin = (email: string, token?: string, name?: string) => {
-    if (token) localStorage.setItem('auth_token', token);
-    localStorage.setItem('yugi_finance_session', JSON.stringify({ timestamp: Date.now() }));
+  const handleLogin = (email: string, _token?: string, name?: string) => {
+    // Token is now an httpOnly cookie set by the server — no localStorage storage needed
     clearDataForNewUser();
     updateUserProfile({ email, name: name || email.split('@')[0] });
     setIsLoggedIn(true);
@@ -163,9 +168,8 @@ function MainApp() {
     navigate('/dashboard');
   };
 
-  const handleSignup = (name: string, email: string, token?: string) => {
-    if (token) localStorage.setItem('auth_token', token);
-    localStorage.setItem('yugi_finance_session', JSON.stringify({ timestamp: Date.now() }));
+  const handleSignup = (name: string, email: string, _token?: string) => {
+    // Token is now an httpOnly cookie set by the server — no localStorage storage needed
     clearDataForNewUser();
     updateUserProfile({ name, email });
     setIsLoggedIn(true);
@@ -174,26 +178,26 @@ function MainApp() {
     navigate('/dashboard');
   };
 
-  const handleLogout = useCallback(() => {
-    localStorage.removeItem('yugi_finance_session');
-    localStorage.removeItem('auth_token');
+  const handleLogout = useCallback(async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // Proceed with client-side cleanup even if server call fails
+    }
     clearDataForNewUser();
     setIsLoggedIn(false);
     navigate('/');
   }, [clearDataForNewUser, navigate]);
 
-  // Merged session-timestamp sync + auto-logout (1 hour inactivity)
+  // Inactivity auto-logout (1 hour) — B8: show notification 2 sec before logout
   useEffect(() => {
     if (!isLoggedIn) return;
-
-    const updateSession = () => {
-      localStorage.setItem('yugi_finance_session', JSON.stringify({ timestamp: Date.now() }));
-    };
 
     let timeoutId: NodeJS.Timeout;
     const resetTimer = () => {
       if (timeoutId) clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
+        // B8: Show the notification first, then log out after a short delay
         setNotifications(prev => [...prev, {
           id: crypto.randomUUID(),
           title: 'Session Expired',
@@ -203,26 +207,38 @@ function MainApp() {
           read: false,
           icon: AlertTriangle
         }]);
-        handleLogout();
+        setTimeout(() => handleLogout(), 2000);
       }, 3600000);
     };
 
-    const handleActivity = () => {
-      updateSession();
-      resetTimer();
-    };
-
     const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
-    events.forEach(event => document.addEventListener(event, handleActivity));
+    events.forEach(event => document.addEventListener(event, resetTimer));
 
-    updateSession();
     resetTimer();
 
     return () => {
       if (timeoutId) clearTimeout(timeoutId);
-      events.forEach(event => document.removeEventListener(event, handleActivity));
+      events.forEach(event => document.removeEventListener(event, resetTimer));
     };
   }, [isLoggedIn, handleLogout]);
+
+  // Toast error listener — surfaces FinanceContext CRUD errors in the notification bell
+  useEffect(() => {
+    const handleToastError = (e: Event) => {
+      const { message } = (e as CustomEvent).detail;
+      setNotifications(prev => [...prev, {
+        id: crypto.randomUUID(),
+        title: 'Error',
+        message,
+        type: 'warning' as const,
+        time: 'Just now',
+        read: false,
+        icon: AlertCircle
+      }]);
+    };
+    window.addEventListener('finance-toast-error', handleToastError);
+    return () => window.removeEventListener('finance-toast-error', handleToastError);
+  }, []);
 
   // Navigate to a tab and update the URL simultaneously
   const handleNavigate = useCallback((tab: string) => {
@@ -262,6 +278,7 @@ function MainApp() {
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={
+          authChecking ? null :
           !isLoggedIn ? (
             <LandingPage
               key="landing"
@@ -272,6 +289,7 @@ function MainApp() {
           ) : <Navigate to="/dashboard" replace />
         } />
         <Route path="/login" element={
+          authChecking ? null :
           !isLoggedIn ? (
             <LoginPage
               key="login"
@@ -283,6 +301,7 @@ function MainApp() {
           ) : <Navigate to="/dashboard" replace />
         } />
         <Route path="/signup" element={
+          authChecking ? null :
           !isLoggedIn ? (
             <SignupPage
               key="signup"
@@ -293,6 +312,7 @@ function MainApp() {
           ) : <Navigate to="/dashboard" replace />
         } />
         <Route path="/forgot-password" element={
+          authChecking ? null :
           !isLoggedIn ? (
             <ForgotPasswordPage
               key="forgot-password"
@@ -304,6 +324,7 @@ function MainApp() {
 
         {/* Protected App Routes */}
         <Route path="/dashboard/*" element={
+          authChecking ? null :
           isLoggedIn ? (
             <div key="app-main" className="min-h-screen">
               <Sidebar activeTab={activeTab} setActiveTab={handleNavigate} onLogout={handleLogout} />
@@ -350,7 +371,7 @@ function MainApp() {
                       </div>
                       <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-accent to-positive p-[1px]">
                         <div className="w-full h-full rounded-[15px] bg-background flex items-center justify-center text-xs font-bold">
-                          {userProfile.name.split(' ').map(n => n[0]).join('')}
+                          {(userProfile.name || 'G').split(' ').filter(Boolean).map(n => n[0]).join('') || 'G'}
                         </div>
                       </div>
                     </div>
@@ -432,17 +453,14 @@ function MainApp() {
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               className="relative w-full max-w-5xl aspect-video bg-card rounded-3xl overflow-hidden border border-white/10 shadow-2xl"
             >
-              <div className="absolute inset-0 flex items-center justify-center bg-black">
-                <iframe
-                  width="100%"
-                  height="100%"
-                  src="https://www.youtube.com/embed/YOUR_YOUTUBE_VIDEO_ID?autoplay=1"
-                  title="Yugi Finance Tracker Demo"
-                  frameBorder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  className="w-full h-full"
-                />
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90">
+                <div className="w-24 h-24 rounded-full bg-white/10 flex items-center justify-center mb-6 border border-white/20">
+                  <svg viewBox="0 0 24 24" className="w-12 h-12 text-white/60 ml-1" fill="currentColor">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                </div>
+                <p className="text-white/60 text-lg font-semibold tracking-wide">Demo coming soon</p>
+                <p className="text-white/30 text-sm mt-2">We're putting the finishing touches on our walkthrough video.</p>
               </div>
               <button
                 onClick={() => setShowDemo(false)}

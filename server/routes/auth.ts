@@ -1,26 +1,51 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { rateLimit } from "express-rate-limit";
-import { registerUser, loginUser, findUserByEmail, changeUserPassword, deleteUserByEmail, verifyToken } from "../lib/auth.js";
+import { registerUser, loginUser, changeUserPassword, deleteUserByEmail, verifyToken, resetUserPassword } from "../lib/auth.js";
 
 const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8080";
 
+// S9: Tightened to 10 requests per 15 minutes (was 100)
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  windowMs: 15 * 60 * 1000,
+  max: 10,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests, please try again later" },
 });
 
-export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  const authHeader = req.headers.authorization;
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later" },
+});
 
-  if (!authHeader?.startsWith("Bearer ")) {
+// Cookie options — shared across set/clear calls
+const cookieOptions = {
+  httpOnly: true,
+  sameSite: "strict" as const,
+  secure: process.env.NODE_ENV === "production",
+  maxAge: 86400000, // 24 hours
+  ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
+};
+
+// S1/S2: authMiddleware now accepts both Bearer token AND httpOnly cookie
+export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
+  let token: string | undefined;
+
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    token = authHeader.slice(7);
+  } else if ((req as any).cookies?.auth_token) {
+    token = (req as any).cookies.auth_token;
+  }
+
+  if (!token) {
     res.status(401).json({ error: "Unauthorized: missing token" });
     return;
   }
 
-  const token = authHeader.slice(7);
   const payload = verifyToken(token);
 
   if (!payload) {
@@ -32,9 +57,12 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction) 
   next();
 };
 
+// B10: OTP store for password reset — module-level Map with expiry
+const passwordResetOTPs = new Map<string, { otp: string; expires: number }>();
+
 const router = Router();
 
-router.post("/register", authLimiter, (req: Request, res: Response) => {
+router.post("/register", authLimiter, async (req: Request, res: Response) => {
   try {
     const { email, password, name } = req.body;
 
@@ -53,8 +81,10 @@ router.post("/register", authLimiter, (req: Request, res: Response) => {
       return;
     }
 
-    const result = registerUser(email, password, name);
-    res.json({ user: result.user, token: result.token });
+    const result = await registerUser(email, password, name);
+    // S1: Set JWT as httpOnly cookie — do not expose token in response body
+    res.cookie("auth_token", result.token, cookieOptions);
+    res.json({ user: result.user });
   } catch (err: any) {
     if (err.message === "An account with this email already exists") {
       res.status(409).json({ error: "An account with this email already exists. Please login instead." });
@@ -74,7 +104,9 @@ router.post("/login", authLimiter, (req: Request, res: Response) => {
     }
 
     const result = loginUser(email, password);
-    res.json({ user: result.user, token: result.token });
+    // S1: Set JWT as httpOnly cookie — do not expose token in response body
+    res.cookie("auth_token", result.token, cookieOptions);
+    res.json({ user: result.user });
   } catch (err: any) {
     if (err.message === "Invalid email or password") {
       res.status(401).json({ error: err.message });
@@ -84,7 +116,34 @@ router.post("/login", authLimiter, (req: Request, res: Response) => {
   }
 });
 
-router.post("/forgot-password", authLimiter, (req: Request, res: Response) => {
+// S1/S2: Logout — clear auth cookie
+router.post("/logout", (_req: Request, res: Response) => {
+  res.clearCookie("auth_token", {
+    httpOnly: true,
+    sameSite: "strict" as const,
+    secure: process.env.NODE_ENV === "production",
+    ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
+  });
+  res.json({ ok: true });
+});
+
+// S1/S2: /me — returns current user from cookie
+router.get("/me", (req: Request, res: Response) => {
+  const token = (req as any).cookies?.auth_token || req.headers.authorization?.slice(7);
+  if (!token) {
+    res.status(401).json({ error: "Not authenticated" });
+    return;
+  }
+  const payload = verifyToken(token);
+  if (!payload) {
+    res.status(401).json({ error: "Invalid or expired token" });
+    return;
+  }
+  res.json({ user: { uid: payload.uid, email: payload.email, name: payload.name } });
+});
+
+// B10: Forgot password — generate OTP, store with expiry, log to console
+router.post("/forgot-password", forgotPasswordLimiter, (req: Request, res: Response) => {
   const { email } = req.body;
 
   if (!email) {
@@ -92,13 +151,54 @@ router.post("/forgot-password", authLimiter, (req: Request, res: Response) => {
     return;
   }
 
-  res.status(501).json({ notImplemented: true, error: "Password reset is not available — contact support." });
+  const otp = String(Math.floor(100000 + Math.random() * 900000));
+  const expires = Date.now() + 15 * 60 * 1000; // 15 minutes
+  passwordResetOTPs.set(email, { otp, expires });
+
+  // Log OTP — replace with email provider when available
+  console.log(`[PASSWORD RESET OTP for ${email}]: ${otp}`);
+
+  // Always return success to avoid leaking which emails exist
+  res.json({ success: true, message: "If that email exists, a reset code has been sent." });
 });
 
-router.post("/change-password", (req: Request, res: Response) => {
+// B10: Reset password — validate OTP and set new password
+router.post("/reset-password", forgotPasswordLimiter, async (req: Request, res: Response) => {
+  const { email, otp, newPassword } = req.body;
+
+  if (!email || !otp || !newPassword) {
+    res.status(400).json({ error: "email, otp, and newPassword are required" });
+    return;
+  }
+
+  if (newPassword.length < 8) {
+    res.status(400).json({ error: "New password must be at least 8 characters" });
+    return;
+  }
+
+  const record = passwordResetOTPs.get(email);
+  if (!record || record.otp !== otp || Date.now() > record.expires) {
+    res.status(400).json({ error: "Invalid or expired reset code" });
+    return;
+  }
+
   try {
-    const authHeader = req.headers.authorization?.replace(/^Bearer\s+/i, "");
-    const payload = authHeader ? verifyToken(authHeader) : null;
+    await resetUserPassword(email, newPassword);
+    passwordResetOTPs.delete(email);
+    res.json({ ok: true });
+  } catch (err: any) {
+    if (err.message === "User not found") {
+      res.status(404).json({ error: "User not found" });
+    } else {
+      res.status(500).json({ error: "Password reset failed" });
+    }
+  }
+});
+
+router.post("/change-password", async (req: Request, res: Response) => {
+  try {
+    const token = (req as any).cookies?.auth_token || req.headers.authorization?.replace(/^Bearer\s+/i, "");
+    const payload = token ? verifyToken(token) : null;
     if (!payload) return res.status(401).json({ error: "Unauthorized" });
     const { currentPassword, newPassword } = req.body || {};
     const email = payload.email;
@@ -108,7 +208,7 @@ router.post("/change-password", (req: Request, res: Response) => {
     if (newPassword.length < 8) {
       return res.status(400).json({ error: "New password must be at least 8 characters" });
     }
-    changeUserPassword(email, currentPassword, newPassword);
+    await changeUserPassword(email, currentPassword, newPassword);
     res.json({ ok: true });
   } catch (err: any) {
     if (err.message === "Current password is incorrect") return res.status(401).json({ error: err.message });
@@ -118,13 +218,13 @@ router.post("/change-password", (req: Request, res: Response) => {
 });
 
 router.delete("/account", async (req: Request, res: Response) => {
-  const auth = req.headers.authorization?.replace(/^Bearer\s+/i, "");
-  const payload = auth ? verifyToken(auth) : null;
+  const token = (req as any).cookies?.auth_token || req.headers.authorization?.replace(/^Bearer\s+/i, "");
+  const payload = token ? verifyToken(token) : null;
   const email = payload?.email || (req.body && req.body.email);
   if (!email) return res.status(401).json({ error: "Unauthorized" });
 
   const uid = payload?.uid;
-  const ok = deleteUserByEmail(email);
+  const ok = await deleteUserByEmail(email);
   if (!ok) return res.status(404).json({ error: "User not found" });
 
   // Trigger backend purge
@@ -138,6 +238,13 @@ router.delete("/account", async (req: Request, res: Response) => {
     console.error("Backend purge failed during account deletion:", err);
   }
 
+  // Clear auth cookie on account deletion
+  res.clearCookie("auth_token", {
+    httpOnly: true,
+    sameSite: "strict" as const,
+    secure: process.env.NODE_ENV === "production",
+    ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
+  });
   res.json({ ok: true });
 });
 
