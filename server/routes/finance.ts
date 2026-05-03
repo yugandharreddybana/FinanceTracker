@@ -1,7 +1,21 @@
 import { Router, Request, Response } from "express";
-import { verifyToken } from "../lib/auth.js";
+import { rateLimit } from "express-rate-limit";
+import { authMiddleware } from "../routes/auth.js";
 
 const router = Router();
+
+// S5/S6/S7: Protect all finance routes with auth
+router.use(authMiddleware);
+
+// General rate limit for finance API — 200 requests per 15 minutes per IP
+const financeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later" },
+});
+router.use(financeLimiter);
 
 // Spring Boot backend URL — configured via environment variable
 const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8080";
@@ -12,19 +26,29 @@ const BACKEND_API = `${BACKEND_URL}/api/finance`;
 // ---------------------------------------------------------------------------
 
 async function proxyToBackend(req: Request, res: Response, path: string, method?: string) {
+  // Prevent path traversal — path must start with / and contain no traversal sequences
+  if (!path.startsWith('/') || /\.\./.test(path)) {
+    res.status(400).json({ error: "Invalid request path" });
+    return;
+  }
+
   try {
     const url = `${BACKEND_API}${path}`;
-    
-    // Extract userId from JWT if available
-    const authHeader = req.headers.authorization?.replace(/^Bearer\s+/i, "");
-    const decoded = authHeader ? verifyToken(authHeader) : null;
-    const userId = decoded?.uid;
+
+    // Prefer user from authMiddleware; fall back to manual token extraction
+    const user = (req as any).user;
+    const userId = user?.uid;
+
+    // Forward the Authorization header; reconstruct it from cookie when absent
+    const authToken =
+      req.headers.authorization ||
+      ((req as any).cookies?.auth_token ? `Bearer ${(req as any).cookies.auth_token}` : undefined);
 
     const options: RequestInit = {
       method: method || req.method,
       headers: {
         "Content-Type": "application/json",
-        ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
+        ...(authToken ? { Authorization: authToken } : {}),
         ...(userId ? { "X-User-Id": userId } : {}),
       },
     };
@@ -146,14 +170,13 @@ router.delete("/user-profiles/by-email/:email", async (req, res) => {
   try {
     // 1. Delete by email (handles profile and cascade in backend)
     const del = await fetch(`${BACKEND_API}/user-profiles/by-email/${encodeURIComponent(req.params.email)}`, { method: "DELETE" });
-    
+
     // 2. Also try to purge by UID from token for extra safety (especially if profile email mismatch)
-    const authHeader = req.headers.authorization?.replace(/^Bearer\s+/i, "");
-    const decoded = authHeader ? verifyToken(authHeader) : null;
-    if (decoded?.uid) {
-      await fetch(`${BACKEND_API}/user-profiles/purge/${decoded.uid}`, { method: "DELETE" });
+    const user = (req as any).user;
+    if (user?.uid) {
+      await fetch(`${BACKEND_API}/user-profiles/purge/${user.uid}`, { method: "DELETE" });
     }
-    
+
     res.status(del.status).send();
   } catch (err: any) {
     res.status(502).json({ error: "Backend unavailable", details: err.message });

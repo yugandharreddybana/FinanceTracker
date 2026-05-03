@@ -128,6 +128,12 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setFamilyAccount(null);
   }, []);
 
+  // Dispatch a toast error event so App.tsx can surface it in the notification bell
+  const dispatchToastError = (error: any) => {
+    const message = error?.message || String(error);
+    window.dispatchEvent(new CustomEvent('finance-toast-error', { detail: { message } }));
+  };
+
   const [suggestions, setSuggestions] = useState<Record<string, { category: string; confidence: number }[]>>({});
   const [isCategorizing, setIsCategorizing] = useState(false);
   const [isAddTransactionModalOpen, setIsAddTransactionModalOpen] = useState(false);
@@ -160,8 +166,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
   }, []);
 
-  // Persistence
+  // Persistence — load when email changes (B2: runs after login, not just mount)
   useEffect(() => {
+    if (userProfile.email === 'guest@example.com') return;
     const storageKey = `yugi_finance_data_${userProfile.email}`;
     const savedData = localStorage.getItem(storageKey);
     if (savedData) {
@@ -183,7 +190,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
     }
     setIsDataLoaded(true);
-  }, []);
+  }, [userProfile.email]);
 
   useEffect(() => {
     if (!isDataLoaded) return;
@@ -204,7 +211,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const storageKey = `yugi_finance_data_${userProfile.email}`;
     localStorage.setItem(storageKey, JSON.stringify(dataToSave));
   }, [transactions, savingsGoals, recurringPayments, loans, budgets, accounts, incomeSources, investments, userProfile, customCategories, auditLogs, isDataLoaded]);
-  const [isLoading, setIsLoading] = useState(!!localStorage.getItem('auth_token'));
+  const [isLoading, setIsLoading] = useState(false);
 
   // Refs to track latest state for sync-back logic without causing infinite loops
   const transactionsRef = useRef(transactions);
@@ -226,12 +233,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => { investmentsRef.current = investments; }, [investments]);
 
   const refreshData = useCallback(async () => {
-    const token = localStorage.getItem('auth_token');
-    if (!token) {
-      setIsLoading(false);
-      return;
-    }
-
     setIsLoading(true);
 
     try {
@@ -263,12 +264,22 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           : p);
       }
 
-    } catch (error) {
-      console.error('Failed to fetch/sync data:', error);
+    } catch (error: any) {
+      // B11: silently handle 401 — user is simply not logged in
+      if (!error.message?.includes('401') && !error.message?.includes('Unauthorized')) {
+        console.error('Failed to fetch/sync data:', error);
+      }
     } finally {
       setIsLoading(false);
     }
-  }, []); // Dependencies removed to prevent infinite loops
+  }, []); // State setters are stable; no external deps needed
+
+  // B1: Trigger a data refresh whenever the logged-in user changes
+  useEffect(() => {
+    if (userProfile.email !== 'guest@example.com') {
+      refreshData();
+    }
+  }, [userProfile.email]);
 
 
 
@@ -293,6 +304,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('CREATE', `Added investment ${newInv.symbol}`, 'Investment', newInv.id);
     } catch (error) {
       console.error('Failed to add investment:', error);
+      dispatchToastError(error);
     }
   }, [addLog]);
 
@@ -303,6 +315,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('UPDATE', `Updated investment ${id}`, 'Investment', id);
     } catch (error) {
       console.error('Failed to update investment:', error);
+      dispatchToastError(error);
     }
   }, [addLog]);
 
@@ -313,6 +326,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('DELETE', `Deleted investment ${id}`, 'Investment', id);
     } catch (error) {
       console.error('Failed to delete investment:', error);
+      dispatchToastError(error);
     }
   }, [addLog]);
 
@@ -337,6 +351,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('JOIN', `Joined family ${familyId}`, 'Family', familyId);
     } catch (error) {
       console.error('Failed to join family:', error);
+      dispatchToastError(error);
     }
   }, [addLog]);
 
@@ -507,20 +522,17 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return result;
   }, [budgets, transactions, netWorthByCurrency]);
 
-  // Sync transactions to server for MCP tools
+  // Sync transactions to server for MCP tools — relies on cookie, no localStorage needed
   React.useEffect(() => {
-    if (!localStorage.getItem('auth_token') || transactions.length === 0) return;
+    if (userProfile.email === 'guest@example.com' || transactions.length === 0) return;
 
-    const authToken = localStorage.getItem('auth_token');
     fetch(`${MIDDLEWARE_BASE}/api/finance/sync-transactions`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`
-      },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ transactions })
     }).catch(err => console.error('Failed to sync transactions:', err));
-  }, [transactions]);
+  }, [transactions, userProfile.email]);
 
   const spendingDataByCurrency = React.useMemo(() => {
     const result: Record<string, { name: string, value: number, color: string }[]> = {};
@@ -549,6 +561,13 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const account = accounts.find(a => a.id === accountId);
     if (!goal || !account) return;
 
+    // B5: Insufficient balance guard
+    if (account.balance < amount) {
+      const err = new Error(`Insufficient balance in ${account.name}. Available: ${account.balance}`);
+      window.dispatchEvent(new CustomEvent('finance-toast-error', { detail: { message: err.message } }));
+      throw err;
+    }
+
     try {
       // Create a transaction for the transfer
       const newTx = await financeApi.createTransaction({
@@ -572,6 +591,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setAccounts(prev => prev.map(a => a.id === accountId ? updatedAccount : a));
     } catch (error) {
       console.error('Failed to transfer to savings:', error);
+      dispatchToastError(error);
     }
   }, [savingsGoals, accounts]);
 
@@ -681,12 +701,16 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           dateStr = new Date().toISOString().split('T')[0];
         }
 
+        // B4: Prioritise explicit type from AI; fall back to amount sign
+        const txType = (res.type === 'income' || res.type === 'expense')
+          ? res.type
+          : (res.amount > 0 ? 'income' : 'expense');
         const newTx = await financeApi.createTransaction({
           date: dateStr,
           merchant: res.merchant,
-          amount: -Math.abs(res.amount),
+          amount: txType === 'expense' ? -Math.abs(res.amount) : Math.abs(res.amount),
           category: res.category || 'Uncategorized',
-          type: 'expense',
+          type: txType,
           status: 'confirmed',
           aiTag: type === 'bill' ? 'Bill Scanned' : 'Statement Uploaded',
           account: 'Main Current',
@@ -731,6 +755,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('CREATE', `Added transaction: ${newTx.merchant}`, 'Transaction', newTx.id);
     } catch (error) {
       console.error('Failed to add manual transaction:', error);
+      dispatchToastError(error);
       throw error;
     }
   }, [addLog]);
@@ -754,6 +779,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('DELETE', `Deleted transaction: ${txToDelete?.merchant || id}`, 'Transaction', id);
     } catch (error) {
       console.error('Failed to delete transaction:', error);
+      dispatchToastError(error);
     }
   }, [addLog]);
 
@@ -785,6 +811,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('DELETE', `Bulk deleted ${ids.length} transactions`, 'Transaction', ids.join(','));
     } catch (error) {
       console.error('Failed to bulk delete transactions:', error);
+      dispatchToastError(error);
     }
   }, [addLog]);
 
@@ -795,6 +822,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('CREATE', `Added savings goal: ${newGoal.name}`, 'SavingsGoal', newGoal.id);
     } catch (error) {
       console.error('Failed to add savings goal:', error);
+      dispatchToastError(error);
     }
   }, []);
 
@@ -805,6 +833,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('UPDATE', `Updated savings goal: ${id}`, 'SavingsGoal', id);
     } catch (error) {
       console.error('Failed to update savings goal:', error);
+      dispatchToastError(error);
     }
   }, []);
 
@@ -815,6 +844,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('DELETE', `Deleted savings goal: ${id}`, 'SavingsGoal', id);
     } catch (error) {
       console.error('Failed to delete savings goal:', error);
+      dispatchToastError(error);
     }
   }, []);
 
@@ -825,6 +855,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('CREATE', `Added recurring payment: ${newPayment.name}`, 'RecurringPayment', newPayment.id);
     } catch (error) {
       console.error('Failed to add recurring payment:', error);
+      dispatchToastError(error);
     }
   }, []);
 
@@ -835,6 +866,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('UPDATE', `Updated recurring payment: ${id}`, 'RecurringPayment', id);
     } catch (error) {
       console.error('Failed to update recurring payment:', error);
+      dispatchToastError(error);
     }
   }, []);
 
@@ -845,6 +877,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('DELETE', `Deleted recurring payment: ${id}`, 'RecurringPayment', id);
     } catch (error) {
       console.error('Failed to delete recurring payment:', error);
+      dispatchToastError(error);
     }
   }, []);
 
@@ -855,6 +888,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('UPDATE', `Updated transaction: ${id}`, 'Transaction', id);
     } catch (error) {
       console.error('Failed to update transaction:', error);
+      dispatchToastError(error);
     }
   }, []);
 
@@ -865,6 +899,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('UPDATE', `Bulk updated ${ids.length} transactions`, 'Transaction', ids.join(','));
     } catch (error) {
       console.error('Failed to bulk update transactions:', error);
+      dispatchToastError(error);
     }
   }, []);
 
@@ -875,6 +910,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('CREATE', `Added loan: ${newLoan.name}`, 'Loan', newLoan.id);
     } catch (error) {
       console.error('Failed to add loan:', error);
+      dispatchToastError(error);
     }
   }, []);
 
@@ -885,6 +921,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('UPDATE', `Updated loan: ${id}`, 'Loan', id);
     } catch (error) {
       console.error('Failed to update loan:', error);
+      dispatchToastError(error);
     }
   }, []);
 
@@ -895,6 +932,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('DELETE', `Deleted loan: ${id}`, 'Loan', id);
     } catch (error) {
       console.error('Failed to delete loan:', error);
+      dispatchToastError(error);
     }
   }, []);
 
@@ -905,6 +943,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('CREATE', `Added budget: ${newBudget.category}`, 'Budget', newBudget.id);
     } catch (error) {
       console.error('Failed to add budget:', error);
+      dispatchToastError(error);
     }
   }, []);
 
@@ -915,6 +954,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('UPDATE', `Updated budget: ${id}`, 'Budget', id);
     } catch (error) {
       console.error('Failed to update budget:', error);
+      dispatchToastError(error);
     }
   }, []);
 
@@ -925,6 +965,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('DELETE', `Deleted budget: ${id}`, 'Budget', id);
     } catch (error) {
       console.error('Failed to delete budget:', error);
+      dispatchToastError(error);
     }
   }, []);
 
@@ -935,6 +976,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('CREATE', `Added account: ${newAccount.name}`, 'Account', newAccount.id);
     } catch (error) {
       console.error('Failed to add account:', error);
+      dispatchToastError(error);
     }
   }, []);
 
@@ -945,6 +987,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('UPDATE', `Updated account: ${id}`, 'Account', id);
     } catch (error) {
       console.error('Failed to update account:', error);
+      dispatchToastError(error);
     }
   }, []);
 
@@ -955,6 +998,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('DELETE', `Deleted account: ${id}`, 'Account', id);
     } catch (error) {
       console.error('Failed to delete account:', error);
+      dispatchToastError(error);
     }
   }, []);
 
@@ -965,6 +1009,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('CREATE', `Added income source: ${newIncome.source}`, 'IncomeSource', newIncome.id);
     } catch (error) {
       console.error('Failed to add income source:', error);
+      dispatchToastError(error);
     }
   }, []);
 
@@ -975,6 +1020,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('UPDATE', `Updated income source: ${id}`, 'IncomeSource', id);
     } catch (error) {
       console.error('Failed to update income source:', error);
+      dispatchToastError(error);
     }
   }, []);
 
@@ -985,6 +1031,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       addLog('DELETE', `Deleted income source: ${id}`, 'IncomeSource', id);
     } catch (error) {
       console.error('Failed to delete income source:', error);
+      dispatchToastError(error);
     }
   }, []);
 

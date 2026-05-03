@@ -22,25 +22,17 @@ const API_BASE = `${MIDDLEWARE_BASE}/api/finance`;
 export { MIDDLEWARE_BASE };
 
 // ---------------------------------------------------------------------------
-// Auth header helper — attaches JWT to every request
-// ---------------------------------------------------------------------------
-
-const getAuthHeaders = (): Record<string, string> => {
-  const token = localStorage.getItem('auth_token');
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-};
-
-// ---------------------------------------------------------------------------
-// Generic fetch wrapper with error handling
+// Generic fetch wrapper — always sends cookies for cookie-based auth
 // ---------------------------------------------------------------------------
 
 async function apiFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(url, {
     ...options,
-    headers: { ...getAuthHeaders(), ...(options.headers || {}) },
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
   });
   if (!res.ok) {
     let errorMessage = `Request failed (${res.status})`;
@@ -271,7 +263,7 @@ export const financeApi = {
     }),
 
   getFamily: async (familyId: string) => {
-    const res = await apiFetch(`/api/family/${familyId}`);
+    const res = await apiFetch(`${MIDDLEWARE_BASE}/api/auth/family/${familyId}`);
     return res;
   },
 };
@@ -284,6 +276,7 @@ export const authApi = {
   login: async (email: string, password: string): Promise<any> => {
     const res = await fetch(`${MIDDLEWARE_BASE}/api/auth/login`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
@@ -297,6 +290,7 @@ export const authApi = {
   register: async (name: string, email: string, password: string): Promise<any> => {
     const res = await fetch(`${MIDDLEWARE_BASE}/api/auth/register`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email, password }),
     });
@@ -307,11 +301,40 @@ export const authApi = {
     return res.json();
   },
 
+  logout: async (): Promise<void> => {
+    await fetch(`${MIDDLEWARE_BASE}/api/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+  },
+
+  me: async (): Promise<{ user: { uid: string; email: string; name: string } } | null> => {
+    const res = await fetch(`${MIDDLEWARE_BASE}/api/auth/me`, {
+      credentials: 'include',
+    });
+    if (!res.ok) return null;
+    return res.json();
+  },
+
   forgotPassword: async (email: string): Promise<void> => {
     const res = await fetch(`${MIDDLEWARE_BASE}/api/auth/forgot-password`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'Password reset failed');
+    }
+  },
+
+  resetPassword: async (email: string, otp: string, newPassword: string): Promise<void> => {
+    const res = await fetch(`${MIDDLEWARE_BASE}/api/auth/reset-password`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp, newPassword }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));

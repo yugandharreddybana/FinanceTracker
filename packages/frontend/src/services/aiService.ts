@@ -22,14 +22,6 @@ export interface AIInsight {
   date: string;
 }
 
-const getAuthHeaders = (): Record<string, string> => {
-  const token = localStorage.getItem('auth_token');
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-};
-
 class AIService {
   private get baseUrl() {
     return `${MIDDLEWARE_BASE}/api/ai`;
@@ -39,7 +31,8 @@ class AIService {
     try {
       const res = await fetch(`${this.baseUrl}/insights`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transactions, selectedBank }),
       });
       if (!res.ok) throw new Error('Insights request failed');
@@ -54,7 +47,8 @@ class AIService {
     try {
       const res = await fetch(`${this.baseUrl}/forecast`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentNetWorth, monthlySavings, riskProfile }),
       });
       if (!res.ok) throw new Error('Forecast request failed');
@@ -69,7 +63,8 @@ class AIService {
     try {
       const res = await fetch(`${this.baseUrl}/tax-suggestions`, {
         method: 'POST',
-        headers: getAuthHeaders(),
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ spendingData }),
       });
       if (!res.ok) throw new Error('Tax suggestions request failed');

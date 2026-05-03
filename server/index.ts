@@ -1,5 +1,6 @@
 import express from "express";
 import dotenv from "dotenv";
+import cookieParser from "cookie-parser";
 
 import fs from "fs";
 import path from "path";
@@ -43,35 +44,46 @@ async function startServer() {
     'http://localhost:3000',
   ].filter(Boolean) as string[];
 
+  if (ALLOWED_ORIGINS.length === 0) {
+    console.warn('[CORS] ALLOWED_ORIGINS is empty — all cross-origin requests will be blocked');
+  }
+
   if (!process.env.JAVA_BACKEND_URL && !process.env.BACKEND_URL) {
     console.warn('[WARN] JAVA_BACKEND_URL is not set — auth and finance proxies will default to http://localhost:8080');
   }
 
-  // 1. MEGA LOGGER & CORS (Must be first line of code)
+  // 1. CORS middleware — only allows exact origin matches; never uses wildcard with credentials
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    const isAllowed = origin && (
-      ALLOWED_ORIGINS.includes(origin) || 
-      origin.endsWith('.vercel.app') || 
-      origin.includes('localhost')
-    );
-    
-    const allowedOrigin = isAllowed ? origin : (ALLOWED_ORIGINS[0] || '*');
-    // Nuclear CORS headers - set on EVERY request no matter what
-    res.setHeader('Access-Control-Allow-Origin', allowedOrigin!);
+    // Only allow origins explicitly listed in the allowlist (no loose patterns)
+    const matchedOrigin = ALLOWED_ORIGINS.find(o => o === origin);
 
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    if (matchedOrigin) {
+      // Use the allowlist value (not the raw request header) to prevent CORS header injection
+      res.setHeader('Access-Control-Allow-Origin', matchedOrigin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
 
-    if (req.method === 'OPTIONS') {
-      console.log(`[CORS] Handled preflight for: ${req.path}`);
-      return res.status(200).end();
+      if (req.method === 'OPTIONS') {
+        // S4: preflight caching
+        res.setHeader('Access-Control-Max-Age', '86400');
+        console.log(`[CORS] Handled preflight for: ${req.path}`);
+        return res.status(200).end();
+      }
+    } else if (req.method === 'OPTIONS') {
+      // Reject preflights from unknown origins
+      return res.status(403).end();
     }
+
     next();
   });
 
-  app.use(express.json());
+  // S3: Cookie parser — must come before routes so req.cookies is populated
+  app.use(cookieParser());
+
+  // S8: Body size limit — 2 MB
+  app.use(express.json({ limit: '2mb' }));
 
   // 2. Routes
   app.use("/api/auth", authRouter);
@@ -88,9 +100,12 @@ async function startServer() {
     console.error('SERVER CRASH PREVENTED:', err.message);
     if (!res.headersSent) {
       const errOrigin = req.headers.origin;
-      const allowedErrOrigin = errOrigin && ALLOWED_ORIGINS.includes(errOrigin) ? errOrigin : ALLOWED_ORIGINS[0];
-      res.setHeader('Access-Control-Allow-Origin', allowedErrOrigin);
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      // Only reflect an origin that is explicitly in the allowlist
+      const matchedErrOrigin = errOrigin ? ALLOWED_ORIGINS.find(o => o === errOrigin) : undefined;
+      if (matchedErrOrigin) {
+        res.setHeader('Access-Control-Allow-Origin', matchedErrOrigin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
     }
     res.status(500).json({ error: 'Server Error', message: err.message });
   });
