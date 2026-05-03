@@ -195,7 +195,13 @@ router.post("/reset-password", forgotPasswordLimiter, async (req: Request, res: 
   }
 
   const record = passwordResetOTPs.get(email);
-  if (!record || record.otp !== otp || Date.now() > record.expires) {
+  // Use timing-safe comparison to prevent side-channel attacks on OTP value
+  const otpValid = record &&
+    Date.now() <= record.expires &&
+    Buffer.byteLength(record.otp) === Buffer.byteLength(otp) &&
+    crypto.timingSafeEqual(Buffer.from(record.otp), Buffer.from(otp));
+
+  if (!otpValid) {
     res.status(400).json({ error: "Invalid or expired reset code" });
     return;
   }
@@ -245,13 +251,12 @@ router.delete("/account", sensitiveLimiter, async (req: Request, res: Response) 
   const ok = await deleteUserByEmail(email);
   if (!ok) return res.status(404).json({ error: "User not found" });
 
-  // Trigger backend purge
+  // Trigger backend purge — only use uid (from JWT, not user input) to avoid SSRF via email param
   try {
     if (uid) {
-      await fetch(`${BACKEND_URL}/api/finance/user-profiles/purge/${uid}`, { method: "DELETE" });
-    } else {
-      await fetch(`${BACKEND_URL}/api/finance/user-profiles/by-email/${encodeURIComponent(email)}`, { method: "DELETE" });
+      await fetch(`${BACKEND_URL}/api/finance/user-profiles/purge/${encodeURIComponent(uid)}`, { method: "DELETE" });
     }
+    // If no uid in token, skip backend purge (safer than using raw email in URL)
   } catch (err) {
     console.error("Backend purge failed during account deletion:", err);
   }

@@ -1,10 +1,21 @@
 import { Router, Request, Response } from "express";
+import { rateLimit } from "express-rate-limit";
 import { authMiddleware } from "../routes/auth.js";
 
 const router = Router();
 
 // S5/S6/S7: Protect all finance routes with auth
 router.use(authMiddleware);
+
+// General rate limit for finance API — 200 requests per 15 minutes per IP
+const financeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later" },
+});
+router.use(financeLimiter);
 
 // Spring Boot backend URL — configured via environment variable
 const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8080";
@@ -15,6 +26,12 @@ const BACKEND_API = `${BACKEND_URL}/api/finance`;
 // ---------------------------------------------------------------------------
 
 async function proxyToBackend(req: Request, res: Response, path: string, method?: string) {
+  // Prevent path traversal — path must start with / and contain no traversal sequences
+  if (!path.startsWith('/') || /\.\./.test(path)) {
+    res.status(400).json({ error: "Invalid request path" });
+    return;
+  }
+
   try {
     const url = `${BACKEND_API}${path}`;
 

@@ -56,10 +56,11 @@ async function startServer() {
   app.use((req, res, next) => {
     const origin = req.headers.origin;
     // Only allow origins explicitly listed in the allowlist (no loose patterns)
-    const isAllowed = !!origin && ALLOWED_ORIGINS.includes(origin);
+    const matchedOrigin = ALLOWED_ORIGINS.find(o => o === origin);
 
-    if (isAllowed) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
+    if (matchedOrigin) {
+      // Use the allowlist value (not the raw request header) to prevent CORS header injection
+      res.setHeader('Access-Control-Allow-Origin', matchedOrigin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
@@ -99,9 +100,10 @@ async function startServer() {
     console.error('SERVER CRASH PREVENTED:', err.message);
     if (!res.headersSent) {
       const errOrigin = req.headers.origin;
-      // Only reflect origin if it is explicitly in the allowlist
-      if (errOrigin && ALLOWED_ORIGINS.includes(errOrigin)) {
-        res.setHeader('Access-Control-Allow-Origin', errOrigin);
+      // Only reflect an origin that is explicitly in the allowlist
+      const matchedErrOrigin = errOrigin ? ALLOWED_ORIGINS.find(o => o === errOrigin) : undefined;
+      if (matchedErrOrigin) {
+        res.setHeader('Access-Control-Allow-Origin', matchedErrOrigin);
         res.setHeader('Access-Control-Allow-Credentials', 'true');
       }
     }
