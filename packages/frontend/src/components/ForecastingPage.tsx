@@ -7,15 +7,16 @@ import {
 import { 
   Sparkles, TrendingUp, Target, AlertCircle, 
   Calendar, Info, ArrowRight, BrainCircuit,
-  Zap, Rocket, ShieldCheck, RefreshCw
+  Zap, Rocket, ShieldCheck, RefreshCw, Trash2
 } from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
 import { aiService, ForecastData } from '../services/aiService';
 import { currencyService } from '../services/currencyService';
 import { cn } from '../lib/utils';
+import { ForecastResult } from '../types';
 
 export const ForecastingPage: React.FC = () => {
-  const { netWorthByCurrency, userProfile, incomeSources, recurringPayments } = useFinance();
+  const { netWorthByCurrency, userProfile, incomeSources, recurringPayments, forecasts: savedForecasts, addForecast } = useFinance();
   const currencies = Object.keys(netWorthByCurrency);
   const [selectedCurrency, setSelectedCurrency] = useState(userProfile.preferences.currency || 'INR');
 
@@ -28,6 +29,7 @@ export const ForecastingPage: React.FC = () => {
   const [forecasts, setForecasts] = useState<ForecastData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [riskProfile, setRiskProfile] = useState<'Conservative' | 'Moderate' | 'Aggressive'>('Moderate');
+  const [showHistory, setShowHistory] = useState(false);
 
   const currentCurrency = selectedCurrency;
   const currentNetWorth = netWorthByCurrency[currentCurrency]?.total || 0;
@@ -41,6 +43,17 @@ export const ForecastingPage: React.FC = () => {
     const data = await aiService.getNetWorthForecast(currentNetWorth, monthlySavings, riskProfile);
     setForecasts(data);
     setIsLoading(false);
+
+    // U6: Persist forecast result
+    if (data.length > 0) {
+      const forecastResult: ForecastResult = {
+        id: crypto.randomUUID(),
+        generatedAt: new Date().toISOString(),
+        months: data.map(f => ({ month: `Year ${f.year}`, projected: f.estimatedNetWorth, currency: currentCurrency })),
+        summary: data.map(f => `Year ${f.year}: ${currencyService.formatCurrency(f.estimatedNetWorth, currentCurrency)}`).join(' | '),
+      };
+      addForecast(forecastResult);
+    }
   };
 
   useEffect(() => {
@@ -275,6 +288,30 @@ export const ForecastingPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* U6: Forecast History */}
+      {savedForecasts.length > 0 && (
+        <div className="glass-card p-8">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-bold">Forecast History</h3>
+            <button onClick={() => setShowHistory(p => !p)} className="text-xs font-bold text-accent uppercase tracking-widest hover:underline">
+              {showHistory ? 'Hide' : `Show ${savedForecasts.length}`}
+            </button>
+          </div>
+          <AnimatePresence>
+            {showHistory && (
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="space-y-3">
+                {savedForecasts.map(fc => (
+                  <div key={fc.id} className="p-4 rounded-xl bg-white/5 border border-white/10">
+                    <p className="text-xs font-bold text-white/40 uppercase tracking-widest mb-1">{new Date(fc.generatedAt).toLocaleString()}</p>
+                    <p className="text-sm text-white/70">{fc.summary}</p>
+                  </div>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
     </div>
   );
 };

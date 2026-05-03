@@ -4,7 +4,7 @@ import {
   Layout, Plus, Download, Share2, Trash2, 
   BarChart3, PieChart, LineChart, Table,
   Settings2, GripVertical, ChevronRight,
-  FileText, Calendar, Filter, Save
+  FileText, Calendar, Filter, Save, Printer
 } from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
 import { cn } from '../lib/utils';
@@ -19,7 +19,36 @@ interface ReportWidget {
 
 const STORAGE_KEY = 'ft_report_template';
 
+// U7: Generate a CSV Blob and trigger browser download
+function generateCSV(data: Record<string, unknown>[], filename: string) {
+  if (data.length === 0) return;
+  const headers = Object.keys(data[0]);
+  const rows = data.map(row => headers.map(h => {
+    const val = row[h];
+    if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
+      return `"${val.replace(/"/g, '""')}"`;
+    }
+    return String(val ?? '');
+  }).join(','));
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// U7: Generate a JSON Blob and trigger browser download
+function generateJSON(data: unknown, filename: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export const ReportBuilderPage: React.FC = () => {
+  const { transactions, budgets, accounts } = useFinance();
   const [widgets, setWidgets] = useState<ReportWidget[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -51,10 +80,33 @@ export const ReportBuilderPage: React.FC = () => {
     setWidgets(widgets.filter(w => w.id !== id));
   };
 
+  // U7: Export current report data based on selected metrics
+  const exportCSV = () => {
+    const rows: Record<string, unknown>[] = transactions.map(t => ({
+      date: t.date,
+      merchant: t.merchant,
+      amount: t.amount,
+      type: t.type,
+      category: t.category,
+      currency: t.currency || 'INR',
+      account: t.account || '',
+    }));
+    generateCSV(rows, `finance-report-${new Date().toISOString().split('T')[0]}.csv`);
+  };
+
+  const exportJSON = () => {
+    generateJSON({ transactions, budgets, accounts, exportedAt: new Date().toISOString() }, `finance-report-${new Date().toISOString().split('T')[0]}.json`);
+  };
+
+  // U7: Print using browser's print dialog (CSS handles hiding sidebar)
+  const exportPrint = () => {
+    window.print();
+  };
+
   return (
-    <div className="space-y-10 pb-20">
+    <div className="space-y-10 pb-20 print:bg-white print:text-black">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 print:hidden">
         <div>
           <div className="flex items-center gap-3 mb-2">
             <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center text-accent">
@@ -65,16 +117,30 @@ export const ReportBuilderPage: React.FC = () => {
           <p className="text-white/40 font-medium">Design and export your own financial dashboards.</p>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
           <button onClick={() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(widgets)); setSaveStatus('saved'); setTimeout(() => setSaveStatus('idle'), 2500); }} className={`flex items-center gap-2 px-6 py-3 rounded-2xl border font-bold transition-all ${saveStatus === 'saved' ? 'bg-positive/20 border-positive/40 text-positive' : 'bg-white/5 border-white/10 text-white hover:bg-white/10'}`}>
             <Save className="w-4 h-4" />
             <span>{saveStatus === 'saved' ? 'Saved!' : 'Save Template'}</span>
           </button>
-          <button onClick={() => { const data = widgets.map(w => `${w.title}: ${w.metric} (${w.period})`).join('\n'); const blob = new Blob([`Finance Report\n\n${data}`], { type: 'text/plain' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'finance-report.txt'; a.click(); URL.revokeObjectURL(url); }} className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-accent text-white font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow">
+          <button onClick={exportCSV} className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-white/5 border border-white/10 text-white font-bold hover:bg-white/10 transition-all">
             <Download className="w-4 h-4" />
-            <span>Export PDF</span>
+            <span>CSV</span>
+          </button>
+          <button onClick={exportJSON} className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-white/5 border border-white/10 text-white font-bold hover:bg-white/10 transition-all">
+            <FileText className="w-4 h-4" />
+            <span>JSON</span>
+          </button>
+          <button onClick={exportPrint} className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-accent text-white font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow">
+            <Printer className="w-4 h-4" />
+            <span>Print / PDF</span>
           </button>
         </div>
+      </div>
+
+      {/* Print-visible header */}
+      <div className="hidden print:block mb-8">
+        <h1 className="text-3xl font-bold">Finance Report</h1>
+        <p className="text-gray-500">Generated {new Date().toLocaleDateString()}</p>
       </div>
 
       {/* Builder Interface */}

@@ -1,4 +1,4 @@
-import { Transaction, BankAccount, Budget, Loan, SavingsGoal, RecurringPayment, IncomeSource, Investment } from '../types';
+import { Transaction, BankAccount, Budget, Loan, SavingsGoal, RecurringPayment, IncomeSource, Investment, FamilyAccount, AuditLog } from '../types';
 
 // ---------------------------------------------------------------------------
 // Base URL helpers
@@ -238,13 +238,13 @@ export const financeApi = {
   // Server-side AI endpoints (ISSUE-001 fix — no Gemini key on client)
   // ---------------------------------------------------------------------------
 
-  processAIInput: (input: string, context: { savingsGoals: any[] }): Promise<any[]> =>
+  processAIInput: (input: string, savingsGoals: any[]): Promise<any[]> =>
     apiFetch(`${MIDDLEWARE_BASE}/api/ai/process-input`, {
       method: 'POST',
-      body: JSON.stringify({ input, savingsGoals: context.savingsGoals }),
+      body: JSON.stringify({ input, savingsGoals }),
     }),
 
-  categorizeAI: (targets: { id: string; merchant: string; amount: number }[]): Promise<Record<string, { category: string; confidence: number }[]>> =>
+  categorizeAI: (targets: { id: string; merchant: string; amount: number; currentCategory?: string }[]): Promise<Record<string, { category: string; confidence: number }[]>> =>
     apiFetch(`${MIDDLEWARE_BASE}/api/ai/categorize`, {
       method: 'POST',
       body: JSON.stringify({ targets }),
@@ -263,9 +263,55 @@ export const financeApi = {
     }),
 
   getFamily: async (familyId: string) => {
-    const res = await apiFetch(`${MIDDLEWARE_BASE}/api/auth/family/${familyId}`);
+    const res = await apiFetch<FamilyAccount>(`${MIDDLEWARE_BASE}/api/auth/family/${familyId}`);
     return res;
   },
+};
+
+// ---------------------------------------------------------------------------
+// Family API (U2/U3)
+// ---------------------------------------------------------------------------
+
+export const familyApi = {
+  createFamily: (name: string, adminName: string): Promise<FamilyAccount> =>
+    apiFetch(`${MIDDLEWARE_BASE}/api/auth/family`, {
+      method: 'POST',
+      body: JSON.stringify({ name, adminName }),
+    }),
+
+  getFamily: (familyId: string): Promise<FamilyAccount> =>
+    apiFetch(`${MIDDLEWARE_BASE}/api/auth/family/${familyId}`),
+
+  addFamilyMember: (familyId: string, name: string, role: string): Promise<FamilyAccount> =>
+    apiFetch(`${MIDDLEWARE_BASE}/api/auth/family/${familyId}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ name, role }),
+    }),
+
+  removeFamilyMember: (familyId: string, uid: string): Promise<FamilyAccount> =>
+    apiFetch(`${MIDDLEWARE_BASE}/api/auth/family/${familyId}/members/${uid}`, {
+      method: 'DELETE',
+    }),
+
+  deleteFamily: (familyId: string): Promise<void> =>
+    apiFetch(`${MIDDLEWARE_BASE}/api/auth/family/${familyId}`, {
+      method: 'DELETE',
+    }),
+};
+
+// ---------------------------------------------------------------------------
+// Audit Log API (U10)
+// ---------------------------------------------------------------------------
+
+export const auditApi = {
+  syncAuditLogs: (logs: AuditLog[]): Promise<void> =>
+    apiFetch(`${MIDDLEWARE_BASE}/api/auth/audit/logs`, {
+      method: 'POST',
+      body: JSON.stringify({ logs }),
+    }),
+
+  getAuditLogs: (): Promise<AuditLog[]> =>
+    apiFetch(`${MIDDLEWARE_BASE}/api/auth/audit/logs`),
 };
 
 // ---------------------------------------------------------------------------

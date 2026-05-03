@@ -3,42 +3,49 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Shield, Calculator, TrendingDown, Lightbulb, 
   CheckCircle2, AlertTriangle, FileText, Download,
-  ArrowRight, Sparkles, PieChart, Info, RefreshCw
+  ArrowRight, Sparkles, PieChart, Info, RefreshCw, Trash2
 } from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
 import { aiService, TaxSuggestion } from '../services/aiService';
 import { currencyService } from '../services/currencyService';
 import { cn } from '../lib/utils';
+import { TaxReport } from '../types';
 
 export const TaxEnginePage: React.FC = () => {
-  const { transactions, userProfile } = useFinance();
+  const { transactions, userProfile, taxReports, addTaxReport, deleteTaxReport } = useFinance();
   const [suggestions, setSuggestions] = useState<TaxSuggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [taxYear, setTaxYear] = useState('2024');
   const [expandedSuggestion, setExpandedSuggestion] = useState<number | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
   const [showVaultModal, setShowVaultModal] = useState(false);
+  const [showPastReports, setShowPastReports] = useState(false);
 
   const showNotice = (msg: string) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3500);
   };
 
+  const currentCurrency = userProfile.preferences.currency;
+
+  const totalIncome = transactions.filter(t => t.type === 'income' && t.currency === currentCurrency)
+    .reduce((s, t) => s + t.amount, 0);
+  const totalExpenses = transactions.filter(t => t.type === 'expense' && t.currency === currentCurrency)
+    .reduce((s, t) => s + Math.abs(t.amount), 0);
+  const estimatedTax = Math.round(totalIncome * 0.25);
+
   const exportTaxReport = () => {
     const taxSummary = {
       taxYear,
       generatedAt: new Date().toISOString(),
-      estimatedLiability: 12450,
-      breakdown: [
-        { label: 'Federal Income Tax', amount: 8450 },
-        { label: 'State Income Tax', amount: 2800 },
-        { label: 'Social Security', amount: 1200 },
-      ],
+      totalIncome,
+      estimatedTax,
+      currency: currentCurrency,
       optimizationSuggestions: suggestions,
       transactionsSummary: {
         total: transactions.length,
-        income: transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0),
-        expenses: transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0),
+        income: totalIncome,
+        expenses: totalExpenses,
       },
     };
     const blob = new Blob([JSON.stringify(taxSummary, null, 2)], { type: 'application/json' });
@@ -52,13 +59,25 @@ export const TaxEnginePage: React.FC = () => {
     showNotice('Tax report downloaded successfully!');
   };
 
-  const currentCurrency = userProfile.preferences.currency;
-
   const analyzeTax = async () => {
     setIsLoading(true);
     const data = await aiService.getTaxOptimizationSuggestions(transactions.slice(0, 50));
     setSuggestions(data);
     setIsLoading(false);
+
+    // U5: Persist the generated report
+    if (data.length > 0) {
+      const report: TaxReport = {
+        id: crypto.randomUUID(),
+        year: parseInt(taxYear, 10),
+        generatedAt: new Date().toISOString(),
+        summary: data.map(s => s.title).join('; '),
+        totalIncome,
+        estimatedTax,
+        currency: currentCurrency,
+      };
+      addTaxReport(report);
+    }
   };
 
   useEffect(() => {
@@ -150,10 +169,10 @@ export const TaxEnginePage: React.FC = () => {
           className="glass-card p-8"
         >
           <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Estimated Tax Liability</p>
-          <h2 className="text-4xl font-bold font-mono tracking-tighter mb-4">{currencyService.formatCurrency(12450, currentCurrency)}</h2>
+          <h2 className="text-4xl font-bold font-mono tracking-tighter mb-4">{currencyService.formatCurrency(estimatedTax, currentCurrency)}</h2>
           <div className="flex items-center gap-2 text-xs text-white/40">
             <Calculator className="w-3 h-3" />
-            <span>Based on current income & deductions</span>
+            <span>~25% of total income ({currencyService.formatCurrency(totalIncome, currentCurrency)})</span>
           </div>
         </motion.div>
 
@@ -164,10 +183,12 @@ export const TaxEnginePage: React.FC = () => {
           className="glass-card p-8 border-positive/20 bg-positive/[0.02]"
         >
           <p className="text-[10px] font-bold text-positive uppercase tracking-widest mb-2">Potential AI Savings</p>
-          <h2 className="text-4xl font-bold font-mono tracking-tighter text-positive mb-4">{currencyService.formatCurrency(3200, currentCurrency)}</h2>
+          <h2 className="text-4xl font-bold font-mono tracking-tighter text-positive mb-4">
+            {currencyService.formatCurrency(suggestions.reduce((s, sg) => s + (sg.potentialSavings || 0), 0), currentCurrency)}
+          </h2>
           <div className="flex items-center gap-2 text-xs text-positive/60">
             <Sparkles className="w-3 h-3" />
-            <span>Optimization opportunities found</span>
+            <span>{suggestions.length} optimization opportunities found</span>
           </div>
         </motion.div>
 
@@ -178,10 +199,10 @@ export const TaxEnginePage: React.FC = () => {
           className="glass-card p-8"
         >
           <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Effective Tax Rate</p>
-          <h2 className="text-4xl font-bold font-mono tracking-tighter mb-4">18.4%</h2>
+          <h2 className="text-4xl font-bold font-mono tracking-tighter mb-4">{totalIncome > 0 ? ((estimatedTax / totalIncome) * 100).toFixed(1) : '0.0'}%</h2>
           <div className="flex items-center gap-2 text-xs text-white/40">
             <TrendingDown className="w-3 h-3" />
-            <span>2.1% lower than last year</span>
+            <span>Based on {transactions.filter(t => t.type === 'income').length} income transactions</span>
           </div>
         </motion.div>
       </div>
@@ -323,6 +344,36 @@ export const TaxEnginePage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* U5: Past Tax Reports */}
+      {taxReports.length > 0 && (
+        <div className="glass-card p-8">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-bold">Past Tax Reports</h3>
+            <button onClick={() => setShowPastReports(p => !p)} className="text-xs font-bold text-accent uppercase tracking-widest hover:underline">
+              {showPastReports ? 'Hide' : `Show ${taxReports.length}`}
+            </button>
+          </div>
+          <AnimatePresence>
+            {showPastReports && (
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="space-y-3">
+                {taxReports.map(report => (
+                  <div key={report.id} className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
+                    <div>
+                      <p className="text-sm font-bold">Tax Year {report.year} — {report.currency}</p>
+                      <p className="text-xs text-white/40">{new Date(report.generatedAt).toLocaleDateString()} · Income: {currencyService.formatCurrency(report.totalIncome, report.currency)} · Est. Tax: {currencyService.formatCurrency(report.estimatedTax, report.currency)}</p>
+                      <p className="text-xs text-white/30 mt-1 truncate max-w-md">{report.summary}</p>
+                    </div>
+                    <button onClick={() => deleteTaxReport(report.id)} aria-label="Delete report" className="p-2 rounded-lg bg-white/5 hover:bg-negative/20 text-white/40 hover:text-negative transition-all ml-4">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
     </div>
   );
 };

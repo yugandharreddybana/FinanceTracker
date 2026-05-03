@@ -1,6 +1,8 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { rateLimit } from "express-rate-limit";
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 import { registerUser, loginUser, changeUserPassword, deleteUserByEmail, verifyToken, resetUserPassword } from "../lib/auth.js";
 
 const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8080";
@@ -271,15 +273,73 @@ router.delete("/account", sensitiveLimiter, async (req: Request, res: Response) 
   res.json({ ok: true });
 });
 
-router.get('/api/family/:id', authMiddleware, async (req, res) => {
-  // For now return a stub — replace with real DB lookup
-  res.json({
-    id: req.params.id,
-    name: 'Shared Family',
-    members: [],
+// U2/U3: In-memory family store — keyed by family ID
+const familyStore = new Map<string, { id: string; name: string; members: { uid: string; name: string; role: string }[]; sharedBudgets: string[]; sharedAccounts: string[] }>();
+
+router.post('/family', authMiddleware, (req: Request, res: Response) => {
+  const { name, adminName } = req.body;
+  if (!name) {
+    res.status(400).json({ error: 'Family name is required' });
+    return;
+  }
+  const user = (req as any).user;
+  const id = 'fam-' + crypto.randomUUID();
+  const family = {
+    id,
+    name,
+    members: [{ uid: user.uid, name: adminName || user.name || 'Admin', role: 'Admin' }],
     sharedBudgets: [],
     sharedAccounts: []
-  });
+  };
+  familyStore.set(id, family);
+  res.status(201).json(family);
+});
+
+router.get('/family/:id', authMiddleware, (req: Request, res: Response) => {
+  const family = familyStore.get(req.params.id);
+  if (!family) {
+    res.status(404).json({ error: 'Family not found' });
+    return;
+  }
+  res.json(family);
+});
+
+router.post('/family/:id/members', authMiddleware, (req: Request, res: Response) => {
+  const family = familyStore.get(req.params.id);
+  if (!family) {
+    res.status(404).json({ error: 'Family not found' });
+    return;
+  }
+  const { name, role } = req.body;
+  if (!name) {
+    res.status(400).json({ error: 'Member name is required' });
+    return;
+  }
+  const newMember = { uid: 'user-' + crypto.randomUUID(), name, role: role || 'Member' };
+  family.members.push(newMember);
+  familyStore.set(family.id, family);
+  res.json(family);
+});
+
+router.delete('/family/:id/members/:uid', authMiddleware, (req: Request, res: Response) => {
+  const family = familyStore.get(req.params.id);
+  if (!family) {
+    res.status(404).json({ error: 'Family not found' });
+    return;
+  }
+  family.members = family.members.filter(m => m.uid !== req.params.uid);
+  familyStore.set(family.id, family);
+  res.json(family);
+});
+
+router.delete('/family/:id', authMiddleware, (req: Request, res: Response) => {
+  const existed = familyStore.has(req.params.id);
+  familyStore.delete(req.params.id);
+  if (!existed) {
+    res.status(404).json({ error: 'Family not found' });
+    return;
+  }
+  res.status(204).send();
 });
 
 // ---------------------------------------------------------------------------
@@ -303,7 +363,8 @@ async function proxyWebAuthn(req: Request, res: Response, subPath: string) {
     res.setHeader("Content-Type", upstream.headers.get("content-type") || "application/json");
     res.send(text);
   } catch (err: any) {
-    res.status(502).json({ error: "Backend unavailable", details: err.message });
+    // U8: Return graceful 503 if upstream is unavailable, never crash or hang
+    res.status(503).json({ error: 'Passkey authentication is not available', available: false });
   }
 }
 
@@ -321,6 +382,66 @@ router.delete("/webauthn/credentials", async (req: Request, res: Response) => {
     res.status(upstream.status).send();
   } catch (err: any) {
     res.status(502).json({ error: "Backend unavailable", details: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// U10: Audit log endpoints — persist to user-specific JSON files
+// ---------------------------------------------------------------------------
+
+const DATA_DIR = path.join(process.cwd(), 'data');
+
+function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+}
+
+function getAuditFilePath(userId: string): string {
+  // Sanitise userId to prevent path traversal
+  const safe = userId.replace(/[^a-zA-Z0-9@._-]/g, '_');
+  return path.join(DATA_DIR, `audit_${safe}.json`);
+}
+
+router.post('/audit/logs', authMiddleware, (req: Request, res: Response) => {
+  try {
+    const { logs } = req.body;
+    if (!Array.isArray(logs)) {
+      res.status(400).json({ error: 'logs must be an array' });
+      return;
+    }
+    const userId = (req as any).user?.uid || 'anonymous';
+    ensureDataDir();
+    const filePath = getAuditFilePath(userId);
+    let existing: any[] = [];
+    try {
+      existing = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    } catch {
+      existing = [];
+    }
+    const existingIds = new Set(existing.map((l: any) => l.id));
+    const newLogs = logs.filter((l: any) => l.id && !existingIds.has(l.id));
+    fs.writeFileSync(filePath, JSON.stringify([...existing, ...newLogs], null, 2));
+    res.json({ ok: true, added: newLogs.length });
+  } catch (err: any) {
+    console.error('Audit log sync error:', err.message);
+    res.status(500).json({ error: 'Failed to save audit logs' });
+  }
+});
+
+router.get('/audit/logs', authMiddleware, (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.uid || 'anonymous';
+    const filePath = getAuditFilePath(userId);
+    if (!fs.existsSync(filePath)) {
+      res.json([]);
+      return;
+    }
+    const logs = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    res.json(Array.isArray(logs) ? logs : []);
+  } catch (err: any) {
+    console.error('Audit log read error:', err.message);
+    res.status(500).json({ error: 'Failed to read audit logs' });
   }
 });
 
