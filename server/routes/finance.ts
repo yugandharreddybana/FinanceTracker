@@ -190,13 +190,21 @@ router.delete("/user-profiles/by-email/:email", async (req, res) => {
 const userTransactionCache = new Map<string, any[]>();
 
 router.post("/sync-transactions", (req, res) => {
-  const userId = (req as any).user?.uid || 'anonymous';
+  const userId = (req as any).user?.uid;
+  if (!userId) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
   userTransactionCache.set(userId, Array.isArray(req.body?.transactions) ? req.body.transactions : []);
   res.json({ ok: true, count: userTransactionCache.get(userId)!.length });
 });
 
 router.get("/sync-transactions", (req, res) => {
-  const userId = (req as any).user?.uid || 'anonymous';
+  const userId = (req as any).user?.uid;
+  if (!userId) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
   res.json({ transactions: userTransactionCache.get(userId) || [] });
 });
 

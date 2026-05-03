@@ -25,7 +25,7 @@ function generateCSV(data: Record<string, unknown>[], filename: string) {
   const headers = Object.keys(data[0]);
   const rows = data.map(row => headers.map(h => {
     const val = row[h];
-    if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
+    if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n') || val.includes('\r'))) {
       return `"${val.replace(/"/g, '""')}"`;
     }
     return String(val ?? '');

@@ -276,7 +276,7 @@ router.delete("/account", sensitiveLimiter, async (req: Request, res: Response) 
 // U2/U3: In-memory family store — keyed by family ID
 const familyStore = new Map<string, { id: string; name: string; members: { uid: string; name: string; role: string }[]; sharedBudgets: string[]; sharedAccounts: string[] }>();
 
-router.post('/family', authMiddleware, (req: Request, res: Response) => {
+router.post('/family', authMiddleware, sensitiveLimiter, (req: Request, res: Response) => {
   const { name, adminName } = req.body;
   if (!name) {
     res.status(400).json({ error: 'Family name is required' });
@@ -295,7 +295,7 @@ router.post('/family', authMiddleware, (req: Request, res: Response) => {
   res.status(201).json(family);
 });
 
-router.get('/family/:id', authMiddleware, (req: Request, res: Response) => {
+router.get('/family/:id', authMiddleware, sensitiveLimiter, (req: Request, res: Response) => {
   const family = familyStore.get(req.params.id);
   if (!family) {
     res.status(404).json({ error: 'Family not found' });
@@ -304,7 +304,7 @@ router.get('/family/:id', authMiddleware, (req: Request, res: Response) => {
   res.json(family);
 });
 
-router.post('/family/:id/members', authMiddleware, (req: Request, res: Response) => {
+router.post('/family/:id/members', authMiddleware, sensitiveLimiter, (req: Request, res: Response) => {
   const family = familyStore.get(req.params.id);
   if (!family) {
     res.status(404).json({ error: 'Family not found' });
@@ -321,7 +321,7 @@ router.post('/family/:id/members', authMiddleware, (req: Request, res: Response)
   res.json(family);
 });
 
-router.delete('/family/:id/members/:uid', authMiddleware, (req: Request, res: Response) => {
+router.delete('/family/:id/members/:uid', authMiddleware, sensitiveLimiter, (req: Request, res: Response) => {
   const family = familyStore.get(req.params.id);
   if (!family) {
     res.status(404).json({ error: 'Family not found' });
@@ -332,7 +332,7 @@ router.delete('/family/:id/members/:uid', authMiddleware, (req: Request, res: Re
   res.json(family);
 });
 
-router.delete('/family/:id', authMiddleware, (req: Request, res: Response) => {
+router.delete('/family/:id', authMiddleware, sensitiveLimiter, (req: Request, res: Response) => {
   const existed = familyStore.has(req.params.id);
   familyStore.delete(req.params.id);
   if (!existed) {
@@ -398,29 +398,33 @@ function ensureDataDir() {
 }
 
 function getAuditFilePath(userId: string): string {
-  // Sanitise userId to prevent path traversal
-  const safe = userId.replace(/[^a-zA-Z0-9@._-]/g, '_');
-  return path.join(DATA_DIR, `audit_${safe}.json`);
+  // Hash the userId to guarantee filesystem safety — avoids any path traversal risk
+  const hash = crypto.createHash('sha256').update(userId).digest('hex').substring(0, 32);
+  return path.join(DATA_DIR, `audit_${hash}.json`);
 }
 
-router.post('/audit/logs', authMiddleware, (req: Request, res: Response) => {
+router.post('/audit/logs', authMiddleware, sensitiveLimiter, (req: Request, res: Response) => {
   try {
     const { logs } = req.body;
     if (!Array.isArray(logs)) {
       res.status(400).json({ error: 'logs must be an array' });
       return;
     }
-    const userId = (req as any).user?.uid || 'anonymous';
+    const userId = (req as any).user?.uid;
+    if (!userId) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
     ensureDataDir();
     const filePath = getAuditFilePath(userId);
-    let existing: any[] = [];
+    let existing: Record<string, unknown>[] = [];
     try {
       existing = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     } catch {
       existing = [];
     }
-    const existingIds = new Set(existing.map((l: any) => l.id));
-    const newLogs = logs.filter((l: any) => l.id && !existingIds.has(l.id));
+    const existingIds = new Set(existing.map((l) => l['id']));
+    const newLogs = logs.filter((l: Record<string, unknown>) => l['id'] && !existingIds.has(l['id']));
     fs.writeFileSync(filePath, JSON.stringify([...existing, ...newLogs], null, 2));
     res.json({ ok: true, added: newLogs.length });
   } catch (err: any) {
@@ -429,9 +433,13 @@ router.post('/audit/logs', authMiddleware, (req: Request, res: Response) => {
   }
 });
 
-router.get('/audit/logs', authMiddleware, (req: Request, res: Response) => {
+router.get('/audit/logs', authMiddleware, sensitiveLimiter, (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.uid || 'anonymous';
+    const userId = (req as any).user?.uid;
+    if (!userId) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
     const filePath = getAuditFilePath(userId);
     if (!fs.existsSync(filePath)) {
       res.json([]);
