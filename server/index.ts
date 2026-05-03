@@ -52,17 +52,14 @@ async function startServer() {
     console.warn('[WARN] JAVA_BACKEND_URL is not set — auth and finance proxies will default to http://localhost:8080');
   }
 
-  // 1. CORS middleware — credentials-safe, never uses wildcard with credentials
+  // 1. CORS middleware — only allows exact origin matches; never uses wildcard with credentials
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    const isAllowed = origin && (
-      ALLOWED_ORIGINS.includes(origin) ||
-      origin.endsWith('.vercel.app') ||
-      origin.includes('localhost')
-    );
+    // Only allow origins explicitly listed in the allowlist (no loose patterns)
+    const isAllowed = !!origin && ALLOWED_ORIGINS.includes(origin);
 
     if (isAllowed) {
-      res.setHeader('Access-Control-Allow-Origin', origin!);
+      res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
@@ -102,9 +99,9 @@ async function startServer() {
     console.error('SERVER CRASH PREVENTED:', err.message);
     if (!res.headersSent) {
       const errOrigin = req.headers.origin;
-      const allowedErrOrigin = errOrigin && ALLOWED_ORIGINS.includes(errOrigin) ? errOrigin : null;
-      if (allowedErrOrigin) {
-        res.setHeader('Access-Control-Allow-Origin', allowedErrOrigin);
+      // Only reflect origin if it is explicitly in the allowlist
+      if (errOrigin && ALLOWED_ORIGINS.includes(errOrigin)) {
+        res.setHeader('Access-Control-Allow-Origin', errOrigin);
         res.setHeader('Access-Control-Allow-Credentials', 'true');
       }
     }

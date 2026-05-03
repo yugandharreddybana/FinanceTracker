@@ -37,7 +37,7 @@ let userCache: StoredUser[] = [];
 
 // Async write queue — prevents concurrent file writes from corrupting the store
 let isSaving = false;
-const writeQueue: Array<{ data: string; resolve: () => void }> = [];
+const writeQueue: Array<{ data: string; resolve: () => void; reject: (e: Error) => void }> = [];
 
 function processWriteQueue() {
   if (writeQueue.length === 0) {
@@ -45,11 +45,15 @@ function processWriteQueue() {
     return;
   }
   isSaving = true;
-  const { data, resolve } = writeQueue.shift()!;
+  const { data, resolve, reject } = writeQueue.shift()!;
   ensureDataDir();
   fs.writeFile(USERS_FILE, data, "utf-8", (err) => {
-    if (err) console.error("[auth] Failed to persist users:", err);
-    resolve();
+    if (err) {
+      console.error("[auth] Failed to persist users:", err);
+      reject(err);
+    } else {
+      resolve();
+    }
     processWriteQueue();
   });
 }
@@ -69,8 +73,8 @@ function saveUsers(users: StoredUser[]): Promise<void> {
   // Update in-memory cache immediately so subsequent reads are consistent
   userCache = [...users];
   const data = JSON.stringify(users, null, 2);
-  return new Promise<void>((resolve) => {
-    writeQueue.push({ data, resolve });
+  return new Promise<void>((resolve, reject) => {
+    writeQueue.push({ data, resolve, reject });
     if (!isSaving) processWriteQueue();
   });
 }

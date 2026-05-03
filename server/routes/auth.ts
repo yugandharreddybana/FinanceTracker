@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { rateLimit } from "express-rate-limit";
+import crypto from "crypto";
 import { registerUser, loginUser, changeUserPassword, deleteUserByEmail, verifyToken, resetUserPassword } from "../lib/auth.js";
 
 const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8080";
@@ -16,6 +17,15 @@ const authLimiter = rateLimit({
 const forgotPasswordLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later" },
+});
+
+// General limiter for sensitive authenticated endpoints
+const sensitiveLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests, please try again later" },
@@ -59,6 +69,14 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction) 
 
 // B10: OTP store for password reset — module-level Map with expiry
 const passwordResetOTPs = new Map<string, { otp: string; expires: number }>();
+
+// Periodically remove expired OTPs to prevent unbounded growth
+setInterval(() => {
+  const now = Date.now();
+  for (const [email, record] of passwordResetOTPs.entries()) {
+    if (now > record.expires) passwordResetOTPs.delete(email);
+  }
+}, 5 * 60 * 1000); // sweep every 5 minutes
 
 const router = Router();
 
@@ -117,7 +135,7 @@ router.post("/login", authLimiter, (req: Request, res: Response) => {
 });
 
 // S1/S2: Logout — clear auth cookie
-router.post("/logout", (_req: Request, res: Response) => {
+router.post("/logout", sensitiveLimiter, (_req: Request, res: Response) => {
   res.clearCookie("auth_token", {
     httpOnly: true,
     sameSite: "strict" as const,
@@ -128,7 +146,7 @@ router.post("/logout", (_req: Request, res: Response) => {
 });
 
 // S1/S2: /me — returns current user from cookie
-router.get("/me", (req: Request, res: Response) => {
+router.get("/me", sensitiveLimiter, (req: Request, res: Response) => {
   const token = (req as any).cookies?.auth_token || req.headers.authorization?.slice(7);
   if (!token) {
     res.status(401).json({ error: "Not authenticated" });
@@ -151,7 +169,7 @@ router.post("/forgot-password", forgotPasswordLimiter, (req: Request, res: Respo
     return;
   }
 
-  const otp = String(Math.floor(100000 + Math.random() * 900000));
+  const otp = String(crypto.randomInt(100000, 1000000));
   const expires = Date.now() + 15 * 60 * 1000; // 15 minutes
   passwordResetOTPs.set(email, { otp, expires });
 
@@ -195,7 +213,7 @@ router.post("/reset-password", forgotPasswordLimiter, async (req: Request, res: 
   }
 });
 
-router.post("/change-password", async (req: Request, res: Response) => {
+router.post("/change-password", sensitiveLimiter, async (req: Request, res: Response) => {
   try {
     const token = (req as any).cookies?.auth_token || req.headers.authorization?.replace(/^Bearer\s+/i, "");
     const payload = token ? verifyToken(token) : null;
@@ -217,7 +235,7 @@ router.post("/change-password", async (req: Request, res: Response) => {
   }
 });
 
-router.delete("/account", async (req: Request, res: Response) => {
+router.delete("/account", sensitiveLimiter, async (req: Request, res: Response) => {
   const token = (req as any).cookies?.auth_token || req.headers.authorization?.replace(/^Bearer\s+/i, "");
   const payload = token ? verifyToken(token) : null;
   const email = payload?.email || (req.body && req.body.email);

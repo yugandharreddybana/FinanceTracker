@@ -701,7 +701,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           dateStr = new Date().toISOString().split('T')[0];
         }
 
-        const txType = res.type || (res.amount > 0 ? 'income' : 'expense');
+        // B4: Prioritise explicit type from AI; fall back to amount sign
+        const txType = (res.type === 'income' || res.type === 'expense')
+          ? res.type
+          : (res.amount > 0 ? 'income' : 'expense');
         const newTx = await financeApi.createTransaction({
           date: dateStr,
           merchant: res.merchant,

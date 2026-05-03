@@ -371,7 +371,7 @@ function MainApp() {
                       </div>
                       <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-accent to-positive p-[1px]">
                         <div className="w-full h-full rounded-[15px] bg-background flex items-center justify-center text-xs font-bold">
-                          {(userProfile.name || 'G').split(' ').filter(Boolean).map(n => n[0]).join('') || 'G'}
+                          {(userProfile.name || 'Guest').split(' ').filter(Boolean).map(n => n[0]).join('')}
                         </div>
                       </div>
                     </div>
