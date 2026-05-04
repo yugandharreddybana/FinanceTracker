@@ -2,6 +2,10 @@ import { Router, Request, Response, NextFunction } from "express";
 import { rateLimit } from "express-rate-limit";
 import crypto from "crypto";
 import { registerUser, loginUser, changeUserPassword, deleteUserByEmail, verifyToken, resetUserPassword } from "../lib/auth.js";
+import { Resend } from "resend";
+
+// Resend is optional — only initialised when RESEND_API_KEY is set
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8080";
 
@@ -160,8 +164,8 @@ router.get("/me", sensitiveLimiter, (req: Request, res: Response) => {
   res.json({ user: { uid: payload.uid, email: payload.email, name: payload.name } });
 });
 
-// B10: Forgot password — generate OTP, store with expiry, log to console
-router.post("/forgot-password", forgotPasswordLimiter, (req: Request, res: Response) => {
+// B10: Forgot password — generate OTP, store with expiry, send via Resend or log fallback
+router.post("/forgot-password", forgotPasswordLimiter, async (req: Request, res: Response) => {
   const { email } = req.body;
 
   if (!email) {
@@ -173,8 +177,28 @@ router.post("/forgot-password", forgotPasswordLimiter, (req: Request, res: Respo
   const expires = Date.now() + 15 * 60 * 1000; // 15 minutes
   passwordResetOTPs.set(email, { otp, expires });
 
-  // Log OTP — replace with email provider when available
-  console.log(`[PASSWORD RESET OTP for ${email}]: ${otp}`);
+  if (resend) {
+    try {
+      await resend.emails.send({
+        from: process.env.EMAIL_FROM || "FinanceTracker <noreply@financetracker.app>",
+        to: email,
+        subject: "Your FinanceTracker password reset code",
+        html: `
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #0f1117; color: #ffffff; border-radius: 12px;">
+          <h1 style="color: #6366f1; margin-bottom: 8px;">Password Reset</h1>
+          <p style="color: rgba(255,255,255,0.7);">Your one-time reset code is:</p>
+          <div style="font-size: 40px; font-weight: bold; letter-spacing: 8px; color: #a78bfa; text-align: center; padding: 24px; background: rgba(99,102,241,0.1); border-radius: 8px; margin: 16px 0;">${otp}</div>
+          <p style="color: rgba(255,255,255,0.5); font-size: 14px;">This code expires in 15 minutes. If you didn't request this, ignore this email.</p>
+        </div>
+      `,
+      });
+    } catch (err: any) {
+      console.error("[RESEND] Failed to send password reset email:", err.message);
+    }
+  } else {
+    console.warn("[RESEND] RESEND_API_KEY not set — falling back to console OTP log.");
+    console.log(`[PASSWORD RESET OTP for ${email}]: ${otp}`);
+  }
 
   // Always return success to avoid leaking which emails exist
   res.json({ success: true, message: "If that email exists, a reset code has been sent." });

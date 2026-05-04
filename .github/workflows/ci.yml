@@ -30,6 +30,11 @@ jobs:
       - name: TypeScript compile check
         run: npx tsc --noEmit
 
+      - name: Run unit tests
+        run: npm test
+        env:
+          JWT_SECRET: test-secret-that-is-at-least-32-chars-long-for-testing
+
   # ── Frontend ──────────────────────────────────────────────────────────────
   frontend-build:
     name: Frontend — Vite Build
@@ -55,6 +60,9 @@ jobs:
         env:
           VITE_MIDDLEWARE_URL: https://middleware-financetracker-production.up.railway.app
 
+      - name: Run frontend tests
+        run: npm test
+
   # ── Java Spring Boot Backend ──────────────────────────────────────────────
   java-build:
     name: Java Backend — Maven Build
@@ -74,6 +82,9 @@ jobs:
 
       - name: Maven compile (skip tests for speed)
         run: mvn compile -DskipTests --no-transfer-progress
+
+      - name: Run Java tests
+        run: mvn test --no-transfer-progress
 
   # ── Secret Scanning ───────────────────────────────────────────────────────
   secret-scan:
