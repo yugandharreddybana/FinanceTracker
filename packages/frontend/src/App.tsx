@@ -50,16 +50,9 @@ function MainApp() {
   const { userProfile, transactions, isOffline, updateUserProfile, clearDataForNewUser, refreshData } = useFinance();
   const location = useLocation();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState(() => {
-    const saved = localStorage.getItem('yugi_finance_active_tab');
-    if (saved) return saved;
-    return 'dashboard';
-  });
 
-  // Save activeTab to localStorage whenever it changes
-  useEffect(() => {
-    localStorage.setItem('yugi_finance_active_tab', activeTab);
-  }, [activeTab]);
+  // A2: Derive activeTab directly from URL — no useState, no localStorage
+  const activeTab = location.pathname.split('/')[2] || 'dashboard';
 
   // S1/S2: Auth state is now driven by the httpOnly cookie via /me check — no localStorage
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -84,15 +77,6 @@ function MainApp() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isAIProcessing, setIsAIProcessing] = useState(false);
-
-  // Sync activeTab with URL path
-  useEffect(() => {
-    if (isLoggedIn) {
-      const segments = location.pathname.split('/');
-      const tab = segments[2] || 'dashboard';
-      setActiveTab(tab);
-    }
-  }, [location.pathname, isLoggedIn]);
 
   // Handle refresh and initial load
   useEffect(() => {
@@ -130,7 +114,8 @@ function MainApp() {
         }));
 
         setNotifications(prev => {
-          const existingTitles = new Set(prev.slice(0, 10).map(n => n.title));
+          // L9: Check ALL existing notifications for dedup, not just first 10
+          const existingTitles = new Set(prev.map(n => n.title));
           const uniqueNew = newNotifications.filter(n => !existingTitles.has(n.title));
           return [...uniqueNew, ...prev].slice(0, 50);
         });
@@ -141,9 +126,13 @@ function MainApp() {
       }
     };
 
-    fetchRealTimeInsights();
+    // L8: 30-second initial delay before first fetch to avoid burning quota on every login
+    const initialDelay = setTimeout(fetchRealTimeInsights, 30000);
     const interval = setInterval(fetchRealTimeInsights, 300000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialDelay);
+      clearInterval(interval);
+    };
   }, [isLoggedIn]);
 
   // Keyboard shortcuts
@@ -160,20 +149,18 @@ function MainApp() {
 
   const handleLogin = (email: string, _token?: string, name?: string) => {
     // Token is now an httpOnly cookie set by the server — no localStorage storage needed
-    clearDataForNewUser();
+    // A6: Don't clear data before new data arrives; refreshData will overwrite state
     updateUserProfile({ email, name: name || email.split('@')[0] });
     setIsLoggedIn(true);
-    setActiveTab('dashboard');
     setTimeout(() => refreshData(), 0);
     navigate('/dashboard');
   };
 
   const handleSignup = (name: string, email: string, _token?: string) => {
     // Token is now an httpOnly cookie set by the server — no localStorage storage needed
-    clearDataForNewUser();
+    // A6: Don't clear data before new data arrives; refreshData will overwrite state
     updateUserProfile({ name, email });
     setIsLoggedIn(true);
-    setActiveTab('dashboard');
     setTimeout(() => refreshData(), 0);
     navigate('/dashboard');
   };
@@ -188,6 +175,10 @@ function MainApp() {
     setIsLoggedIn(false);
     navigate('/');
   }, [clearDataForNewUser, navigate]);
+
+  // A5: Keep a stable ref to handleLogout so the inactivity timer doesn't recreate on every render
+  const handleLogoutRef = useRef(handleLogout);
+  useEffect(() => { handleLogoutRef.current = handleLogout; }, [handleLogout]);
 
   // Inactivity auto-logout (1 hour) — B8: show notification 2 sec before logout
   useEffect(() => {
@@ -207,7 +198,7 @@ function MainApp() {
           read: false,
           icon: AlertTriangle
         }]);
-        setTimeout(() => handleLogout(), 2000);
+        setTimeout(() => handleLogoutRef.current(), 2000);
       }, 3600000);
     };
 
@@ -220,7 +211,8 @@ function MainApp() {
       if (timeoutId) clearTimeout(timeoutId);
       events.forEach(event => document.removeEventListener(event, resetTimer));
     };
-  }, [isLoggedIn, handleLogout]);
+    // A5: Only depend on isLoggedIn; use handleLogoutRef.current() inside
+  }, [isLoggedIn]);
 
   // Toast error listener — surfaces FinanceContext CRUD errors in the notification bell
   useEffect(() => {
@@ -240,9 +232,8 @@ function MainApp() {
     return () => window.removeEventListener('finance-toast-error', handleToastError);
   }, []);
 
-  // Navigate to a tab and update the URL simultaneously
+  // Navigate to a tab — URL is the source of truth; activeTab derives automatically
   const handleNavigate = useCallback((tab: string) => {
-    setActiveTab(tab);
     navigate(`/dashboard/${tab}`);
   }, [navigate]);
 
@@ -269,7 +260,17 @@ function MainApp() {
       case 'audit': return <AuditLogPage key="audit" />;
       case 'family': return <FamilyPage key="family" />;
       case 'settings': return <SettingsPage key="settings" />;
-      default: return <Dashboard key="dashboard" setActiveTab={handleNavigate} />;
+      default:
+        // U12: Known empty/undefined tabs default to dashboard; truly unknown tabs show 404
+        if (!activeTab || activeTab === 'dashboard') return <Dashboard key="dashboard" setActiveTab={handleNavigate} />;
+        return (
+          <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+            <div className="text-6xl">🔍</div>
+            <h2 className="text-2xl font-bold text-white">Page Not Found</h2>
+            <p className="text-white/50">The page you're looking for doesn't exist.</p>
+            <button onClick={() => handleNavigate('dashboard')} className="px-6 py-3 bg-accent rounded-2xl text-white font-bold hover:bg-accent/80 transition-all">Go to Dashboard</button>
+          </div>
+        );
     }
   };
 

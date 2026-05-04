@@ -184,15 +184,29 @@ router.delete("/user-profiles/by-email/:email", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Sync transactions cache (used by MCP fallback)
+// Sync transactions cache (used by MCP fallback) — A7: per-user cache
 // ---------------------------------------------------------------------------
 
-let cachedTransactions: any[] = [];
+const userTransactionCache = new Map<string, any[]>();
+
 router.post("/sync-transactions", (req, res) => {
-  cachedTransactions = Array.isArray(req.body?.transactions) ? req.body.transactions : [];
-  res.json({ ok: true, count: cachedTransactions.length });
+  const userId = (req as any).user?.uid;
+  if (!userId) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
+  userTransactionCache.set(userId, Array.isArray(req.body?.transactions) ? req.body.transactions : []);
+  res.json({ ok: true, count: userTransactionCache.get(userId)!.length });
 });
-router.get("/sync-transactions", (_req, res) => res.json({ transactions: cachedTransactions }));
+
+router.get("/sync-transactions", (req, res) => {
+  const userId = (req as any).user?.uid;
+  if (!userId) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
+  res.json({ transactions: userTransactionCache.get(userId) || [] });
+});
 
 // ---------------------------------------------------------------------------
 // MCP Endpoints (kept for AI Oracle integration)
@@ -258,29 +272,94 @@ router.post("/mcp/message", async (req, res) => {
               },
               required: ["merchant", "amount", "type"]
             }
+          },
+          {
+            name: "create_budget",
+            description: "Create a new budget",
+            inputSchema: {
+              type: "object",
+              properties: {
+                category: { type: "string" },
+                limit: { type: "number" },
+                currency: { type: "string" }
+              },
+              required: ["category", "limit"]
+            }
+          },
+          {
+            name: "update_budget",
+            description: "Update a budget",
+            inputSchema: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+                limit: { type: "number" },
+                spent: { type: "number" }
+              },
+              required: ["id"]
+            }
+          },
+          {
+            name: "get_savings_goals",
+            description: "List all savings goals",
+            inputSchema: { type: "object", properties: {} }
+          },
+          {
+            name: "create_savings_goal",
+            description: "Create a savings goal",
+            inputSchema: {
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                target: { type: "number" },
+                deadline: { type: "string" }
+              },
+              required: ["name", "target"]
+            }
+          },
+          {
+            name: "get_investments",
+            description: "List investments",
+            inputSchema: { type: "object", properties: {} }
+          },
+          {
+            name: "get_loans",
+            description: "List all loans",
+            inputSchema: { type: "object", properties: {} }
           }
-
         ],
       };
     } else if (method === "tools/call") {
       const { name, arguments: args } = params;
       // Proxy MCP tool calls to backend
-      const toolMap: Record<string, { endpoint: string, method: string }> = {
+      const toolMap: Record<string, { endpoint: string; method: string }> = {
         "get_transactions": { endpoint: "/transactions", method: "GET" },
         "get_accounts": { endpoint: "/accounts", method: "GET" },
         "get_budgets": { endpoint: "/budgets", method: "GET" },
-        "create_transaction": { endpoint: "/transactions", method: "POST" }
+        "create_transaction": { endpoint: "/transactions", method: "POST" },
+        "create_budget": { endpoint: "/budgets", method: "POST" },
+        "get_savings_goals": { endpoint: "/savings-goals", method: "GET" },
+        "create_savings_goal": { endpoint: "/savings-goals", method: "POST" },
+        "get_investments": { endpoint: "/investments", method: "GET" },
+        "get_loans": { endpoint: "/loans", method: "GET" },
       };
 
       const tool = toolMap[name];
       if (tool) {
-        const response = await fetch(`${BACKEND_API}${tool.endpoint}`, {
-          method: tool.method,
+        let endpoint = tool.endpoint;
+        let method = tool.method;
+        // Handle update_budget separately (PUT with id in path)
+        if (name === "update_budget" && args?.id) {
+          endpoint = `/budgets/${args.id}`;
+          method = "PUT";
+        }
+        const response = await fetch(`${BACKEND_API}${endpoint}`, {
+          method,
           headers: {
             "Content-Type": "application/json",
             ...(req.headers.authorization ? { Authorization: req.headers.authorization as string } : {}),
           },
-          ...(tool.method === "POST" ? { body: JSON.stringify(args) } : {})
+          ...(method !== "GET" ? { body: JSON.stringify(args) } : {})
         });
 
         const data = await response.json();

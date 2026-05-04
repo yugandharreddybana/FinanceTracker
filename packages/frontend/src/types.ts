@@ -173,3 +173,29 @@ export interface FamilyAccount {
   sharedBudgets: string[]; // Budget IDs
   sharedAccounts: string[]; // BankAccount IDs
 }
+
+export interface CarbonEntry {
+  id: string;
+  date: string;
+  category: 'transport' | 'food' | 'energy' | 'shopping' | 'other';
+  description: string;
+  kgCO2: number;
+  currency?: string;
+}
+
+export interface TaxReport {
+  id: string;
+  year: number;
+  generatedAt: string;
+  summary: string;
+  totalIncome: number;
+  estimatedTax: number;
+  currency: string;
+}
+
+export interface ForecastResult {
+  id: string;
+  generatedAt: string;
+  months: { month: string; projected: number; currency: string }[];
+  summary: string;
+}
