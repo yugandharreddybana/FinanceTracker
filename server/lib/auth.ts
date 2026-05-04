@@ -52,8 +52,8 @@ async function initPg(): Promise<void> {
 
   try {
     // Dynamically import pg to avoid hard-fail if not installed
-    const { default: pg } = await import("pg") as any;
-    const Pool = pg.Pool;
+    const pg = await import("pg");
+    const Pool = pg.default?.Pool ?? (pg as any).Pool;
     const isLocalhost = dbUrl.includes("localhost") || dbUrl.includes("127.0.0.1");
     const pool = new Pool({
       connectionString: dbUrl,
@@ -260,6 +260,10 @@ export async function loginUser(email: string, password: string): Promise<{ user
   if (!user) throw new Error("Invalid email or password");
 
   const hash = hashPassword(password, user.salt);
+  // Guard against length mismatch — timingSafeEqual throws if lengths differ
+  if (hash.length !== user.passwordHash.length) {
+    throw new Error("Invalid email or password");
+  }
   if (!crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(user.passwordHash))) {
     throw new Error("Invalid email or password");
   }
@@ -280,6 +284,10 @@ export async function changeUserPassword(email: string, currentPassword: string,
   if (!user) throw new Error("User not found");
 
   const currentHash = hashPassword(currentPassword, user.salt);
+  // Guard against length mismatch — timingSafeEqual throws if lengths differ
+  if (currentHash.length !== user.passwordHash.length) {
+    throw new Error("Current password is incorrect");
+  }
   if (!crypto.timingSafeEqual(Buffer.from(currentHash), Buffer.from(user.passwordHash))) {
     throw new Error("Current password is incorrect");
   }

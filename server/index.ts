@@ -2,6 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import crypto from "node:crypto";
+import { rateLimit } from "express-rate-limit";
 
 import fs from "fs";
 import path from "path";
@@ -140,8 +141,9 @@ async function startServer() {
   app.use("/api/ai", aiRouter);
   app.use("/api/investment", investmentRouter);
 
-  // E6: Health check with dependency status
-  app.get("/api/health", async (_req, res) => {
+  // E6: Health check with dependency status — rate limited to prevent probing abuse
+  const healthLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
+  app.get("/api/health", healthLimiter, async (_req, res) => {
     const checks: Record<string, 'ok' | 'degraded' | 'down'> = {};
 
     // Check PostgreSQL

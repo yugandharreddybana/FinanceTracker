@@ -95,7 +95,7 @@ async function proxyToBackend(req: Request, res: Response, path: string, method?
 
     // E4: Handle backend unavailability (502/503/504)
     if (response.status === 502 || response.status === 503 || response.status === 504) {
-      console.error(`[proxy] ${effectiveMethod} ${path} upstream returned ${response.status}`);
+      console.error('[proxy]', effectiveMethod, path, 'upstream returned', response.status);
       if (effectiveMethod === 'GET') {
         return res.status(200).json({ data: [], message: 'Service temporarily unavailable. Showing cached data.' });
       }
@@ -105,7 +105,7 @@ async function proxyToBackend(req: Request, res: Response, path: string, method?
     const data = await response.json().catch(() => null);
     res.status(response.status).json(data);
   } catch (err: any) {
-    console.error(`[proxy] ${effectiveMethod} ${path}`, err.message);
+    console.error('[proxy]', effectiveMethod, path, err.message);
     // E4: Network errors treated the same as 502/503
     if (effectiveMethod === 'GET') {
       return res.status(200).json({ data: [], message: 'Service temporarily unavailable. Showing cached data.' });
