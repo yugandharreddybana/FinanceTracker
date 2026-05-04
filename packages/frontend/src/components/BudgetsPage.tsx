@@ -553,6 +553,16 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
         <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-8">
+          {sortedBudgets.length === 0 && (
+            <div className="col-span-full flex flex-col items-center justify-center min-h-[40vh] gap-4">
+              <div className="text-7xl opacity-50">📊</div>
+              <h3 className="text-xl font-bold text-white/70">No budgets yet</h3>
+              <p className="text-white/40">Start managing your spending by adding a budget category</p>
+              <button onClick={() => setIsAdding(true)} className="px-6 py-3 bg-accent rounded-2xl text-white font-bold hover:bg-accent/80 transition-all">
+                Add Your First Budget
+              </button>
+            </div>
+          )}
           {sortedBudgets.map((budget, i) => {
             const effectiveLimit = budget.limit + (budget.rolloverAmount || 0);
             const progress = (budget.spent / effectiveLimit) * 100;

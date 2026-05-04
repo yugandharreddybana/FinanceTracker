@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Transaction, SavingsGoal, RecurringPayment, Loan, Budget, BankAccount, IncomeSource, UserProfile, Investment, AuditLog, FamilyAccount } from '../types';
 import { financeApi, MIDDLEWARE_BASE } from '../services/api';
 
@@ -50,6 +50,8 @@ interface FinanceContextType {
   addCategory: (category: { name: string; color: string; icon: string }) => void;
   deleteCategory: (name: string) => void;
   isLoading: boolean;
+  exchangeRates: Record<string, number>;
+  convertToCurrency: (amount: number, from: string, to: string) => number;
   addTransactions: (input: string) => Promise<void>;
   addManualTransaction: (tx: Transaction) => void;
   analyzeFile: (file: File, type: 'bill' | 'statement') => Promise<void>;
@@ -151,6 +153,41 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   ]);
 
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+
+  // Exchange rates (F1) — fetched from free API, cached 24h in localStorage
+  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const RATES_KEY = 'yugi_finance_exchange_rates';
+    const cached = localStorage.getItem(RATES_KEY);
+    if (cached) {
+      try {
+        const { rates, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < 86400000) {
+          setExchangeRates(rates);
+          return;
+        }
+      } catch { /* fallthrough to fetch */ }
+    }
+    fetch('https://api.exchangerate-api.com/v4/latest/INR')
+      .then(r => r.json())
+      .then(data => {
+        if (data?.rates) {
+          setExchangeRates(data.rates);
+          localStorage.setItem(RATES_KEY, JSON.stringify({ rates: data.rates, timestamp: Date.now() }));
+        }
+      })
+      .catch(() => { /* rates unavailable, use 1:1 */ });
+  }, []);
+
+  const convertToCurrency = useCallback((amount: number, from: string, to: string): number => {
+    if (from === to) return amount;
+    // rates are relative to INR as base
+    const fromRate = exchangeRates[from] ?? 1;
+    const toRate = exchangeRates[to] ?? 1;
+    // Convert: amount_in_from → amount_in_INR → amount_in_to
+    return (amount / fromRate) * toRate;
+  }, [exchangeRates]);
 
   // Offline detection
   useEffect(() => {
@@ -1085,73 +1122,192 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     addLog('DELETE', `Deleted category: ${name}`, 'Category', name);
   }, [addLog]);
 
+  // F3 — Budget rollover: check at mount if a new month started
+  useEffect(() => {
+    if (!isDataLoaded || budgets.length === 0) return;
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${now.getMonth()}`;
+    const lastRollover = localStorage.getItem('yugi_finance_lastRolloverMonth');
+    if (lastRollover === currentMonthKey) return;
+
+    budgets.forEach(budget => {
+      if (budget.rolloverEnabled) {
+        const unused = Math.max(0, budget.limit - (budget.spent || 0));
+        updateBudget(budget.id, { rolloverAmount: (budget.rolloverAmount || 0) + unused, spent: 0 });
+      } else {
+        updateBudget(budget.id, { spent: 0 });
+      }
+    });
+    localStorage.setItem('yugi_finance_lastRolloverMonth', currentMonthKey);
+  }, [isDataLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // F6 — Recurring payment auto-processing: process overdue active payments on load
+  useEffect(() => {
+    if (!isDataLoaded || recurringPayments.length === 0) return;
+    const LAST_CHECK_KEY = 'yugi_finance_last_recurring_check';
+    const lastCheck = localStorage.getItem(LAST_CHECK_KEY);
+    const lastCheckDate = lastCheck ? new Date(lastCheck) : new Date(0);
+    const now = new Date();
+
+    const activeOverdue = recurringPayments.filter(p => {
+      if (p.status !== 'Active') return false;
+      const due = p.dueDate ? new Date(p.dueDate) : null;
+      return due && due <= now && due > lastCheckDate;
+    });
+
+    if (activeOverdue.length > 0) {
+      activeOverdue.forEach(payment => {
+        const tx: Partial<Transaction> = {
+          date: new Date().toISOString().split('T')[0],
+          merchant: payment.name,
+          amount: -Math.abs(payment.amount),
+          category: payment.category || 'Subscription',
+          type: 'expense' as const,
+          status: 'confirmed' as const,
+          aiTag: 'Auto-Processed',
+          account: 'Main Current',
+          confidence: 1.0
+        };
+        addManualTransaction(tx as Transaction);
+
+        // Advance dueDate by frequency
+        if (payment.dueDate) {
+          const due = new Date(payment.dueDate);
+          if (payment.frequency === 'Monthly') due.setMonth(due.getMonth() + 1);
+          else if (payment.frequency === 'Weekly') due.setDate(due.getDate() + 7);
+          else if (payment.frequency === 'Annual') due.setFullYear(due.getFullYear() + 1);
+          updateRecurringPayment(payment.id, { dueDate: due.toISOString().split('T')[0] });
+        }
+      });
+
+      window.dispatchEvent(new CustomEvent('finance-toast', {
+        detail: { message: `${activeOverdue.length} recurring payment${activeOverdue.length > 1 ? 's' : ''} processed automatically.` }
+      }));
+    }
+
+    localStorage.setItem(LAST_CHECK_KEY, now.toISOString());
+  }, [isDataLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // F5 — Savings goal milestone notifications: checked after updateSavingsGoal/transferToSavings
+  const checkSavingsMilestones = useCallback((goals: SavingsGoal[]) => {
+    const MILESTONES = [25, 50, 75, 100];
+    const reachedKey = 'yugi_finance_savings_milestones';
+    let reached: Record<string, number[]> = {};
+    try {
+      reached = JSON.parse(localStorage.getItem(reachedKey) || '{}');
+    } catch { /* ignore */ }
+
+    goals.forEach(goal => {
+      if (!goal.target || goal.target === 0) return;
+      const pct = Math.floor((goal.current / goal.target) * 100);
+      const prev = reached[goal.id] || [];
+      MILESTONES.forEach(m => {
+        if (pct >= m && !prev.includes(m)) {
+          reached[goal.id] = [...prev, m];
+          const emoji = m === 100 ? '🎉' : '🚀';
+          window.dispatchEvent(new CustomEvent('finance-toast', {
+            detail: { message: `${emoji} You're ${m}% of the way to your "${goal.name}" goal!` }
+          }));
+        }
+      });
+    });
+    localStorage.setItem(reachedKey, JSON.stringify(reached));
+  }, []);
+
+  // Watch savings goals for milestone changes
+  useEffect(() => {
+    if (savingsGoals.length > 0) checkSavingsMilestones(savingsGoals);
+  }, [savingsGoals, checkSavingsMilestones]);
+
+  const contextValue = useMemo(() => ({
+    transactions,
+    savingsGoals,
+    recurringPayments,
+    loans,
+    budgets,
+    accounts,
+    incomeSources,
+    investments,
+    auditLogs,
+    familyAccount,
+    userProfile,
+    updateUserProfile,
+    clearDataForNewUser,
+    refreshData,
+    spendingDataByCurrency,
+    isLoading,
+    addTransactions,
+    addManualTransaction,
+    analyzeFile,
+    deleteTransaction,
+    bulkDeleteTransactions,
+    updateTransaction,
+    bulkUpdateTransactions,
+    addSavingsGoal,
+    updateSavingsGoal,
+    deleteSavingsGoal,
+    addRecurringPayment,
+    updateRecurringPayment,
+    deleteRecurringPayment,
+    addLoan,
+    updateLoan,
+    deleteLoan,
+    addBudget,
+    updateBudget,
+    deleteBudget,
+    addAccount,
+    updateAccount,
+    deleteAccount,
+    addIncomeSource,
+    updateIncomeSource,
+    deleteIncomeSource,
+    addInvestment,
+    updateInvestment,
+    deleteInvestment,
+    createFamily,
+    joinFamily,
+    deleteFamily,
+    addFamilyMember,
+    removeFamilyMember,
+    addLog,
+    transferToSavings,
+    categorizeTransactions,
+    confirmCategory,
+    suggestions,
+    isCategorizing,
+    isAddTransactionModalOpen,
+    setIsAddTransactionModalOpen,
+    isOffline,
+    healthMetricsByCurrency,
+    netWorthByCurrency,
+    monthlyTrends,
+    customCategories,
+    addCategory,
+    deleteCategory,
+    exchangeRates,
+    convertToCurrency,
+  }), [
+    transactions, savingsGoals, recurringPayments, loans, budgets, accounts,
+    incomeSources, investments, auditLogs, familyAccount, userProfile,
+    updateUserProfile, clearDataForNewUser, refreshData, spendingDataByCurrency,
+    isLoading, addTransactions, addManualTransaction, analyzeFile,
+    deleteTransaction, bulkDeleteTransactions, updateTransaction, bulkUpdateTransactions,
+    addSavingsGoal, updateSavingsGoal, deleteSavingsGoal,
+    addRecurringPayment, updateRecurringPayment, deleteRecurringPayment,
+    addLoan, updateLoan, deleteLoan,
+    addBudget, updateBudget, deleteBudget,
+    addAccount, updateAccount, deleteAccount,
+    addIncomeSource, updateIncomeSource, deleteIncomeSource,
+    addInvestment, updateInvestment, deleteInvestment,
+    createFamily, joinFamily, deleteFamily, addFamilyMember, removeFamilyMember,
+    addLog, transferToSavings, categorizeTransactions, confirmCategory,
+    suggestions, isCategorizing, isAddTransactionModalOpen, setIsAddTransactionModalOpen,
+    isOffline, healthMetricsByCurrency, netWorthByCurrency, monthlyTrends,
+    customCategories, addCategory, deleteCategory, exchangeRates, convertToCurrency,
+  ]);
+
   return (
-    <FinanceContext.Provider value={{
-      transactions,
-      savingsGoals,
-      recurringPayments,
-      loans,
-      budgets,
-      accounts,
-      incomeSources,
-      investments,
-      auditLogs,
-      familyAccount,
-      userProfile,
-      updateUserProfile,
-      clearDataForNewUser,
-      refreshData,
-      spendingDataByCurrency,
-      isLoading,
-      addTransactions,
-      addManualTransaction,
-      analyzeFile,
-      deleteTransaction,
-      bulkDeleteTransactions,
-      updateTransaction,
-      bulkUpdateTransactions,
-      addSavingsGoal,
-      updateSavingsGoal,
-      deleteSavingsGoal,
-      addRecurringPayment,
-      updateRecurringPayment,
-      deleteRecurringPayment,
-      addLoan,
-      updateLoan,
-      deleteLoan,
-      addBudget,
-      updateBudget,
-      deleteBudget,
-      addAccount,
-      updateAccount,
-      deleteAccount,
-      addIncomeSource,
-      updateIncomeSource,
-      deleteIncomeSource,
-      addInvestment,
-      updateInvestment,
-      deleteInvestment,
-      createFamily,
-      joinFamily,
-      deleteFamily,
-      addFamilyMember,
-      removeFamilyMember,
-      addLog,
-      transferToSavings,
-      categorizeTransactions,
-      confirmCategory,
-      suggestions,
-      isCategorizing,
-      isAddTransactionModalOpen,
-      setIsAddTransactionModalOpen,
-      isOffline,
-      healthMetricsByCurrency,
-      netWorthByCurrency,
-      monthlyTrends,
-      customCategories,
-      addCategory,
-      deleteCategory
-    }}>
+    <FinanceContext.Provider value={contextValue}>
       {children}
     </FinanceContext.Provider>
   );

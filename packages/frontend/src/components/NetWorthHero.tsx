@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { TrendingUp, TrendingDown, ChevronDown } from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
 import { cn } from '../lib/utils';
+import { useCountUp } from '../hooks/useCountUp';
 
 export const NetWorthHero: React.FC = () => {
   const { netWorthByCurrency, savingsGoals, userProfile } = useFinance();
@@ -10,16 +11,14 @@ export const NetWorthHero: React.FC = () => {
   const [selectedCurrency, setSelectedCurrency] = useState(userProfile.preferences.currency || 'INR');
 
   useEffect(() => {
-    // If the currently selected currency has no data, but others do, switch to the first one with data
-    // This handles the "first load" scenario where data arrives after the component mounts
     if (currencies.length > 0 && !currencies.includes(selectedCurrency)) {
       setSelectedCurrency(currencies[0]);
     }
   }, [currencies, selectedCurrency]);
   
   const netWorth = netWorthByCurrency[selectedCurrency] || { total: 0, assets: 0, liabilities: 0, change: 0 };
+  const animatedTotal = useCountUp(netWorth.total, 800);
   
-  // Use the largest savings goal as the net worth target, or fallback to a reasonable multiple
   const topGoal = savingsGoals.length > 0 
     ? savingsGoals.reduce((max, g) => g.target > max.target ? g : max, savingsGoals[0])
     : null;
@@ -27,8 +26,8 @@ export const NetWorthHero: React.FC = () => {
   const goalLabel = topGoal ? topGoal.name : `${(goalAmount).toLocaleString(undefined, { style: 'currency', currency: selectedCurrency, maximumFractionDigits: 0 })} Goal`;
   const goalProgress = goalAmount > 0 ? Math.min(100, (netWorth.total / goalAmount) * 100) : 0;
   
-  const formattedTotal = Math.floor(netWorth.total).toLocaleString(undefined, { style: 'currency', currency: selectedCurrency }).split('.')[0];
-  const decimal = (netWorth.total % 1).toFixed(2).substring(1);
+  const formattedTotal = Math.floor(animatedTotal).toLocaleString(undefined, { style: 'currency', currency: selectedCurrency }).split('.')[0];
+  const decimal = (animatedTotal % 1).toFixed(2).substring(1);
 
   return (
     <div className="glass-card p-10 relative overflow-hidden group border-accent/20">

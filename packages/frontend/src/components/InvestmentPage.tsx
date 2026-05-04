@@ -281,6 +281,20 @@ export const InvestmentPage: React.FC = () => {
               </tr>
             </thead>
             <tbody>
+              {filteredInvestments.length === 0 && (
+                <tr>
+                  <td colSpan={6}>
+                    <div className="flex flex-col items-center justify-center min-h-[30vh] gap-4 p-8">
+                      <div className="text-7xl opacity-50">📈</div>
+                      <h3 className="text-xl font-bold text-white/70">No investments yet</h3>
+                      <p className="text-white/40">Start building your portfolio by adding your first investment</p>
+                      <button onClick={() => setIsAddModalOpen(true)} className="px-6 py-3 bg-accent rounded-2xl text-white font-bold hover:bg-accent/80 transition-all">
+                        Add Investment
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )}
               {filteredInvestments.map((inv) => {
                 const priceInfo = prices[inv.symbol] || { price: inv.currentPrice, change24h: 0 };
                 const currentVal = inv.quantity * priceInfo.price;
