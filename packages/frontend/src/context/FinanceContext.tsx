@@ -128,9 +128,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setFamilyAccount(null);
   }, []);
 
-  // Dispatch a toast error event so App.tsx can surface it in the notification bell
+  // Dispatch a toast error event — E2: shown in Toast component and notification bell
   const dispatchToastError = (error: any) => {
     const message = error?.message || String(error);
+    window.dispatchEvent(new CustomEvent('finance-toast', { detail: { message, type: 'error' } }));
     window.dispatchEvent(new CustomEvent('finance-toast-error', { detail: { message } }));
   };
 
@@ -263,6 +264,33 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           ? { ...p, preferences: { ...p.preferences, currency: loaded[0].currency } }
           : p);
       }
+
+      // C5: Fetch persisted user profile from backend and merge (backend wins for name/role/familyId)
+      setUserProfile(current => {
+        if (current.email && current.email !== 'guest@example.com') {
+          fetch(`${MIDDLEWARE_BASE}/api/finance/user-profiles/by-email/${encodeURIComponent(current.email)}`, {
+            credentials: 'include',
+          })
+            .then(r => r.ok ? r.json() : null)
+            .then(backendProfile => {
+              if (backendProfile && backendProfile.id) {
+                setUserProfile(prev => ({
+                  ...prev,
+                  id: backendProfile.id,
+                  name: backendProfile.name || prev.name,
+                  role: backendProfile.role || prev.role,
+                  familyId: backendProfile.familyId || prev.familyId,
+                  // local preferences win if backend has none
+                  preferences: backendProfile.preferences
+                    ? { ...prev.preferences, ...backendProfile.preferences }
+                    : prev.preferences,
+                }));
+              }
+            })
+            .catch(() => {}); // Silent — profile fetch is best-effort
+        }
+        return current;
+      });
 
     } catch (error: any) {
       // B11: silently handle 401 — user is simply not logged in
@@ -1046,6 +1074,17 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       };
       addLog('UPDATE', 'Updated user profile', 'UserProfile', 'user-1');
+
+      // C5: Persist preferences to backend so they survive page refresh
+      if (newUserProfile.email && newUserProfile.email !== 'guest@example.com' && newUserProfile.id) {
+        fetch(`${MIDDLEWARE_BASE}/api/finance/user-profiles/${newUserProfile.id}`, {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newUserProfile),
+        }).catch(err => console.error('[profile] Failed to persist user profile:', err));
+      }
+
       return newUserProfile;
     });
   }, [addLog]);

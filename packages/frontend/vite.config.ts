@@ -7,6 +7,12 @@ import { VitePWA } from 'vite-plugin-pwa';
 export default defineConfig(({ mode }) => {
   // Load env from project root (two levels up from packages/frontend)
   const env = loadEnv(mode, path.resolve(__dirname, '../..'), '');
+
+  // M7: Warn during production builds if middleware URL is not configured
+  if (mode === 'production' && !env.VITE_MIDDLEWARE_URL) {
+    console.warn('[vite] WARNING: VITE_MIDDLEWARE_URL is not set. API calls will fail in production.');
+  }
+
   return {
     envDir: path.resolve(__dirname, '../..'),
     build: {

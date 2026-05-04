@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import crypto from "crypto";
+import crypto from "node:crypto";
 import fs from "fs";
 import path from "path";
 dotenv.config();
@@ -31,11 +31,104 @@ export interface StoredUser {
 }
 
 // ---------------------------------------------------------------------------
-// In-memory user cache — populated once from disk on module load
+// PostgreSQL dual-mode storage — uses pg if DATABASE_URL is set, JSON fallback otherwise
 // ---------------------------------------------------------------------------
-let userCache: StoredUser[] = [];
 
-// Async write queue — prevents concurrent file writes from corrupting the store
+let pgPool: import("pg").Pool | null = null;
+let pgReady = false;
+
+export async function getPgPool(): Promise<import("pg").Pool | null> {
+  if (pgReady) return pgPool;
+  return null;
+}
+
+async function initPg(): Promise<void> {
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) {
+    console.warn("[auth] DATABASE_URL not set — user data stored in local JSON file (NOT suitable for production)");
+    pgReady = true;
+    return;
+  }
+
+  try {
+    // Dynamically import pg to avoid hard-fail if not installed
+    const { default: pg } = await import("pg") as any;
+    const Pool = pg.Pool;
+    const isLocalhost = dbUrl.includes("localhost") || dbUrl.includes("127.0.0.1");
+    const pool = new Pool({
+      connectionString: dbUrl,
+      ssl: isLocalhost ? false : { rejectUnauthorized: false },
+    });
+
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS users (
+        uid TEXT PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        salt TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )`
+    );
+
+    pgPool = pool;
+    pgReady = true;
+    console.log("[auth] PostgreSQL connected — using persistent user storage");
+  } catch (err: any) {
+    console.warn("[auth] PostgreSQL connection failed — falling back to JSON file storage:", err.message);
+    pgPool = null;
+    pgReady = true;
+  }
+}
+
+// Initialise PostgreSQL on module load
+initPg().catch((err) => {
+  console.error("[auth] Unexpected error during pg init:", err);
+  pgReady = true;
+});
+
+// ---------------------------------------------------------------------------
+// DB query helpers
+// ---------------------------------------------------------------------------
+
+async function dbFindByEmail(email: string): Promise<StoredUser | undefined> {
+  if (!pgPool) return undefined;
+  const result = await pgPool.query(
+    "SELECT uid, email, name, password_hash, salt, created_at FROM users WHERE email = $1",
+    [email]
+  );
+  if (result.rows.length === 0) return undefined;
+  const row = result.rows[0];
+  return { uid: row.uid, email: row.email, name: row.name, passwordHash: row.password_hash, salt: row.salt, createdAt: row.created_at };
+}
+
+async function dbInsertUser(user: StoredUser): Promise<void> {
+  if (!pgPool) return;
+  await pgPool.query(
+    "INSERT INTO users (uid, email, name, password_hash, salt, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+    [user.uid, user.email, user.name, user.passwordHash, user.salt, user.createdAt]
+  );
+}
+
+async function dbUpdatePassword(email: string, hash: string, salt: string): Promise<void> {
+  if (!pgPool) return;
+  await pgPool.query(
+    "UPDATE users SET password_hash=$1, salt=$2 WHERE email=$3",
+    [hash, salt, email]
+  );
+}
+
+async function dbDeleteByEmail(email: string): Promise<boolean> {
+  if (!pgPool) return false;
+  const result = await pgPool.query("DELETE FROM users WHERE email = $1", [email]);
+  return (result.rowCount ?? 0) > 0;
+}
+
+// ---------------------------------------------------------------------------
+// JSON file fallback — in-memory user cache + async write queue
+// ---------------------------------------------------------------------------
+
+let userCache: StoredUser[] = [];
 let isSaving = false;
 const writeQueue: Array<{ data: string; resolve: () => void; reject: (e: Error) => void }> = [];
 
@@ -70,7 +163,6 @@ function loadUsers(): StoredUser[] {
 }
 
 function saveUsers(users: StoredUser[]): Promise<void> {
-  // Update in-memory cache immediately so subsequent reads are consistent
   userCache = [...users];
   const data = JSON.stringify(users, null, 2);
   return new Promise<void>((resolve, reject) => {
@@ -79,7 +171,6 @@ function saveUsers(users: StoredUser[]): Promise<void> {
   });
 }
 
-// Initialise cache from disk on module load (runs once at startup)
 function initCache() {
   ensureDataDir();
   if (fs.existsSync(USERS_FILE)) {
@@ -92,13 +183,17 @@ function initCache() {
 }
 initCache();
 
+// ---------------------------------------------------------------------------
+// Crypto helpers
+// ---------------------------------------------------------------------------
+
 function hashPassword(password: string, salt: string): string {
   return crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
 }
 
 export function createToken(payload: { uid: string; email: string; name: string }): string {
   if (!JWT_SECRET) throw new Error("Internal Server Error: JWT_SECRET is not configured");
-  
+
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
   const body = Buffer.from(
     JSON.stringify({ ...payload, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 86400 })
@@ -122,11 +217,11 @@ export function verifyToken(token: string): { uid: string; email: string; name: 
   }
 }
 
+// ---------------------------------------------------------------------------
+// Exported auth functions — use DB when available, fall back to JSON
+// ---------------------------------------------------------------------------
+
 export async function registerUser(email: string, password: string, name: string): Promise<{ user: { uid: string; email: string; name: string }; token: string }> {
-  const users = loadUsers();
-  if (users.find((u) => u.email === email)) {
-    throw new Error("An account with this email already exists");
-  }
   const salt = crypto.randomBytes(32).toString("hex");
   const uid = crypto.randomUUID();
   const user: StoredUser = {
@@ -137,50 +232,92 @@ export async function registerUser(email: string, password: string, name: string
     salt,
     createdAt: new Date().toISOString(),
   };
-  users.push(user);
-  await saveUsers(users);
+
+  if (pgPool) {
+    const existing = await dbFindByEmail(email);
+    if (existing) throw new Error("An account with this email already exists");
+    await dbInsertUser(user);
+  } else {
+    const users = loadUsers();
+    if (users.find((u) => u.email === email)) throw new Error("An account with this email already exists");
+    users.push(user);
+    await saveUsers(users);
+  }
+
   const token = createToken({ uid, email, name });
   return { user: { uid, email, name }, token };
 }
 
-export function loginUser(email: string, password: string): { user: { uid: string; email: string; name: string }; token: string } {
-  const users = loadUsers();
-  const user = users.find((u) => u.email === email);
-  if (!user) {
-    throw new Error("Invalid email or password");
+export async function loginUser(email: string, password: string): Promise<{ user: { uid: string; email: string; name: string }; token: string }> {
+  let user: StoredUser | undefined;
+
+  if (pgPool) {
+    user = await dbFindByEmail(email);
+  } else {
+    user = loadUsers().find((u) => u.email === email);
   }
+
+  if (!user) throw new Error("Invalid email or password");
+
   const hash = hashPassword(password, user.salt);
-  if (hash !== user.passwordHash) {
+  if (!crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(user.passwordHash))) {
     throw new Error("Invalid email or password");
   }
+
   const token = createToken({ uid: user.uid, email: user.email, name: user.name });
   return { user: { uid: user.uid, email: user.email, name: user.name }, token };
 }
 
 export async function changeUserPassword(email: string, currentPassword: string, newPassword: string): Promise<void> {
-  const users = loadUsers();
-  const idx = users.findIndex((u) => u.email === email);
-  if (idx === -1) throw new Error("User not found");
-  const user = users[idx];
+  let user: StoredUser | undefined;
+
+  if (pgPool) {
+    user = await dbFindByEmail(email);
+  } else {
+    user = loadUsers().find((u) => u.email === email);
+  }
+
+  if (!user) throw new Error("User not found");
+
   const currentHash = hashPassword(currentPassword, user.salt);
   if (!crypto.timingSafeEqual(Buffer.from(currentHash), Buffer.from(user.passwordHash))) {
     throw new Error("Current password is incorrect");
   }
+
   const newSalt = crypto.randomBytes(32).toString("hex");
-  users[idx] = { ...user, salt: newSalt, passwordHash: hashPassword(newPassword, newSalt) };
-  await saveUsers(users);
+  const newHash = hashPassword(newPassword, newSalt);
+
+  if (pgPool) {
+    await dbUpdatePassword(email, newHash, newSalt);
+  } else {
+    const users = loadUsers();
+    const idx = users.findIndex((u) => u.email === email);
+    users[idx] = { ...users[idx], salt: newSalt, passwordHash: newHash };
+    await saveUsers(users);
+  }
 }
 
 export async function resetUserPassword(email: string, newPassword: string): Promise<void> {
-  const users = loadUsers();
-  const idx = users.findIndex((u) => u.email === email);
-  if (idx === -1) throw new Error("User not found");
   const newSalt = crypto.randomBytes(32).toString("hex");
-  users[idx] = { ...users[idx], salt: newSalt, passwordHash: hashPassword(newPassword, newSalt) };
-  await saveUsers(users);
+  const newHash = hashPassword(newPassword, newSalt);
+
+  if (pgPool) {
+    const user = await dbFindByEmail(email);
+    if (!user) throw new Error("User not found");
+    await dbUpdatePassword(email, newHash, newSalt);
+  } else {
+    const users = loadUsers();
+    const idx = users.findIndex((u) => u.email === email);
+    if (idx === -1) throw new Error("User not found");
+    users[idx] = { ...users[idx], salt: newSalt, passwordHash: newHash };
+    await saveUsers(users);
+  }
 }
 
 export async function deleteUserByEmail(email: string): Promise<boolean> {
+  if (pgPool) {
+    return dbDeleteByEmail(email);
+  }
   const users = loadUsers();
   const next = users.filter((u) => u.email !== email);
   if (next.length === users.length) return false;
@@ -188,7 +325,9 @@ export async function deleteUserByEmail(email: string): Promise<boolean> {
   return true;
 }
 
-export function findUserByEmail(email: string): StoredUser | undefined {
-  const users = loadUsers();
-  return users.find((u) => u.email === email);
+export async function findUserByEmail(email: string): Promise<StoredUser | undefined> {
+  if (pgPool) {
+    return dbFindByEmail(email);
+  }
+  return loadUsers().find((u) => u.email === email);
 }

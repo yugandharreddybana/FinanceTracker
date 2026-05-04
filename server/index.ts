@@ -1,6 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
+import crypto from "node:crypto";
 
 import fs from "fs";
 import path from "path";
@@ -20,11 +21,21 @@ import { financeRouter } from "./routes/finance.js";
 import { aiRouter } from "./routes/ai.js";
 import { investmentRouter } from "./routes/investment.js";
 import { authRouter } from "./routes/auth.js";
+import { getPgPool } from "./lib/auth.js";
 
 async function startServer() {
-  if (!process.env.GEMINI_API_KEY) {
-    console.error("FATAL ERROR: GEMINI_API_KEY is not defined in server/.env");
+  // M4: Validate required environment variables before starting
+  const REQUIRED_ENV = ['JWT_SECRET', 'GEMINI_API_KEY'];
+  const missing = REQUIRED_ENV.filter(k => !process.env[k]);
+  if (missing.length > 0) {
+    console.error(`FATAL: Missing required environment variables: ${missing.join(', ')}`);
     process.exit(1);
+  }
+  if (!process.env.DATABASE_URL) {
+    console.warn('[WARN] DATABASE_URL not set — user data stored in local JSON file (NOT suitable for production)');
+  }
+  if (!process.env.JAVA_BACKEND_URL && !process.env.BACKEND_URL) {
+    console.warn('[WARN] JAVA_BACKEND_URL not set — finance data proxies will target http://localhost:8080');
   }
 
   const app = express();
@@ -36,6 +47,7 @@ async function startServer() {
 
   // Ensure PORT is a number for Railway's process environment
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4000;
+  const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8080";
 
   console.log("-------------------------------------------------------------------");
   console.log("DEPLOYMENT DIAGNOSTICS");
@@ -64,10 +76,6 @@ async function startServer() {
     console.warn('[CORS] FRONTEND_URL is not set — only localhost origins are allowed. Set FRONTEND_URL on Railway.');
   }
 
-  if (!process.env.JAVA_BACKEND_URL && !process.env.BACKEND_URL) {
-    console.warn('[WARN] JAVA_BACKEND_URL is not set — auth and finance proxies will default to http://localhost:8080');
-  }
-
   // 1. CORS middleware — only allows exact origin matches; never uses wildcard with credentials
   app.use((req, res, next) => {
     const origin = req.headers.origin;
@@ -77,7 +85,9 @@ async function startServer() {
       res.setHeader('Access-Control-Allow-Origin', matchedOrigin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, X-Request-ID');
+      // C3: Required for Private Network Access (Vercel → Railway)
+      res.setHeader('Access-Control-Allow-Private-Network', 'true');
 
       if (req.method === 'OPTIONS') {
         res.setHeader('Access-Control-Max-Age', '86400');
@@ -90,11 +100,39 @@ async function startServer() {
     next();
   });
 
+  // M6: Security headers
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+    next();
+  });
+
   // Cookie parser — must come before routes so req.cookies is populated
   app.use(cookieParser());
 
   // Body size limit — 2 MB
   app.use(express.json({ limit: '2mb' }));
+
+  // M10: X-Request-ID for distributed tracing
+  app.use((req, _res, next) => {
+    (req as any).requestId = req.headers['x-request-id'] || crypto.randomUUID();
+    _res.setHeader('X-Request-ID', (req as any).requestId);
+    next();
+  });
+
+  // E7: Request logging middleware
+  app.use((req, _res, next) => {
+    const start = Date.now();
+    _res.on('finish', () => {
+      const duration = Date.now() - start;
+      const level = _res.statusCode >= 500 ? 'ERROR' : _res.statusCode >= 400 ? 'WARN' : 'INFO';
+      console.log(`[${level}] ${req.method} ${req.path} ${_res.statusCode} ${duration}ms`);
+    });
+    next();
+  });
 
   // 2. Routes
   app.use("/api/auth", authRouter);
@@ -102,8 +140,33 @@ async function startServer() {
   app.use("/api/ai", aiRouter);
   app.use("/api/investment", investmentRouter);
 
-  app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok", port: PORT, trustProxy: true });
+  // E6: Health check with dependency status
+  app.get("/api/health", async (_req, res) => {
+    const checks: Record<string, 'ok' | 'degraded' | 'down'> = {};
+
+    // Check PostgreSQL
+    try {
+      const pool = await getPgPool();
+      if (pool) {
+        await pool.query('SELECT 1');
+        checks.database = 'ok';
+      } else {
+        checks.database = 'degraded'; // using file fallback
+      }
+    } catch {
+      checks.database = 'down';
+    }
+
+    // Check Java backend
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/health`, { signal: AbortSignal.timeout(3000) });
+      checks.javaBackend = r.ok ? 'ok' : 'degraded';
+    } catch {
+      checks.javaBackend = 'down';
+    }
+
+    const overall = Object.values(checks).every(v => v === 'ok') ? 'ok' : 'degraded';
+    res.json({ status: overall, checks, port: PORT, uptime: process.uptime(), timestamp: new Date().toISOString() });
   });
 
   // 3. Last-Resort Error Handler
@@ -120,10 +183,29 @@ async function startServer() {
     res.status(500).json({ error: 'Server Error', message: err.message });
   });
 
-  // Bind to 0.0.0.0 to ensure Railway can see the service
-  app.listen(PORT, "0.0.0.0", () => {
+  // M3: Graceful shutdown
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`>>> SERVER LIVE ON PORT ${PORT} <<<`);
   });
+
+  async function shutdown(signal: string) {
+    console.log(`[shutdown] Received ${signal}, closing server gracefully...`);
+    server.close(async () => {
+      try {
+        const pool = await getPgPool();
+        if (pool) await pool.end();
+      } catch {}
+      console.log('[shutdown] Server closed.');
+      process.exit(0);
+    });
+    setTimeout(() => {
+      console.error('[shutdown] Forced exit after timeout');
+      process.exit(1);
+    }, 10000);
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 // Global Process Shield

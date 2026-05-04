@@ -26,6 +26,7 @@ import { TaxEnginePage } from './components/TaxEnginePage';
 import { ReportBuilderPage } from './components/ReportBuilderPage';
 import { AuditLogPage } from './components/AuditLogPage';
 import { FamilyPage } from './components/FamilyPage';
+import { Toast } from './components/Toast';
 import { FinanceProvider, useFinance } from './context/FinanceContext';
 import { AnimatePresence, motion } from 'motion/react';
 import { cn } from './lib/utils';
@@ -41,6 +42,8 @@ export default function App() {
     <Router>
       <FinanceProvider>
         <MainApp />
+        {/* E2: Global toast notification container — outside layout so always visible */}
+        <Toast />
       </FinanceProvider>
     </Router>
   );
@@ -63,8 +66,8 @@ function MainApp() {
 
   // S1/S2: Auth state is now driven by the httpOnly cookie via /me check — no localStorage
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  // Prevent redirect-to-login flash while the /me check is in flight
-  const [authChecking, setAuthChecking] = useState(true);
+  // C4: Prevent redirect-to-login flash while the /me check is in flight
+  const [authChecked, setAuthChecked] = useState(false);
 
   // Check session via cookie on every app load
   useEffect(() => {
@@ -76,7 +79,7 @@ function MainApp() {
         }
       })
       .catch(() => {})
-      .finally(() => setAuthChecking(false));
+      .finally(() => setAuthChecked(true));
   }, []);
   const [showDemo, setShowDemo] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -189,14 +192,25 @@ function MainApp() {
     navigate('/');
   }, [clearDataForNewUser, navigate]);
 
-  // Inactivity auto-logout (1 hour) — B8: show notification 2 sec before logout
+  // Inactivity auto-logout (1 hour) — C2: try token refresh before logging out
   useEffect(() => {
     if (!isLoggedIn) return;
 
     let timeoutId: NodeJS.Timeout;
     const resetTimer = () => {
       if (timeoutId) clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
+      timeoutId = setTimeout(async () => {
+        // C2: Try to refresh the token before logging out
+        try {
+          const refreshed = await authApi.refreshToken();
+          if (refreshed?.user) {
+            // Refresh succeeded — reset the inactivity timer
+            resetTimer();
+            return;
+          }
+        } catch {
+          // Refresh failed — proceed to logout
+        }
         // B8: Show the notification first, then log out after a short delay
         setNotifications(prev => [...prev, {
           id: crypto.randomUUID(),
@@ -275,10 +289,15 @@ function MainApp() {
 
   return (
     <div className="min-h-screen bg-background text-white selection:bg-accent/30">
+      {/* C4: Show loading spinner while auth check is in flight */}
+      {!authChecked ? (
+        <div className="min-h-screen bg-dark flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>
+        </div>
+      ) : (
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={
-          authChecking ? null :
           !isLoggedIn ? (
             <LandingPage
               key="landing"
@@ -289,7 +308,6 @@ function MainApp() {
           ) : <Navigate to="/dashboard" replace />
         } />
         <Route path="/login" element={
-          authChecking ? null :
           !isLoggedIn ? (
             <LoginPage
               key="login"
@@ -301,7 +319,6 @@ function MainApp() {
           ) : <Navigate to="/dashboard" replace />
         } />
         <Route path="/signup" element={
-          authChecking ? null :
           !isLoggedIn ? (
             <SignupPage
               key="signup"
@@ -312,7 +329,6 @@ function MainApp() {
           ) : <Navigate to="/dashboard" replace />
         } />
         <Route path="/forgot-password" element={
-          authChecking ? null :
           !isLoggedIn ? (
             <ForgotPasswordPage
               key="forgot-password"
@@ -324,7 +340,6 @@ function MainApp() {
 
         {/* Protected App Routes */}
         <Route path="/dashboard/*" element={
-          authChecking ? null :
           isLoggedIn ? (
             <div key="app-main" className="min-h-screen">
               <Sidebar activeTab={activeTab} setActiveTab={handleNavigate} onLogout={handleLogout} />
@@ -436,6 +451,7 @@ function MainApp() {
           ) : <Navigate to="/login" replace />
         } />
       </Routes>
+      )}
 
       <AnimatePresence>
         {showDemo && (

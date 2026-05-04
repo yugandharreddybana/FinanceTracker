@@ -1,6 +1,7 @@
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { rateLimit } from "express-rate-limit";
 import { authMiddleware } from "../routes/auth.js";
+import crypto from "node:crypto";
 
 const router = Router();
 
@@ -17,6 +18,16 @@ const financeLimiter = rateLimit({
 });
 router.use(financeLimiter);
 
+// E5: Validate request body for all write operations
+function validateBody(req: Request, res: Response, next: NextFunction) {
+  if (['POST', 'PUT', 'PATCH'].includes(req.method) && (!req.body || typeof req.body !== 'object' || Array.isArray(req.body))) {
+    res.status(400).json({ error: 'Request body must be a JSON object' });
+    return;
+  }
+  next();
+}
+router.use(validateBody);
+
 // Spring Boot backend URL — configured via environment variable
 const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8080";
 const BACKEND_API = `${BACKEND_URL}/api/finance`;
@@ -32,6 +43,8 @@ async function proxyToBackend(req: Request, res: Response, path: string, method?
     return;
   }
 
+  const effectiveMethod = method || req.method;
+
   try {
     const url = `${BACKEND_API}${path}`;
 
@@ -44,17 +57,22 @@ async function proxyToBackend(req: Request, res: Response, path: string, method?
       req.headers.authorization ||
       ((req as any).cookies?.auth_token ? `Bearer ${(req as any).cookies.auth_token}` : undefined);
 
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...(authToken ? { Authorization: authToken } : {}),
+      ...(userId ? { "X-User-Id": userId } : {}),
+    };
+
+    // M10: Forward request ID for distributed tracing
+    headers['X-Request-ID'] = (req as any).requestId || crypto.randomUUID();
+
     const options: RequestInit = {
-      method: method || req.method,
-      headers: {
-        "Content-Type": "application/json",
-        ...(authToken ? { Authorization: authToken } : {}),
-        ...(userId ? { "X-User-Id": userId } : {}),
-      },
+      method: effectiveMethod,
+      headers,
     };
 
     // Forward request body for POST/PUT/PATCH
-    if (["POST", "PUT", "PATCH"].includes(options.method!)) {
+    if (["POST", "PUT", "PATCH"].includes(effectiveMethod)) {
       let body = req.body;
       // Inject userId into body if missing and we have it from token
       if (userId && typeof body === 'object' && body !== null) {
@@ -65,16 +83,34 @@ async function proxyToBackend(req: Request, res: Response, path: string, method?
 
     const response = await fetch(url, options);
 
+    // M5: Add Cache-Control for successful GET responses
+    if (effectiveMethod === 'GET' && response.ok) {
+      res.setHeader('Cache-Control', 'private, max-age=30');
+    }
+
     // Forward status code
     if (response.status === 204) {
       return res.status(204).send();
     }
 
+    // E4: Handle backend unavailability (502/503/504)
+    if (response.status === 502 || response.status === 503 || response.status === 504) {
+      console.error(`[proxy] ${effectiveMethod} ${path} upstream returned ${response.status}`);
+      if (effectiveMethod === 'GET') {
+        return res.status(200).json({ data: [], message: 'Service temporarily unavailable. Showing cached data.' });
+      }
+      return res.status(503).json({ error: 'Unable to save changes. Please try again.' });
+    }
+
     const data = await response.json().catch(() => null);
     res.status(response.status).json(data);
   } catch (err: any) {
-    console.error(`Proxy error [${req.method} ${path}]:`, err.message);
-    res.status(502).json({ error: "Backend unavailable", details: err.message });
+    console.error(`[proxy] ${effectiveMethod} ${path}`, err.message);
+    // E4: Network errors treated the same as 502/503
+    if (effectiveMethod === 'GET') {
+      return res.status(200).json({ data: [], message: 'Service temporarily unavailable. Showing cached data.' });
+    }
+    return res.status(503).json({ error: 'Unable to save changes. Please try again.' });
   }
 }
 
@@ -184,15 +220,20 @@ router.delete("/user-profiles/by-email/:email", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Sync transactions cache (used by MCP fallback)
+// Sync transactions cache (used by MCP fallback) — M9: per-user cache
 // ---------------------------------------------------------------------------
 
-let cachedTransactions: any[] = [];
+const userTransactionCache = new Map<string, any[]>();
+
 router.post("/sync-transactions", (req, res) => {
-  cachedTransactions = Array.isArray(req.body?.transactions) ? req.body.transactions : [];
-  res.json({ ok: true, count: cachedTransactions.length });
+  const userId = (req as any).user?.uid || 'anonymous';
+  userTransactionCache.set(userId, Array.isArray(req.body?.transactions) ? req.body.transactions : []);
+  res.json({ ok: true, count: userTransactionCache.get(userId)!.length });
 });
-router.get("/sync-transactions", (_req, res) => res.json({ transactions: cachedTransactions }));
+router.get("/sync-transactions", (req, res) => {
+  const userId = (req as any).user?.uid || 'anonymous';
+  res.json({ transactions: userTransactionCache.get(userId) || [] });
+});
 
 // ---------------------------------------------------------------------------
 // MCP Endpoints (kept for AI Oracle integration)
@@ -283,7 +324,12 @@ router.post("/mcp/message", async (req, res) => {
           ...(tool.method === "POST" ? { body: JSON.stringify(args) } : {})
         });
 
-        const data = await response.json();
+        let data = await response.json();
+        // M9: For get_transactions, merge with per-user cache as fallback
+        if (name === "get_transactions" && (!Array.isArray(data) || data.length === 0)) {
+          const userId = (req as any).user?.uid || 'anonymous';
+          data = userTransactionCache.get(userId) || [];
+        }
         result = { content: [{ type: "text", text: JSON.stringify(data) }] };
       } else {
         error = { code: -32601, message: "Tool not found" };

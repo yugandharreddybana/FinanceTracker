@@ -12,8 +12,11 @@ const getMiddlewareBase = () => {
     }
     return url;
   }
-  if (import.meta.env.DEV) return 'http://localhost:4000';
-  return window.location.origin;
+  // M7: Warn loudly in production if middleware URL is not configured
+  if (!import.meta.env.DEV) {
+    console.error('[api] VITE_MIDDLEWARE_URL is not set! All API calls will fail. Set this in Vercel environment variables.');
+  }
+  return import.meta.env.DEV ? 'http://localhost:4000' : '';
 };
 
 const MIDDLEWARE_BASE = getMiddlewareBase();
@@ -23,29 +26,72 @@ export { MIDDLEWARE_BASE };
 
 // ---------------------------------------------------------------------------
 // Generic fetch wrapper — always sends cookies for cookie-based auth
+// E3: Retry logic for network errors and 5xx responses
 // ---------------------------------------------------------------------------
 
-async function apiFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(url, {
-    ...options,
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-  });
-  if (!res.ok) {
-    let errorMessage = `Request failed (${res.status})`;
-    try {
-      const data = await res.json();
-      errorMessage = data.error || data.message || errorMessage;
-    } catch {
-      // response body wasn't JSON
+async function apiFetch<T>(url: string, options: RequestInit = {}, retries = 2, retryDelay = 1000): Promise<T> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      console.warn('[apiFetch] Retry attempt', attempt, 'for', url);
+      await new Promise(resolve => setTimeout(resolve, retryDelay * attempt));
     }
-    throw new Error(errorMessage);
+
+    try {
+      const res = await fetch(url, {
+        ...options,
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(options.headers || {}),
+        },
+      });
+
+      // Do not retry on 4xx (client errors)
+      if (res.status >= 400 && res.status < 500) {
+        let errorMessage = `Request failed (${res.status})`;
+        try {
+          const data = await res.json();
+          errorMessage = data.error || data.message || errorMessage;
+        } catch {
+          // response body wasn't JSON
+        }
+        throw new Error(errorMessage);
+      }
+
+      // Retry on 5xx
+      if (res.status >= 500) {
+        lastError = new Error(`Request failed (${res.status})`);
+        if (attempt < retries) continue;
+        throw lastError;
+      }
+
+      if (!res.ok) {
+        let errorMessage = `Request failed (${res.status})`;
+        try {
+          const data = await res.json();
+          errorMessage = data.error || data.message || errorMessage;
+        } catch {
+          // response body wasn't JSON
+        }
+        throw new Error(errorMessage);
+      }
+
+      if (res.status === 204) return undefined as unknown as T;
+      return res.json();
+    } catch (err: any) {
+      // Network error — retry
+      if (err instanceof TypeError && attempt < retries) {
+        lastError = err;
+        continue;
+      }
+      // Non-retryable or exhausted retries
+      throw err;
+    }
   }
-  if (res.status === 204) return undefined as unknown as T;
-  return res.json();
+
+  throw lastError || new Error('Request failed after retries');
 }
 
 // ---------------------------------------------------------------------------
@@ -340,5 +386,14 @@ export const authApi = {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || 'Password reset failed');
     }
+  },
+
+  refreshToken: async (): Promise<{ user: { uid: string; email: string; name: string } } | null> => {
+    const res = await fetch(`${MIDDLEWARE_BASE}/api/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    if (!res.ok) return null;
+    return res.json();
   },
 };

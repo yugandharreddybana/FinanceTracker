@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { rateLimit } from "express-rate-limit";
-import crypto from "crypto";
-import { registerUser, loginUser, changeUserPassword, deleteUserByEmail, verifyToken, resetUserPassword } from "../lib/auth.js";
+import crypto from "node:crypto";
+import { registerUser, loginUser, changeUserPassword, deleteUserByEmail, verifyToken, resetUserPassword, createToken } from "../lib/auth.js";
 
 const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8080";
 
@@ -32,11 +32,19 @@ const sensitiveLimiter = rateLimit({
 });
 
 // Cookie options — shared across set/clear calls
+// sameSite=none + secure=true required for cross-origin Vercel→Railway requests
 const cookieOptions = {
   httpOnly: true,
-  sameSite: "strict" as const,
-  secure: process.env.NODE_ENV === "production",
+  sameSite: 'none' as const,
+  secure: true,
   maxAge: 86400000, // 24 hours
+  ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
+};
+
+const clearCookieOptions = {
+  httpOnly: true,
+  sameSite: 'none' as const,
+  secure: true,
   ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
 };
 
@@ -112,7 +120,7 @@ router.post("/register", authLimiter, async (req: Request, res: Response) => {
   }
 });
 
-router.post("/login", authLimiter, (req: Request, res: Response) => {
+router.post("/login", authLimiter, async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
 
@@ -121,7 +129,7 @@ router.post("/login", authLimiter, (req: Request, res: Response) => {
       return;
     }
 
-    const result = loginUser(email, password);
+    const result = await loginUser(email, password);
     // S1: Set JWT as httpOnly cookie — do not expose token in response body
     res.cookie("auth_token", result.token, cookieOptions);
     res.json({ user: result.user });
@@ -136,12 +144,7 @@ router.post("/login", authLimiter, (req: Request, res: Response) => {
 
 // S1/S2: Logout — clear auth cookie
 router.post("/logout", sensitiveLimiter, (_req: Request, res: Response) => {
-  res.clearCookie("auth_token", {
-    httpOnly: true,
-    sameSite: "strict" as const,
-    secure: process.env.NODE_ENV === "production",
-    ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
-  });
+  res.clearCookie("auth_token", clearCookieOptions);
   res.json({ ok: true });
 });
 
@@ -158,6 +161,44 @@ router.get("/me", sensitiveLimiter, (req: Request, res: Response) => {
     return;
   }
   res.json({ user: { uid: payload.uid, email: payload.email, name: payload.name } });
+});
+
+// C2: Token refresh — allows tokens up to 2 hours past expiry (grace window)
+router.post("/refresh", sensitiveLimiter, (req: Request, res: Response) => {
+  const token = (req as any).cookies?.auth_token || req.headers.authorization?.slice(7);
+  if (!token) {
+    res.status(401).json({ error: "No token provided" });
+    return;
+  }
+
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) {
+      res.status(401).json({ error: "Invalid token" });
+      return;
+    }
+    const [, body] = parts;
+    const payload = JSON.parse(Buffer.from(body, "base64url").toString());
+    const now = Math.floor(Date.now() / 1000);
+
+    // Allow refresh up to 2 hours (7200 seconds) past expiry
+    if (!payload.exp || payload.exp + 7200 <= now) {
+      res.status(401).json({ error: "Token too old to refresh" });
+      return;
+    }
+
+    // Issue a new 24h token
+    const newToken = createToken({
+      uid: payload.uid,
+      email: payload.email,
+      name: payload.name,
+    });
+
+    res.cookie("auth_token", newToken, cookieOptions);
+    res.json({ user: { uid: payload.uid, email: payload.email, name: payload.name } });
+  } catch {
+    res.status(401).json({ error: "Invalid token" });
+  }
 });
 
 // B10: Forgot password — generate OTP, store with expiry, log to console
@@ -262,12 +303,7 @@ router.delete("/account", sensitiveLimiter, async (req: Request, res: Response) 
   }
 
   // Clear auth cookie on account deletion
-  res.clearCookie("auth_token", {
-    httpOnly: true,
-    sameSite: "strict" as const,
-    secure: process.env.NODE_ENV === "production",
-    ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
-  });
+  res.clearCookie("auth_token", clearCookieOptions);
   res.json({ ok: true });
 });
 
