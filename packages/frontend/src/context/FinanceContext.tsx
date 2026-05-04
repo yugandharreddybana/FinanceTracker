@@ -223,6 +223,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const accountsRef = useRef(accounts);
   const incomeSourcesRef = useRef(incomeSources);
   const investmentsRef = useRef(investments);
+  // C5: ref to read userProfile.email inside refreshData without creating stale closure
+  const userProfileEmailRef = useRef(userProfile.email);
 
   useEffect(() => { transactionsRef.current = transactions; }, [transactions]);
   useEffect(() => { savingsGoalsRef.current = savingsGoals; }, [savingsGoals]);
@@ -232,6 +234,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => { accountsRef.current = accounts; }, [accounts]);
   useEffect(() => { incomeSourcesRef.current = incomeSources; }, [incomeSources]);
   useEffect(() => { investmentsRef.current = investments; }, [investments]);
+  useEffect(() => { userProfileEmailRef.current = userProfile.email; }, [userProfile.email]);
 
   const refreshData = useCallback(async () => {
     setIsLoading(true);
@@ -266,31 +269,30 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
 
       // C5: Fetch persisted user profile from backend and merge (backend wins for name/role/familyId)
-      setUserProfile(current => {
-        if (current.email && current.email !== 'guest@example.com') {
-          fetch(`${MIDDLEWARE_BASE}/api/finance/user-profiles/by-email/${encodeURIComponent(current.email)}`, {
-            credentials: 'include',
+      // We read email via a dedicated ref to avoid stale closure without adding it to useCallback deps
+      const emailForProfile = userProfileEmailRef.current;
+      if (emailForProfile && emailForProfile !== 'guest@example.com') {
+        fetch(`${MIDDLEWARE_BASE}/api/finance/user-profiles/by-email/${encodeURIComponent(emailForProfile)}`, {
+          credentials: 'include',
+        })
+          .then(r => r.ok ? r.json() : null)
+          .then(backendProfile => {
+            if (backendProfile && backendProfile.id) {
+              setUserProfile(prev => ({
+                ...prev,
+                id: backendProfile.id,
+                name: backendProfile.name || prev.name,
+                role: backendProfile.role || prev.role,
+                familyId: backendProfile.familyId || prev.familyId,
+                // local preferences win if backend has none
+                preferences: backendProfile.preferences
+                  ? { ...prev.preferences, ...backendProfile.preferences }
+                  : prev.preferences,
+              }));
+            }
           })
-            .then(r => r.ok ? r.json() : null)
-            .then(backendProfile => {
-              if (backendProfile && backendProfile.id) {
-                setUserProfile(prev => ({
-                  ...prev,
-                  id: backendProfile.id,
-                  name: backendProfile.name || prev.name,
-                  role: backendProfile.role || prev.role,
-                  familyId: backendProfile.familyId || prev.familyId,
-                  // local preferences win if backend has none
-                  preferences: backendProfile.preferences
-                    ? { ...prev.preferences, ...backendProfile.preferences }
-                    : prev.preferences,
-                }));
-              }
-            })
-            .catch(() => {}); // Silent — profile fetch is best-effort
-        }
-        return current;
-      });
+          .catch(() => {}); // Silent — profile fetch is best-effort
+      }
 
     } catch (error: any) {
       // B11: silently handle 401 — user is simply not logged in

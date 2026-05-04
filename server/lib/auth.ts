@@ -54,7 +54,14 @@ async function initPg(): Promise<void> {
     // Dynamically import pg to avoid hard-fail if not installed
     const pg = await import("pg");
     const Pool = pg.default?.Pool ?? (pg as any).Pool;
-    const isLocalhost = dbUrl.includes("localhost") || dbUrl.includes("127.0.0.1");
+    // Use URL parsing to reliably detect localhost (avoid subdomain bypass like 'localhost.attacker.com')
+    let isLocalhost = false;
+    try {
+      const parsed = new URL(dbUrl);
+      isLocalhost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '::1';
+    } catch {
+      isLocalhost = false;
+    }
     const pool = new Pool({
       connectionString: dbUrl,
       ssl: isLocalhost ? false : { rejectUnauthorized: false },
