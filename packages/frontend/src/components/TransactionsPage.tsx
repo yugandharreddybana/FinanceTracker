@@ -235,6 +235,26 @@ export const TransactionsPage: React.FC = () => {
   );
 
   // CSV Import (F2)
+  const parseCsvLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+        else { inQuotes = !inQuotes; }
+      } else if (ch === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  };
+
   const handleCsvFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -245,7 +265,7 @@ export const TransactionsPage: React.FC = () => {
       const parsed: Partial<Transaction>[] = [];
       // Skip header row
       for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+        const cols = parseCsvLine(lines[i]);
         if (cols.length < 5) continue;
         const [date, merchant, amountStr, category, type] = cols;
         const amount = parseFloat(amountStr);
@@ -509,7 +529,7 @@ export const TransactionsPage: React.FC = () => {
                 <th className="px-8 py-5 w-10">
                   <button 
                     onClick={toggleSelectAll}
-                    aria-label="Select all transactions"
+                    aria-label={selectedIds.length === sortedTransactions.length && sortedTransactions.length > 0 ? "Deselect all transactions" : "Select all transactions"}
                     className={cn(
                       "w-5 h-5 rounded border flex items-center justify-center transition-all",
                       selectedIds.length === sortedTransactions.length && sortedTransactions.length > 0

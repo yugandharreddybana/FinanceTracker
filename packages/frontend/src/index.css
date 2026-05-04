@@ -1,29 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
-/* Theme CSS variables (P7) */
-:root[data-theme='dark'] {
-  --bg-primary: #0f1117;
-  --bg-card: rgba(255,255,255,0.05);
-  --text-primary: #ffffff;
-  --text-secondary: rgba(255,255,255,0.6);
-  --accent: #6366f1;
-}
-:root[data-theme='light'] {
-  --bg-primary: #f8fafc;
-  --bg-card: #ffffff;
-  --text-primary: #0f172a;
-  --text-secondary: #64748b;
-  --accent: #6366f1;
-}
-:root[data-theme='glass'] {
-  --bg-primary: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  --bg-card: rgba(255,255,255,0.08);
-  --text-primary: #ffffff;
-  --text-secondary: rgba(255,255,255,0.7);
-  --accent: #a78bfa;
-}
-
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Outfit", sans-serif;
