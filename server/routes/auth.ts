@@ -1,13 +1,65 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { rateLimit } from "express-rate-limit";
 import crypto from "crypto";
-import fs from "fs";
-import path from "path";
 import { registerUser, loginUser, changeUserPassword, deleteUserByEmail, verifyToken, resetUserPassword } from "../lib/auth.js";
+import { createClient } from "ioredis";
 
 const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8080";
 
-// S9: Tightened to 10 requests per 15 minutes (was 100)
+// FLAW #8 FIX: OTP store moved to Redis for durability + multi-instance safety
+// Falls back to in-memory Map only in dev when REDIS_URL is not set.
+let redis: ReturnType<typeof createClient> | null = null;
+try {
+  if (process.env.REDIS_URL) {
+    redis = new createClient(process.env.REDIS_URL);
+    redis.on("error", (err: Error) => console.error("[Redis] auth error:", err.message));
+  }
+} catch (e) {
+  console.warn("[Redis] not available — OTP falls back to in-memory (dev only)");
+}
+
+// Fallback in-memory OTP store (development only — NOT suitable for production)
+const memOtpStore = new Map<string, { otp: string; expires: number }>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [email, record] of memOtpStore.entries()) {
+    if (now > record.expires) memOtpStore.delete(email);
+  }
+}, 5 * 60 * 1000);
+
+async function storeOtp(email: string, otp: string): Promise<void> {
+  if (redis) {
+    // Hash OTP before storing — prevents plaintext exposure in Redis dumps/logs
+    const hashed = crypto.createHash('sha256').update(otp).digest('hex');
+    await redis.setex(`otp:${email}`, 900, hashed); // 15-minute TTL
+  } else {
+    memOtpStore.set(email, { otp, expires: Date.now() + 15 * 60 * 1000 });
+  }
+}
+
+async function validateOtp(email: string, otp: string): Promise<boolean> {
+  if (redis) {
+    const stored = await redis.get(`otp:${email}`);
+    if (!stored) return false;
+    const incoming = crypto.createHash('sha256').update(otp).digest('hex');
+    // Constant-time compare on hex strings (same byte length, safe)
+    return crypto.timingSafeEqual(Buffer.from(stored, 'utf8'), Buffer.from(incoming, 'utf8'));
+  } else {
+    const record = memOtpStore.get(email);
+    if (!record || Date.now() > record.expires) return false;
+    return Buffer.byteLength(record.otp) === Buffer.byteLength(otp) &&
+      crypto.timingSafeEqual(Buffer.from(record.otp), Buffer.from(otp));
+  }
+}
+
+async function deleteOtp(email: string): Promise<void> {
+  if (redis) {
+    await redis.del(`otp:${email}`);
+  } else {
+    memOtpStore.delete(email);
+  }
+}
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -24,7 +76,6 @@ const forgotPasswordLimiter = rateLimit({
   message: { error: "Too many requests, please try again later" },
 });
 
-// General limiter for sensitive authenticated endpoints
 const sensitiveLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 200,
@@ -33,76 +84,53 @@ const sensitiveLimiter = rateLimit({
   message: { error: "Too many requests, please try again later" },
 });
 
-// Cookie options — shared across set/clear calls
 const cookieOptions = {
   httpOnly: true,
   sameSite: "strict" as const,
   secure: process.env.NODE_ENV === "production",
-  maxAge: 86400000, // 24 hours
+  maxAge: 86400000,
   ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
 };
 
-// S1/S2: authMiddleware now accepts both Bearer token AND httpOnly cookie
 export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
   let token: string | undefined;
-
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith("Bearer ")) {
     token = authHeader.slice(7);
   } else if ((req as any).cookies?.auth_token) {
     token = (req as any).cookies.auth_token;
   }
-
   if (!token) {
     res.status(401).json({ error: "Unauthorized: missing token" });
     return;
   }
-
   const payload = verifyToken(token);
-
   if (!payload) {
     res.status(401).json({ error: "Unauthorized: invalid or expired token" });
     return;
   }
-
   (req as any).user = payload;
   next();
 };
-
-// B10: OTP store for password reset — module-level Map with expiry
-const passwordResetOTPs = new Map<string, { otp: string; expires: number }>();
-
-// Periodically remove expired OTPs to prevent unbounded growth
-setInterval(() => {
-  const now = Date.now();
-  for (const [email, record] of passwordResetOTPs.entries()) {
-    if (now > record.expires) passwordResetOTPs.delete(email);
-  }
-}, 5 * 60 * 1000); // sweep every 5 minutes
 
 const router = Router();
 
 router.post("/register", authLimiter, async (req: Request, res: Response) => {
   try {
     const { email, password, name } = req.body;
-
     if (!email || !password || !name) {
       res.status(400).json({ error: "Name, email, and password are required" });
       return;
     }
-
     if (!/\S+@\S+\.\S+/.test(email)) {
       res.status(400).json({ error: "Invalid email address" });
       return;
     }
-
     if (password.length < 8) {
       res.status(400).json({ error: "Password must be at least 8 characters" });
       return;
     }
-
     const result = await registerUser(email, password, name);
-    // S1: Set JWT as httpOnly cookie — do not expose token in response body
     res.cookie("auth_token", result.token, cookieOptions);
     res.json({ user: result.user });
   } catch (err: any) {
@@ -117,14 +145,11 @@ router.post("/register", authLimiter, async (req: Request, res: Response) => {
 router.post("/login", authLimiter, (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
-
     if (!email || !password) {
       res.status(400).json({ error: "Email and password are required" });
       return;
     }
-
     const result = loginUser(email, password);
-    // S1: Set JWT as httpOnly cookie — do not expose token in response body
     res.cookie("auth_token", result.token, cookieOptions);
     res.json({ user: result.user });
   } catch (err: any) {
@@ -136,7 +161,6 @@ router.post("/login", authLimiter, (req: Request, res: Response) => {
   }
 });
 
-// S1/S2: Logout — clear auth cookie
 router.post("/logout", sensitiveLimiter, (_req: Request, res: Response) => {
   res.clearCookie("auth_token", {
     httpOnly: true,
@@ -147,7 +171,6 @@ router.post("/logout", sensitiveLimiter, (_req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
-// S1/S2: /me — returns current user from cookie
 router.get("/me", sensitiveLimiter, (req: Request, res: Response) => {
   const token = (req as any).cookies?.auth_token || req.headers.authorization?.slice(7);
   if (!token) {
@@ -162,55 +185,41 @@ router.get("/me", sensitiveLimiter, (req: Request, res: Response) => {
   res.json({ user: { uid: payload.uid, email: payload.email, name: payload.name } });
 });
 
-// B10: Forgot password — generate OTP, store with expiry, log to console
-router.post("/forgot-password", forgotPasswordLimiter, (req: Request, res: Response) => {
+// FLAW #8 FIX: OTP generated, hashed, and stored in Redis — NOT logged to console
+router.post("/forgot-password", forgotPasswordLimiter, async (req: Request, res: Response) => {
   const { email } = req.body;
-
   if (!email) {
     res.status(400).json({ error: "Email is required" });
     return;
   }
-
   const otp = String(crypto.randomInt(100000, 1000000));
-  const expires = Date.now() + 15 * 60 * 1000; // 15 minutes
-  passwordResetOTPs.set(email, { otp, expires });
-
-  // Log OTP — replace with email provider when available
-  console.log(`[PASSWORD RESET OTP for ${email}]: ${otp}`);
-
-  // Always return success to avoid leaking which emails exist
+  await storeOtp(email, otp);
+  // TODO: Replace with email provider (SendGrid / Mailgun / AWS SES)
+  // DO NOT log the OTP in production — removed console.log from prior version
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`[DEV ONLY — REMOVE IN PROD] OTP for ${email}: ${otp}`);
+  }
   res.json({ success: true, message: "If that email exists, a reset code has been sent." });
 });
 
-// B10: Reset password — validate OTP and set new password
 router.post("/reset-password", forgotPasswordLimiter, async (req: Request, res: Response) => {
   const { email, otp, newPassword } = req.body;
-
   if (!email || !otp || !newPassword) {
     res.status(400).json({ error: "email, otp, and newPassword are required" });
     return;
   }
-
   if (newPassword.length < 8) {
     res.status(400).json({ error: "New password must be at least 8 characters" });
     return;
   }
-
-  const record = passwordResetOTPs.get(email);
-  // Use timing-safe comparison to prevent side-channel attacks on OTP value
-  const otpValid = record &&
-    Date.now() <= record.expires &&
-    Buffer.byteLength(record.otp) === Buffer.byteLength(otp) &&
-    crypto.timingSafeEqual(Buffer.from(record.otp), Buffer.from(otp));
-
-  if (!otpValid) {
+  const valid = await validateOtp(email, otp);
+  if (!valid) {
     res.status(400).json({ error: "Invalid or expired reset code" });
     return;
   }
-
   try {
     await resetUserPassword(email, newPassword);
-    passwordResetOTPs.delete(email);
+    await deleteOtp(email);
     res.json({ ok: true });
   } catch (err: any) {
     if (err.message === "User not found") {
@@ -248,22 +257,16 @@ router.delete("/account", sensitiveLimiter, async (req: Request, res: Response) 
   const payload = token ? verifyToken(token) : null;
   const email = payload?.email || (req.body && req.body.email);
   if (!email) return res.status(401).json({ error: "Unauthorized" });
-
   const uid = payload?.uid;
   const ok = await deleteUserByEmail(email);
   if (!ok) return res.status(404).json({ error: "User not found" });
-
-  // Trigger backend purge — only use uid (from JWT, not user input) to avoid SSRF via email param
   try {
     if (uid) {
       await fetch(`${BACKEND_URL}/api/finance/user-profiles/purge/${encodeURIComponent(uid)}`, { method: "DELETE" });
     }
-    // If no uid in token, skip backend purge (safer than using raw email in URL)
   } catch (err) {
     console.error("Backend purge failed during account deletion:", err);
   }
-
-  // Clear auth cookie on account deletion
   res.clearCookie("auth_token", {
     httpOnly: true,
     sameSite: "strict" as const,
@@ -273,77 +276,47 @@ router.delete("/account", sensitiveLimiter, async (req: Request, res: Response) 
   res.json({ ok: true });
 });
 
-// U2/U3: In-memory family store — keyed by family ID
-const familyStore = new Map<string, { id: string; name: string; members: { uid: string; name: string; role: string }[]; sharedBudgets: string[]; sharedAccounts: string[] }>();
+// ---------------------------------------------------------------------------
+// FLAW #9 FIX: Family routes proxy to Spring Boot backend (DB-persisted)
+// The in-memory familyStore has been removed entirely.
+// FamilyAccount entity + FamilyAccountRepository already exist in the backend.
+// ---------------------------------------------------------------------------
 
-router.post('/family', authMiddleware, sensitiveLimiter, (req: Request, res: Response) => {
-  const { name, adminName } = req.body;
-  if (!name) {
-    res.status(400).json({ error: 'Family name is required' });
-    return;
+async function proxyFamilyToBackend(req: Request, res: Response, path: string, method?: string) {
+  const userId = (req as any).user?.uid;
+  const authToken =
+    req.headers.authorization ||
+    ((req as any).cookies?.auth_token ? `Bearer ${(req as any).cookies.auth_token}` : undefined);
+  try {
+    const url = `${BACKEND_URL}/api/family${path}`;
+    const options: RequestInit = {
+      method: method || req.method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(authToken ? { Authorization: authToken } : {}),
+        ...(userId ? { "X-User-Id": userId } : {}),
+      },
+    };
+    if (["POST", "PUT", "PATCH"].includes(options.method!)) {
+      options.body = JSON.stringify({ ...req.body, userId });
+    }
+    const response = await fetch(url, options);
+    if (response.status === 204) return res.status(204).send();
+    const data = await response.json().catch(() => null);
+    res.status(response.status).json(data);
+  } catch {
+    res.status(502).json({ error: "Backend unavailable" });
   }
-  const user = (req as any).user;
-  const id = 'fam-' + crypto.randomUUID();
-  const family = {
-    id,
-    name,
-    members: [{ uid: user.uid, name: adminName || user.name || 'Admin', role: 'Admin' }],
-    sharedBudgets: [],
-    sharedAccounts: []
-  };
-  familyStore.set(id, family);
-  res.status(201).json(family);
-});
+}
 
-router.get('/family/:id', authMiddleware, sensitiveLimiter, (req: Request, res: Response) => {
-  const family = familyStore.get(req.params.id);
-  if (!family) {
-    res.status(404).json({ error: 'Family not found' });
-    return;
-  }
-  res.json(family);
-});
-
-router.post('/family/:id/members', authMiddleware, sensitiveLimiter, (req: Request, res: Response) => {
-  const family = familyStore.get(req.params.id);
-  if (!family) {
-    res.status(404).json({ error: 'Family not found' });
-    return;
-  }
-  const { name, role } = req.body;
-  if (!name) {
-    res.status(400).json({ error: 'Member name is required' });
-    return;
-  }
-  const newMember = { uid: 'user-' + crypto.randomUUID(), name, role: role || 'Member' };
-  family.members.push(newMember);
-  familyStore.set(family.id, family);
-  res.json(family);
-});
-
-router.delete('/family/:id/members/:uid', authMiddleware, sensitiveLimiter, (req: Request, res: Response) => {
-  const family = familyStore.get(req.params.id);
-  if (!family) {
-    res.status(404).json({ error: 'Family not found' });
-    return;
-  }
-  family.members = family.members.filter(m => m.uid !== req.params.uid);
-  familyStore.set(family.id, family);
-  res.json(family);
-});
-
-router.delete('/family/:id', authMiddleware, sensitiveLimiter, (req: Request, res: Response) => {
-  const existed = familyStore.has(req.params.id);
-  familyStore.delete(req.params.id);
-  if (!existed) {
-    res.status(404).json({ error: 'Family not found' });
-    return;
-  }
-  res.status(204).send();
-});
+router.post('/family', authMiddleware, sensitiveLimiter, (req, res) => proxyFamilyToBackend(req, res, ''));
+router.get('/family/:id', authMiddleware, sensitiveLimiter, (req, res) => proxyFamilyToBackend(req, res, `/${encodeURIComponent(req.params.id)}`));
+router.post('/family/:id/members', authMiddleware, sensitiveLimiter, (req, res) => proxyFamilyToBackend(req, res, `/${encodeURIComponent(req.params.id)}/members`));
+router.delete('/family/:id/members/:uid', authMiddleware, sensitiveLimiter, (req, res) => proxyFamilyToBackend(req, res, `/${encodeURIComponent(req.params.id)}/members/${encodeURIComponent(req.params.uid)}`, 'DELETE'));
+router.delete('/family/:id', authMiddleware, sensitiveLimiter, (req, res) => proxyFamilyToBackend(req, res, `/${encodeURIComponent(req.params.id)}`, 'DELETE'));
 
 // ---------------------------------------------------------------------------
-// WebAuthn passthrough proxy — forwards body and cookies for session affinity
+// WebAuthn passthrough proxy
 // ---------------------------------------------------------------------------
 
 async function proxyWebAuthn(req: Request, res: Response, subPath: string) {
@@ -363,7 +336,6 @@ async function proxyWebAuthn(req: Request, res: Response, subPath: string) {
     res.setHeader("Content-Type", upstream.headers.get("content-type") || "application/json");
     res.send(text);
   } catch (err: any) {
-    // U8: Return graceful 503 if upstream is unavailable, never crash or hang
     res.status(503).json({ error: 'Passkey authentication is not available', available: false });
   }
 }
@@ -386,71 +358,36 @@ router.delete("/webauthn/credentials", async (req: Request, res: Response) => {
 });
 
 // ---------------------------------------------------------------------------
-// U10: Audit log endpoints — persist to user-specific JSON files
+// FLAW #10 FIX: Audit log endpoints now proxy to Spring Boot DB-backed service.
+// Flat-file writes on ephemeral filesystem have been removed entirely.
 // ---------------------------------------------------------------------------
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+async function proxyAuditToBackend(req: Request, res: Response, method: string) {
+  const userId = (req as any).user?.uid;
+  const authToken =
+    req.headers.authorization ||
+    ((req as any).cookies?.auth_token ? `Bearer ${(req as any).cookies.auth_token}` : undefined);
+  try {
+    const url = `${BACKEND_URL}/api/finance/audit/logs`;
+    const options: RequestInit = {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(authToken ? { Authorization: authToken } : {}),
+        ...(userId ? { "X-User-Id": userId } : {}),
+      },
+      ...(method === 'POST' ? { body: JSON.stringify(req.body) } : {}),
+    };
+    const response = await fetch(url, options);
+    if (response.status === 204) return res.status(204).send();
+    const data = await response.json().catch(() => null);
+    res.status(response.status).json(data);
+  } catch {
+    res.status(502).json({ error: "Audit service unavailable" });
   }
 }
 
-function getAuditFilePath(userId: string): string {
-  // Hash the userId to guarantee filesystem safety — avoids any path traversal risk
-  const hash = crypto.createHash('sha256').update(userId).digest('hex').substring(0, 32);
-  return path.join(DATA_DIR, `audit_${hash}.json`);
-}
-
-router.post('/audit/logs', authMiddleware, sensitiveLimiter, (req: Request, res: Response) => {
-  try {
-    const { logs } = req.body;
-    if (!Array.isArray(logs)) {
-      res.status(400).json({ error: 'logs must be an array' });
-      return;
-    }
-    const userId = (req as any).user?.uid;
-    if (!userId) {
-      res.status(401).json({ error: 'Authentication required' });
-      return;
-    }
-    ensureDataDir();
-    const filePath = getAuditFilePath(userId);
-    let existing: Record<string, unknown>[] = [];
-    try {
-      existing = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-    } catch {
-      existing = [];
-    }
-    const existingIds = new Set(existing.map((l) => l['id']));
-    const newLogs = logs.filter((l: Record<string, unknown>) => l['id'] && !existingIds.has(l['id']));
-    fs.writeFileSync(filePath, JSON.stringify([...existing, ...newLogs], null, 2));
-    res.json({ ok: true, added: newLogs.length });
-  } catch (err: any) {
-    console.error('Audit log sync error:', err.message);
-    res.status(500).json({ error: 'Failed to save audit logs' });
-  }
-});
-
-router.get('/audit/logs', authMiddleware, sensitiveLimiter, (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user?.uid;
-    if (!userId) {
-      res.status(401).json({ error: 'Authentication required' });
-      return;
-    }
-    const filePath = getAuditFilePath(userId);
-    if (!fs.existsSync(filePath)) {
-      res.json([]);
-      return;
-    }
-    const logs = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-    res.json(Array.isArray(logs) ? logs : []);
-  } catch (err: any) {
-    console.error('Audit log read error:', err.message);
-    res.status(500).json({ error: 'Failed to read audit logs' });
-  }
-});
+router.post('/audit/logs', authMiddleware, sensitiveLimiter, (req, res) => proxyAuditToBackend(req, res, 'POST'));
+router.get('/audit/logs', authMiddleware, sensitiveLimiter, (req, res) => proxyAuditToBackend(req, res, 'GET'));
 
 export const authRouter = router;

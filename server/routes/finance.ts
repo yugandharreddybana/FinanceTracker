@@ -1,14 +1,15 @@
 import { Router, Request, Response } from "express";
 import { rateLimit } from "express-rate-limit";
 import { authMiddleware } from "../routes/auth.js";
-import { verifyToken } from "../lib/auth.js";
+import { createClient } from "ioredis";
+import crypto from "crypto";
 
 const router = Router();
 
-// S5/S6/S7: Protect all finance routes with auth
+// Auth guard — applied ONCE only (fix for FLAW #11: was applied twice)
 router.use(authMiddleware);
 
-// General rate limit for finance API — 200 requests per 15 minutes per IP
+// General rate limit: 200 requests per 15 minutes per IP
 const financeLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 200,
@@ -18,19 +19,28 @@ const financeLimiter = rateLimit({
 });
 router.use(financeLimiter);
 
-// Spring Boot backend URL — configured via environment variable
 const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8081";
 const BACKEND_API = `${BACKEND_URL}/api/finance`;
 
-// All finance routes require a valid JWT (single-user scope enforced via X-User-Id from token).
-router.use(authMiddleware);
+// FLAW #2 FIX: Redis client for sync-transaction cache (replaces in-process Map)
+// Falls back gracefully if Redis is not configured so local dev still works.
+let redis: ReturnType<typeof createClient> | null = null;
+try {
+  if (process.env.REDIS_URL) {
+    redis = new createClient(process.env.REDIS_URL);
+    redis.on("error", (err: Error) => console.error("[Redis] connection error:", err.message));
+  }
+} catch (e) {
+  console.warn("[Redis] not available — sync-transactions cache disabled");
+}
+
+const SYNC_TTL_SECONDS = 3600; // 1-hour TTL on cached transaction lists
 
 // ---------------------------------------------------------------------------
 // Generic proxy helper — forwards requests to Spring Boot
 // ---------------------------------------------------------------------------
 
 async function proxyToBackend(req: Request, res: Response, path: string, method?: string) {
-  // Prevent path traversal — path must start with / and contain no traversal sequences
   if (!path.startsWith('/') || /\.\./.test(path)) {
     res.status(400).json({ error: "Invalid request path" });
     return;
@@ -38,12 +48,9 @@ async function proxyToBackend(req: Request, res: Response, path: string, method?
 
   try {
     const url = `${BACKEND_API}${path}`;
-
-    // Prefer user from authMiddleware; fall back to manual token extraction
     const user = (req as any).user;
     const userId = user?.uid;
 
-    // Forward the Authorization header; reconstruct it from cookie when absent
     const authToken =
       req.headers.authorization ||
       ((req as any).cookies?.auth_token ? `Bearer ${(req as any).cookies.auth_token}` : undefined);
@@ -60,7 +67,7 @@ async function proxyToBackend(req: Request, res: Response, path: string, method?
     if (["POST", "PUT", "PATCH"].includes(options.method!)) {
       let body = req.body;
       if (typeof body === "object" && body !== null) {
-        // Force userId from token; never trust client-supplied userId.
+        // Force userId from token — never trust client-supplied userId
         body = { ...body, userId };
       }
       options.body = JSON.stringify(body);
@@ -82,10 +89,24 @@ async function proxyToBackend(req: Request, res: Response, path: string, method?
 
 // ---------------------------------------------------------------------------
 // Transactions
+// FLAW #1 FIX: Proxy now injects X-Idempotency-Key header so the backend
+//              can enforce UNIQUE(user_id, idempotency_key) at DB level.
 // ---------------------------------------------------------------------------
 
 router.get("/transactions", (req, res) => proxyToBackend(req, res, "/transactions"));
-router.post("/transactions", (req, res) => proxyToBackend(req, res, "/transactions"));
+
+router.post("/transactions", (req: Request, res: Response) => {
+  // Generate idempotency key from client-supplied key OR a fresh UUID
+  const idempotencyKey =
+    (req.headers["x-idempotency-key"] as string) ||
+    crypto.randomUUID();
+  // Attach to downstream request so Spring Boot can deduplicate
+  req.headers["x-idempotency-key"] = idempotencyKey;
+  // Return the key to the client so they can safely retry
+  res.setHeader("X-Idempotency-Key", idempotencyKey);
+  return proxyToBackend(req, res, "/transactions");
+});
+
 router.put("/transactions/:id", (req, res) => proxyToBackend(req, res, `/transactions/${encodeURIComponent(req.params.id)}`));
 router.patch("/transactions/bulk", (req, res) => proxyToBackend(req, res, "/transactions/bulk"));
 router.post("/transactions/bulk-delete", (req, res) => proxyToBackend(req, res, "/transactions/bulk-delete"));
@@ -181,15 +202,10 @@ router.delete("/user-profiles/by-email/:email", async (req, res) => {
   const userId = (req as any).user?.uid;
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
   try {
-    // 1. Delete by email (handles profile and cascade in backend)
     const del = await fetch(`${BACKEND_API}/user-profiles/by-email/${encodeURIComponent(req.params.email)}`, { method: "DELETE" });
-
-    // 2. Also try to purge by UID from token for extra safety (especially if profile email mismatch)
-    const user = (req as any).user;
-    if (user?.uid) {
-      await fetch(`${BACKEND_API}/user-profiles/purge/${user.uid}`, { method: "DELETE" });
+    if (userId) {
+      await fetch(`${BACKEND_API}/user-profiles/purge/${userId}`, { method: "DELETE" });
     }
-
     res.status(del.status).send();
   } catch {
     res.status(502).json({ error: "Backend unavailable" });
@@ -197,32 +213,38 @@ router.delete("/user-profiles/by-email/:email", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Sync transactions cache (used by MCP fallback) — A7: per-user cache
+// FLAW #2 FIX: sync-transactions now backed by Redis, not in-process Map
 // ---------------------------------------------------------------------------
 
-const userTransactionCache = new Map<string, any[]>();
-
-router.post("/sync-transactions", (req, res) => {
+router.post("/sync-transactions", async (req, res) => {
   const userId = (req as any).user?.uid;
   if (!userId) {
     res.status(401).json({ error: 'Authentication required' });
     return;
   }
-  userTransactionCache.set(userId, Array.isArray(req.body?.transactions) ? req.body.transactions : []);
-  res.json({ ok: true, count: userTransactionCache.get(userId)!.length });
+  const transactions = Array.isArray(req.body?.transactions) ? req.body.transactions : [];
+  if (redis) {
+    await redis.setex(`txn_cache:${userId}`, SYNC_TTL_SECONDS, JSON.stringify(transactions));
+  }
+  res.json({ ok: true, count: transactions.length });
 });
 
-router.get("/sync-transactions", (req, res) => {
+router.get("/sync-transactions", async (req, res) => {
   const userId = (req as any).user?.uid;
   if (!userId) {
     res.status(401).json({ error: 'Authentication required' });
     return;
   }
-  res.json({ transactions: userTransactionCache.get(userId) || [] });
+  if (redis) {
+    const cached = await redis.get(`txn_cache:${userId}`);
+    res.json({ transactions: cached ? JSON.parse(cached) : [] });
+  } else {
+    res.json({ transactions: [] });
+  }
 });
 
 // ---------------------------------------------------------------------------
-// MCP Endpoints (kept for AI Oracle integration) — auth-gated
+// MCP Endpoints — auth-gated; 'spent' removed from update_budget input schema
 // ---------------------------------------------------------------------------
 
 let mcpClients: any[] = [];
@@ -276,7 +298,7 @@ router.post("/mcp/message", async (req, res) => {
                 merchant: { type: "string" },
                 amount: { type: "number" },
                 currency: { type: "string" },
-                date: { type: "string" },
+                date: { type: "string", description: "ISO date: YYYY-MM-DD" },
                 category: { type: "string" },
                 type: { type: "string", enum: ["EXPENSE", "INCOME"] },
                 account: { type: "string" }
@@ -292,20 +314,26 @@ router.post("/mcp/message", async (req, res) => {
               properties: {
                 category: { type: "string" },
                 limit: { type: "number" },
-                currency: { type: "string" }
+                currency: { type: "string" },
+                periodType: { type: "string", enum: ["MONTHLY", "WEEKLY", "CUSTOM"], description: "Budget period type" },
+                periodStart: { type: "string", description: "Period start date YYYY-MM-DD" },
+                periodEnd: { type: "string", description: "Period end date YYYY-MM-DD" }
               },
               required: ["category", "limit"]
             }
           },
           {
             name: "update_budget",
-            description: "Update a budget",
+            description: "Update a budget limit, category, or period. NOTE: 'spent' is computed server-side and cannot be set directly.",
             inputSchema: {
               type: "object",
               properties: {
                 id: { type: "string" },
                 limit: { type: "number" },
-                spent: { type: "number" }
+                // FLAW #4 FIX: 'spent' intentionally excluded — server-computed only
+                periodType: { type: "string", enum: ["MONTHLY", "WEEKLY", "CUSTOM"] },
+                periodStart: { type: "string" },
+                periodEnd: { type: "string" }
               },
               required: ["id"]
             }
@@ -342,7 +370,6 @@ router.post("/mcp/message", async (req, res) => {
       };
     } else if (method === "tools/call") {
       const { name, arguments: args } = params;
-      // Proxy MCP tool calls to backend
       const toolMap: Record<string, { endpoint: string; method: string }> = {
         "get_transactions": { endpoint: "/transactions", method: "GET" },
         "get_accounts": { endpoint: "/accounts", method: "GET" },
@@ -358,23 +385,36 @@ router.post("/mcp/message", async (req, res) => {
       const tool = toolMap[name];
       if (tool) {
         let endpoint = tool.endpoint;
-        let method = tool.method;
-        // Handle update_budget separately (PUT with id in path)
+        let httpMethod = tool.method;
         if (name === "update_budget" && args?.id) {
           endpoint = `/budgets/${args.id}`;
-          method = "PUT";
+          httpMethod = "PUT";
+          // FLAW #4 FIX: Strip 'spent' from MCP-supplied args — never allow client override
+          const { spent: _spent, ...safeArgs } = args;
+          const response = await fetch(`${BACKEND_API}${endpoint}`, {
+            method: httpMethod,
+            headers: {
+              "Content-Type": "application/json",
+              ...(req.headers.authorization ? { Authorization: req.headers.authorization as string } : {}),
+              ...(userId ? { "X-User-Id": userId } : {}),
+            },
+            body: JSON.stringify(safeArgs)
+          });
+          const data = await response.json();
+          result = { content: [{ type: "text", text: JSON.stringify(data) }] };
+        } else {
+          const response = await fetch(`${BACKEND_API}${endpoint}`, {
+            method: httpMethod,
+            headers: {
+              "Content-Type": "application/json",
+              ...(req.headers.authorization ? { Authorization: req.headers.authorization as string } : {}),
+              ...(userId ? { "X-User-Id": userId } : {}),
+            },
+            ...(httpMethod !== "GET" ? { body: JSON.stringify({ ...args, userId }) } : {})
+          });
+          const data = await response.json();
+          result = { content: [{ type: "text", text: JSON.stringify(data) }] };
         }
-        const response = await fetch(`${BACKEND_API}${endpoint}`, {
-          method,
-          headers: {
-            "Content-Type": "application/json",
-            ...(req.headers.authorization ? { Authorization: req.headers.authorization as string } : {}),
-          },
-          ...(method !== "GET" ? { body: JSON.stringify(args) } : {})
-        });
-
-        const data = await response.json();
-        result = { content: [{ type: "text", text: JSON.stringify(data) }] };
       } else {
         error = { code: -32601, message: "Tool not found" };
       }

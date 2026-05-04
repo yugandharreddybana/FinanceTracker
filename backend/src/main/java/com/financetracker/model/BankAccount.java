@@ -8,7 +8,6 @@ import java.math.BigDecimal;
 @Data
 @Entity
 @Table(name = "bank_accounts", schema = "finance_app")
-
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -17,7 +16,7 @@ public class BankAccount {
     @Id
     private String id;
 
-    @Column(name = "user_id")
+    @Column(name = "user_id", nullable = false)
     private String userId;
 
     private String name;
@@ -25,6 +24,13 @@ public class BankAccount {
 
     @Column(precision = 15, scale = 2)
     private BigDecimal balance;
+
+    // FLAW #6 FIX: @Version enables optimistic locking on balance updates.
+    // If two concurrent transactions read the same balance and both try to write,
+    // the second write will throw OptimisticLockException and be retried safely.
+    @Version
+    @Column(nullable = false)
+    private Long version;
 
     private String bank;
     private String color;
@@ -50,4 +56,3 @@ public class BankAccount {
     private Boolean isJoint;
     private Boolean isPrimary;
 }
-
