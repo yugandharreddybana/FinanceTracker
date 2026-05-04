@@ -7,10 +7,14 @@ import org.springframework.lang.NonNull;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
 @Configuration
 public class WebConfig {
 
-    @Value("${ALLOWED_ORIGINS:http://localhost:3000}")
+    @Value("${ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}")
     private String allowedOrigins;
 
     @Bean
@@ -18,17 +22,23 @@ public class WebConfig {
         return new WebMvcConfigurer() {
             @Override
             public void addCorsMappings(@NonNull CorsRegistry registry) {
-                // Allow both the configured origins AND any railway.app subdomain
+                List<String> origins = new ArrayList<>();
+                if (allowedOrigins != null && !allowedOrigins.isBlank()) {
+                    Arrays.stream(allowedOrigins.split(","))
+                            .map(String::trim)
+                            .filter(s -> !s.isEmpty())
+                            .forEach(origins::add);
+                }
+                if (origins.isEmpty()) {
+                    origins.add("http://localhost:3000");
+                    origins.add("http://localhost:5173");
+                }
                 registry.addMapping("/api/**")
-                        .allowedOriginPatterns(
-                            "http://localhost:3000",
-                            "http://localhost:5173",
-                            "https://*.up.railway.app",
-                            allowedOrigins != null ? allowedOrigins : "http://localhost:3000"
-                        )
+                        .allowedOrigins(origins.toArray(new String[0]))
                         .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
-                        .allowedHeaders("*")
-                        .allowCredentials(true);
+                        .allowedHeaders("Authorization", "Content-Type", "X-User-Id", "X-Requested-With")
+                        .allowCredentials(true)
+                        .maxAge(3600);
             }
         };
     }

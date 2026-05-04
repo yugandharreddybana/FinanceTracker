@@ -73,6 +73,14 @@ public class UserProfileService {
     }
 
     @Transactional
+    public void deleteByEmailOwned(String email, String requestUserId) {
+        repo.findByEmail(email).ifPresent(profile -> {
+            com.financetracker.util.Guards.assertOwner(profile.getId(), requestUserId);
+            purgeUserData(profile.getId());
+        });
+    }
+
+    @Transactional
     public void purgeUserData(String userId) {
         // Cascade delete all mapping data
         transactionRepo.deleteByUserId(userId);

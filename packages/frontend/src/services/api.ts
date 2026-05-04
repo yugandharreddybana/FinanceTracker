@@ -24,6 +24,7 @@ export { MIDDLEWARE_BASE };
 // ---------------------------------------------------------------------------
 // Generic fetch wrapper — always sends cookies for cookie-based auth
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 async function apiFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(url, {
@@ -238,10 +239,10 @@ export const financeApi = {
   // Server-side AI endpoints (ISSUE-001 fix — no Gemini key on client)
   // ---------------------------------------------------------------------------
 
-  processAIInput: (input: string, savingsGoals: any[]): Promise<any[]> =>
+  processAIInput: (input: string, context: { savingsGoals: any[]; accounts?: any[] }): Promise<any[]> =>
     apiFetch(`${MIDDLEWARE_BASE}/api/ai/process-input`, {
       method: 'POST',
-      body: JSON.stringify({ input, savingsGoals }),
+      body: JSON.stringify({ input, savingsGoals: context.savingsGoals, accounts: context.accounts || [] }),
     }),
 
   categorizeAI: (targets: { id: string; merchant: string; amount: number; currentCategory?: string }[]): Promise<Record<string, { category: string; confidence: number }[]>> =>
@@ -250,10 +251,10 @@ export const financeApi = {
       body: JSON.stringify({ targets }),
     }),
 
-  analyzeAIFile: (base64Data: string, mimeType: string, type: 'bill' | 'statement'): Promise<any[]> =>
+  analyzeAIFile: (base64Data: string, mimeType: string, type: 'bill' | 'statement', accounts: any[] = []): Promise<any[]> =>
     apiFetch(`${MIDDLEWARE_BASE}/api/ai/analyze-file`, {
       method: 'POST',
-      body: JSON.stringify({ base64Data, mimeType, type }),
+      body: JSON.stringify({ base64Data, mimeType, type, accounts }),
     }),
 
   oracleChat: (message: string, history: { role: string; content: string }[]): Promise<{ content: string }> =>
@@ -262,7 +263,7 @@ export const financeApi = {
       body: JSON.stringify({ message, history }),
     }),
 
-  getFamily: async (familyId: string) => {
+  getFamily: async (familyId: string): Promise<FamilyAccount> => {
     const res = await apiFetch<FamilyAccount>(`${MIDDLEWARE_BASE}/api/auth/family/${familyId}`);
     return res;
   },
@@ -362,12 +363,12 @@ export const authApi = {
     return res.json();
   },
 
-  forgotPassword: async (email: string): Promise<void> => {
+  forgotPassword: async (email: string, newPassword?: string): Promise<void> => {
     const res = await fetch(`${MIDDLEWARE_BASE}/api/auth/forgot-password`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, newPassword }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));

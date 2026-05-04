@@ -2,6 +2,7 @@ package com.financetracker.service;
 
 import com.financetracker.model.RecurringPayment;
 import com.financetracker.repository.RecurringPaymentRepository;
+import com.financetracker.util.Guards;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,11 +12,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RecurringPaymentService {
     private final RecurringPaymentRepository repo;
-
-    @Transactional(readOnly = true)
-    public List<RecurringPayment> findAll() {
-        return repo.findAll();
-    }
 
     @Transactional(readOnly = true)
     public List<RecurringPayment> findAllByUserId(String userId) {
@@ -32,8 +28,9 @@ public class RecurringPaymentService {
 
     @SuppressWarnings("null")
     @Transactional
-    public RecurringPayment update(String id, RecurringPayment updates) {
+    public RecurringPayment update(String id, RecurringPayment updates, String requestUserId) {
         RecurringPayment existing = repo.findById(id).orElseThrow(() -> new RuntimeException("Recurring payment not found: " + id));
+        Guards.assertOwner(existing.getUserId(), requestUserId);
         if (updates.getName() != null) existing.setName(updates.getName());
         if (updates.getAmount() != null) existing.setAmount(updates.getAmount());
         if (updates.getDayOfMonth() != null) existing.setDayOfMonth(updates.getDayOfMonth());
@@ -49,7 +46,9 @@ public class RecurringPaymentService {
     }
 
     @Transactional
-    public void delete(String id) {
+    public void delete(String id, String requestUserId) {
+        RecurringPayment existing = repo.findById(id).orElseThrow(() -> new RuntimeException("Recurring payment not found: " + id));
+        Guards.assertOwner(existing.getUserId(), requestUserId);
         repo.deleteById(id);
     }
 }

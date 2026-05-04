@@ -14,6 +14,7 @@ interface LoginPageProps {
 export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup, onForgotPassword, onBackToHome }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isReady, setIsReady] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isBiometricLoading, setIsBiometricLoading] = useState(false);
   const [error, setError] = useState('');
@@ -109,7 +110,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
         </div>
 
         <div className="glass-card p-8 border-white/5 shadow-2xl">
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Browser Autofill Honeypot */}
+            <input type="text" style={{ display: 'none' }} aria-hidden="true" />
+            <input type="password" style={{ display: 'none' }} aria-hidden="true" />
+            {/* Browser Autofill Honeypot */}
+            <input type="text" style={{ display: 'none' }} aria-hidden="true" />
+            <input type="password" style={{ display: 'none' }} aria-hidden="true" />
             {error && (
               <motion.div
                 initial={{ opacity: 0, x: -10 }}
@@ -131,6 +138,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
                   className="w-full bg-white/5 border border-white/10 rounded-xl py-4 pl-12 pr-4 outline-none focus:border-accent/50 transition-all font-medium"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="off"
+                  name="ft_login_user"
+                  readOnly={!isReady}
+                  onFocus={() => setIsReady(true)}
                 />
               </div>
             </div>
@@ -153,6 +164,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
                   className="w-full bg-white/5 border border-white/10 rounded-xl py-4 pl-12 pr-4 outline-none focus:border-accent/50 transition-all font-medium"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="off"
+                  name="ft_login_pass"
+                  readOnly={!isReady}
+                  onFocus={() => setIsReady(true)}
                 />
               </div>
             </div>

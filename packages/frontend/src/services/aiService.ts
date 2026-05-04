@@ -12,6 +12,7 @@ export interface TaxSuggestion {
   description: string;
   potentialSavings: number;
   difficulty: 'easy' | 'medium' | 'hard';
+  steps?: string[];
 }
 
 export interface AIInsight {

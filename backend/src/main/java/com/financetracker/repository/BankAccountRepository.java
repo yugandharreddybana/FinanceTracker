@@ -12,6 +12,10 @@ public interface BankAccountRepository extends JpaRepository<BankAccount, String
     java.util.Optional<BankAccount> findFirstByBankIgnoreCaseAndUserId(String bank, String userId);
     java.util.Optional<BankAccount> findByUserIdAndIsPrimaryTrue(String userId);
 
+    java.util.List<BankAccount> findAllByUserIdAndIsPrimaryTrue(String userId);
+
+    java.util.List<BankAccount> findAllByUserIdAndCurrencyAndIsPrimaryTrue(String userId, String currency);
+
 
 
 

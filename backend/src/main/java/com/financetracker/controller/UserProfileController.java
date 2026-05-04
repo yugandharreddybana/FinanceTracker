@@ -2,11 +2,11 @@ package com.financetracker.controller;
 
 import com.financetracker.model.UserProfile;
 import com.financetracker.service.UserProfileService;
+import com.financetracker.util.Guards;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/finance/user-profiles")
@@ -14,19 +14,16 @@ import java.util.List;
 public class UserProfileController {
     private final UserProfileService service;
 
-    @GetMapping
-    public List<UserProfile> getAll() {
-        return service.findAll();
-    }
-
     @SuppressWarnings("null")
     @GetMapping("/{id}")
-    public ResponseEntity<UserProfile> getById(@PathVariable String id) {
+    public ResponseEntity<UserProfile> getById(@PathVariable String id, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        Guards.assertOwner(id, userId);
         return service.findById(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    // Pre-auth lookup for login flow (gated by middleware in production).
     @SuppressWarnings("null")
     @GetMapping("/by-email/{email}")
     public ResponseEntity<UserProfile> getByEmail(@PathVariable String email) {
@@ -39,32 +36,35 @@ public class UserProfileController {
     public ResponseEntity<UserProfile> create(
             @RequestBody UserProfile profile,
             @RequestHeader(value = "X-User-Id", required = false) String userId) {
-        if ((profile.getId() == null || profile.getId().isBlank()) && userId != null) {
-            profile.setId(userId);
-        }
+        Guards.requireUser(userId);
+        profile.setId(userId);
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(profile));
     }
 
     @PutMapping("/{id}")
-    public UserProfile update(@PathVariable String id, @RequestBody UserProfile updates) {
+    public UserProfile update(@PathVariable String id, @RequestBody UserProfile updates, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        Guards.assertOwner(id, userId);
         return service.update(id, updates);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable String id) {
+    public ResponseEntity<Void> delete(@PathVariable String id, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        Guards.assertOwner(id, userId);
         service.delete(id);
         return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/by-email/{email}")
-    public ResponseEntity<Void> deleteByEmail(@PathVariable String email) {
-        service.deleteByEmail(email);
+    public ResponseEntity<Void> deleteByEmail(@PathVariable String email, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        Guards.requireUser(userId);
+        service.deleteByEmailOwned(email, userId);
         return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/purge/{userId}")
-    public ResponseEntity<Void> purgeUserData(@PathVariable String userId) {
-        service.purgeUserData(userId);
+    public ResponseEntity<Void> purgeUserData(@PathVariable("userId") String targetId, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        Guards.assertOwner(targetId, userId);
+        service.purgeUserData(targetId);
         return ResponseEntity.noContent().build();
     }
 }

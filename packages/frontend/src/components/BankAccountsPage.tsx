@@ -250,10 +250,18 @@ export const BankAccountsPage: React.FC = () => {
                     </span>
                   )}
 
-                  {account.isPrimary && (
+                  {account.isPrimary ? (
                     <span className="px-2 py-1 rounded-lg bg-positive/10 border border-positive/20 text-[10px] font-bold uppercase tracking-widest text-positive flex items-center gap-1">
                       <Check className="w-3 h-3" /> Primary
                     </span>
+                  ) : (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); updateAccount(account.id, { isPrimary: true }); }}
+                      className="px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest text-white/60 hover:bg-positive/10 hover:border-positive/20 hover:text-positive transition-colors"
+                      title={`Make primary for ${account.currency}`}
+                    >
+                      Make Primary
+                    </button>
                   )}
                 </div>
 

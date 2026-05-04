@@ -58,7 +58,8 @@ export const LoansPage: React.FC = () => {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   
-  const { loans, addLoan, updateLoan, deleteLoan, addManualTransaction } = useFinance();
+  const { loans, addLoan, updateLoan, deleteLoan, addManualTransaction, accounts } = useFinance();
+  const loanPayAccount = (accounts || []).find(a => a.isPrimary)?.name || (accounts || [])[0]?.name || '';
 
   const [loanForm, setLoanForm] = useState({
     name: '',
@@ -119,7 +120,7 @@ export const LoansPage: React.FC = () => {
       date: new Date().toISOString().split('T')[0],
       currency: loan.currency || 'INR',
       status: 'confirmed',
-      account: 'Main Current'
+      account: loanPayAccount
     });
     updateLoan(loan.id, { 
       remainingAmount: newRemaining,
@@ -155,7 +156,7 @@ export const LoansPage: React.FC = () => {
       date: new Date().toISOString().split('T')[0],
       currency: loan.currency || 'INR',
       status: 'confirmed',
-      account: 'Main Current'
+      account: loanPayAccount
     });
     updateLoan(loan.id, { 
       remainingAmount: newRemaining,

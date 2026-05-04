@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { Transaction, SavingsGoal, RecurringPayment, Loan, Budget, BankAccount, IncomeSource, UserProfile, Investment, AuditLog, FamilyAccount, CarbonEntry, TaxReport, ForecastResult } from '../types';
 import { financeApi, familyApi, auditApi, MIDDLEWARE_BASE } from '../services/api';
+import { safeStorage, isJwtExpired } from '../lib/utils';
 
 interface FinanceContextType {
   transactions: Transaction[];
@@ -38,7 +39,7 @@ interface FinanceContextType {
     liabilities: number;
     change: number;
   }>;
-  monthlyTrends: { month: string; [key: string]: number | string }[];
+  monthlyTrends: { month: string;[key: string]: number | string }[];
   healthMetricsByCurrency: Record<string, {
     savingsRate: number;
     debtRatio: number;
@@ -50,7 +51,8 @@ interface FinanceContextType {
   addCategory: (category: { name: string; color: string; icon: string }) => void;
   deleteCategory: (name: string) => void;
   isLoading: boolean;
-  addTransactions: (input: string) => Promise<void>;
+  addTransactions: (input: string | any[]) => Promise<void>;
+  previewSmartAdd: (input: string) => Promise<any[]>;
   addManualTransaction: (tx: Transaction) => void;
   analyzeFile: (file: File, type: 'bill' | 'statement') => Promise<void>;
   deleteTransaction: (id: string) => void;
@@ -185,10 +187,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, []);
 
   // Persistence — load when email changes (B2: runs after login, not just mount)
+  // Persistence — read once on mount.
   useEffect(() => {
     if (userProfile.email === 'guest@example.com') return;
     const storageKey = `yugi_finance_data_${userProfile.email}`;
-    const savedData = localStorage.getItem(storageKey);
+    const savedData = safeStorage.get(storageKey);
     if (savedData) {
       try {
         const parsed = JSON.parse(savedData);
@@ -203,8 +206,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (parsed.userProfile) setUserProfile(parsed.userProfile);
         if (parsed.customCategories) setCustomCategories(parsed.customCategories);
         if (parsed.auditLogs) setAuditLogs(parsed.auditLogs);
-      } catch (e) {
-        console.error('Failed to load persisted data:', e);
+      } catch {
+        /* corrupted blob — ignore and rehydrate from server */
       }
     }
     // Load carbon, tax, forecasts from user-specific keys
@@ -224,32 +227,20 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsDataLoaded(true);
   }, [userProfile.email]);
 
+  // Debounced persist — runs at most every 750ms after the latest mutation.
   useEffect(() => {
     if (!isDataLoaded) return;
+    const handle = window.setTimeout(() => {
+      const dataToSave = {
+        transactions, savingsGoals, recurringPayments, loans, budgets,
+        accounts, incomeSources, investments, userProfile, customCategories, auditLogs
+      };
+      const storageKey = `yugi_finance_data_${userProfile.email}`;
+      safeStorage.set(storageKey, JSON.stringify(dataToSave));
+    }, 750);
+    return () => window.clearTimeout(handle);
+  }, [transactions, savingsGoals, recurringPayments, loans, budgets, accounts, incomeSources, investments, userProfile, customCategories, auditLogs, isDataLoaded]);
 
-    const dataToSave = {
-      transactions,
-      savingsGoals,
-      recurringPayments,
-      loans,
-      budgets,
-      accounts,
-      incomeSources,
-      investments,
-      userProfile,
-      customCategories,
-      auditLogs
-    };
-    const storageKey = `yugi_finance_data_${userProfile.email}`;
-    localStorage.setItem(storageKey, JSON.stringify(dataToSave));
-
-    // Persist carbon/tax/forecasts under user-specific keys
-    if (userProfile.email !== 'guest@example.com') {
-      localStorage.setItem(`yugi_finance_carbon_${userProfile.email}`, JSON.stringify(carbonEntries));
-      localStorage.setItem(`yugi_finance_tax_${userProfile.email}`, JSON.stringify(taxReports));
-      localStorage.setItem(`yugi_finance_forecasts_${userProfile.email}`, JSON.stringify(forecasts));
-    }
-  }, [transactions, savingsGoals, recurringPayments, loans, budgets, accounts, incomeSources, investments, userProfile, customCategories, auditLogs, carbonEntries, taxReports, forecasts, isDataLoaded]);
   const [isLoading, setIsLoading] = useState(false);
 
   // Refs to track latest state for sync-back logic without causing infinite loops
@@ -351,7 +342,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
     setAuditLogs(prev => [newLog, ...prev]);
     // Fire-and-forget: persist log to backend
-    auditApi.syncAuditLogs([newLog]).catch(() => {});
+    auditApi.syncAuditLogs([newLog]).catch(() => { });
   }, [userProfile.name, userProfile.email]);
 
   const addInvestment = useCallback(async (investment: Investment) => {
@@ -527,7 +518,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }).reverse();
 
     return last6Months.map(m => {
-      const monthData: { month: string; [key: string]: number | string } = { month: m.label };
+      const monthData: { month: string;[key: string]: number | string } = { month: m.label };
 
       const currencies = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
       currencies.forEach(curr => {
@@ -650,6 +641,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }).catch(err => console.error('Failed to sync transactions:', err));
   }, [transactions, userProfile.email]);
 
+
   const spendingDataByCurrency = React.useMemo(() => {
     const result: Record<string, { name: string, value: number, color: string }[]> = {};
     const currencies = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
@@ -711,9 +703,59 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [savingsGoals, accounts]);
 
-  const addTransactions = useCallback(async (input: string) => {
+  const guardAccounts = useCallback(() => {
+    if (accounts.length === 0) {
+      const e: any = new Error('No bank accounts exist. Add a bank account before logging transactions.');
+      e.code = 'NO_ACCOUNTS';
+      throw e;
+    }
+    if (!accounts.some(a => a.isPrimary)) {
+      const e: any = new Error('No primary bank account is set. Mark one account as primary so we know where to file transactions.');
+      e.code = 'NO_PRIMARY';
+      throw e;
+    }
+  }, [accounts]);
+
+  const previewSmartAdd = useCallback(async (input: string): Promise<any[]> => {
+    guardAccounts();
+    const acctCtx = accounts.map(a => ({
+      id: a.id, name: a.name, bank: a.bank, currency: a.currency, isPrimary: a.isPrimary
+    }));
+    return financeApi.processAIInput(input, {
+      savingsGoals: savingsGoals.map(g => ({ id: g.id, name: g.name })),
+      accounts: acctCtx,
+    });
+  }, [accounts, savingsGoals, guardAccounts]);
+
+  const addTransactions = useCallback(async (input: string | any[]) => {
     try {
-      const results = await financeApi.processAIInput(input, savingsGoals.map(g => ({ id: g.id, name: g.name })));
+      guardAccounts();
+
+      const results = Array.isArray(input)
+        ? input
+        : await previewSmartAdd(input);
+
+      const overallPrimary = accounts.find(a => a.isPrimary) || accounts[0];
+      const findAccount = (needle?: string, ccy?: string) => {
+        if (needle) {
+          const n = needle.toLowerCase().trim();
+          const byName =
+            accounts.find(a => a.name.toLowerCase() === n) ||
+            accounts.find(a => a.name.toLowerCase().includes(n) || n.includes(a.name.toLowerCase())) ||
+            accounts.find(a => (a.bank || '').toLowerCase() === n) ||
+            accounts.find(a => (a.bank || '').toLowerCase().includes(n) || n.includes((a.bank || '').toLowerCase()));
+          if (byName) return byName;
+        }
+        if (ccy) {
+          const C = ccy.toUpperCase();
+          const primaryOfCcy = accounts.find(a => a.isPrimary && (a.currency || '').toUpperCase() === C);
+          if (primaryOfCcy) return primaryOfCcy;
+          const anyOfCcy = accounts.find(a => (a.currency || '').toUpperCase() === C);
+          if (anyOfCcy) return anyOfCcy;
+        }
+        return overallPrimary;
+      };
+
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
@@ -726,20 +768,46 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
 
           const amount = res.amount;
-          const type = res.type || (amount > 0 ? 'income' : 'expense');
+          const type: 'expense' | 'income' = res.type === 'income' || res.type === 'expense'
+            ? res.type
+            : (amount > 0 ? 'income' : 'expense');
+          const matchedAccount = findAccount(res.account, res.currency);
+          const accountName = matchedAccount?.name;
+          const currency = res.currency || matchedAccount?.currency;
+
+          const cat = (res.category || 'Uncategorized');
+          const catLc = cat.toLowerCase();
+          const merchantLc = (res.merchant || res.name || '').toLowerCase();
+          const matchesBudget = budgets.some(b => (b.category || '').toLowerCase() === catLc);
+          const matchesLoan = catLc.includes('loan') || /\bemi\b/.test(catLc) || /\bemi\b/.test(merchantLc) || loans.some(l => merchantLc.includes((l.name || '').toLowerCase()) && (l.name || '').length > 0);
+          const matchesBill = recurringPayments.some(r => merchantLc.includes((r.name || '').toLowerCase()) && (r.name || '').length > 0);
+          const matchesSavings = !!res.savingsGoalId || catLc.includes('saving');
+          const aiTag = matchesLoan ? 'Loan EMI'
+            : matchesSavings ? 'Savings'
+              : matchesBill ? 'Bill'
+                : matchesBudget ? 'Budget'
+                  : 'Smart Added';
 
           const newTx = await financeApi.createTransaction({
             date: dateStr,
             merchant: res.merchant || res.name || 'Unknown',
             amount: type === 'expense' ? -Math.abs(amount) : Math.abs(amount),
-            category: res.category || 'Uncategorized',
+            category: cat,
             type,
             status: 'confirmed',
-            aiTag: 'Smart Added',
-            account: 'Main Current',
-            confidence: res.confidence || 0.9
+            aiTag,
+            account: accountName,
+            confidence: res.confidence || 0.9,
+            currency
           });
+
           setTransactions(prev => [newTx, ...prev]);
+          setAccounts(prev => prev.map(acc => {
+            if (matchedAccount && acc.id === matchedAccount.id) {
+              return { ...acc, balance: acc.balance + newTx.amount };
+            }
+            return acc;
+          }));
         } else if (res.intent === 'SAVINGS_GOAL') {
           const newGoal = await financeApi.createSavingsGoal({
             name: res.name || 'New Goal',
@@ -780,6 +848,25 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
             const defaultAccountId = accounts[0]?.id || 'acc-1';
             transferToSavings(amount, goalId, defaultAccountId);
           }
+        } else if (res.intent === 'BUDGET') {
+          const newBudget = await financeApi.createBudget({
+            category: res.category || 'Others',
+            limit: res.limit || res.amount || 500,
+            spent: 0,
+            period: 'Monthly'
+          });
+          setBudgets(prev => [newBudget, ...prev]);
+        } else if (res.intent === 'LOAN_PAYMENT') {
+          const amount = Math.abs(res.amount || 0);
+          const loanId = res.loanId;
+          const matchedLoan = loanId ? loans.find(l => l.id === loanId) : (loans[0] || null);
+          if (matchedLoan && amount > 0) {
+            const updatedLoan = await financeApi.updateLoan(matchedLoan.id, {
+              remainingAmount: Math.max(0, matchedLoan.remainingAmount - amount)
+            });
+            setLoans(prev => prev.map(l => l.id === matchedLoan.id ? updatedLoan : l));
+            addLog('UPDATE', `Paid ${amount} towards loan: ${matchedLoan.name}`, 'Loan', matchedLoan.id);
+          }
         }
       }
     } catch (error) {
@@ -787,7 +874,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       throw error; // Surface to UI
     }
 
-  }, [accounts, savingsGoals, transferToSavings]);
+  }, [accounts, savingsGoals, budgets, loans, recurringPayments, transferToSavings, previewSmartAdd, guardAccounts]);
 
   const analyzeFile = useCallback(async (file: File, type: 'bill' | 'statement') => {
     const reader = new FileReader();
@@ -801,13 +888,48 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const base64Data = await base64Promise;
 
     try {
-      const results = await financeApi.analyzeAIFile(base64Data, file.type, type);
+      if (accounts.length === 0) {
+        const e: any = new Error('No bank accounts exist. Add a bank account before scanning files.');
+        e.code = 'NO_ACCOUNTS';
+        throw e;
+      }
+      if (!accounts.some(a => a.isPrimary)) {
+        const e: any = new Error('No primary bank account is set. Mark one account as primary first.');
+        e.code = 'NO_PRIMARY';
+        throw e;
+      }
 
+      const acctCtx = accounts.map(a => ({
+        id: a.id, name: a.name, bank: a.bank, currency: a.currency, isPrimary: a.isPrimary
+      }));
+      const results = await financeApi.analyzeAIFile(base64Data, file.type, type, acctCtx);
+
+      const overallPrimary = accounts.find(a => a.isPrimary) || accounts[0];
+      const findAccount = (needle?: string, ccy?: string) => {
+        if (needle) {
+          const n = needle.toLowerCase().trim();
+          const byName =
+            accounts.find(a => a.name.toLowerCase() === n) ||
+            accounts.find(a => a.name.toLowerCase().includes(n) || n.includes(a.name.toLowerCase())) ||
+            accounts.find(a => (a.bank || '').toLowerCase().includes(n));
+          if (byName) return byName;
+        }
+        if (ccy) {
+          const C = ccy.toUpperCase();
+          const primaryOfCcy = accounts.find(a => a.isPrimary && (a.currency || '').toUpperCase() === C);
+          if (primaryOfCcy) return primaryOfCcy;
+          const anyOfCcy = accounts.find(a => (a.currency || '').toUpperCase() === C);
+          if (anyOfCcy) return anyOfCcy;
+        }
+        return overallPrimary;
+      };
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
       const parsedTransactions: Transaction[] = [];
+      const balanceDeltas: Record<string, number> = {};
+
       for (const res of results) {
         let dateStr = res.date;
         const matchedDate = new Date(res.date);
@@ -815,30 +937,38 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           dateStr = new Date().toISOString().split('T')[0];
         }
 
-        // B4: Prioritise explicit type from AI; fall back to amount sign
-        const txType = (res.type === 'income' || res.type === 'expense')
-          ? res.type
-          : (res.amount > 0 ? 'income' : 'expense');
+        const txType = (res.type === 'income' ? 'income' : 'expense') as 'expense' | 'income';
+        const matchedAccount = findAccount(res.account, res.currency);
+        const currency = res.currency || matchedAccount?.currency;
+        const signed = txType === 'expense' ? -Math.abs(res.amount) : Math.abs(res.amount);
+
         const newTx = await financeApi.createTransaction({
           date: dateStr,
           merchant: res.merchant,
-          amount: txType === 'expense' ? -Math.abs(res.amount) : Math.abs(res.amount),
+          amount: signed,
           category: res.category || 'Uncategorized',
           type: txType,
           status: 'confirmed',
           aiTag: type === 'bill' ? 'Bill Scanned' : 'Statement Uploaded',
-          account: 'Main Current',
-          confidence: res.confidence || 0.95
+          account: matchedAccount?.name,
+          confidence: res.confidence || 0.95,
+          currency
         });
         parsedTransactions.push(newTx);
+        if (matchedAccount) {
+          balanceDeltas[matchedAccount.id] = (balanceDeltas[matchedAccount.id] || 0) + signed;
+        }
       }
 
       setTransactions(prev => [...parsedTransactions, ...prev]);
+      setAccounts(prev => prev.map(acc =>
+        balanceDeltas[acc.id] ? { ...acc, balance: acc.balance + balanceDeltas[acc.id] } : acc
+      ));
     } catch (error) {
       console.error("Error analyzing file:", error);
       throw error;
     }
-  }, []);
+  }, [accounts]);
 
   const addManualTransaction = useCallback(async (transaction: Partial<Transaction>) => {
     if (!transaction.account) {
@@ -866,13 +996,14 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }));
       }
 
+      await refreshData();
       addLog('CREATE', `Added transaction: ${newTx.merchant}`, 'Transaction', newTx.id);
     } catch (error) {
       console.error('Failed to add manual transaction:', error);
       dispatchToastError(error);
       throw error;
     }
-  }, [addLog]);
+  }, [addLog, refreshData]);
 
   const deleteTransaction = useCallback(async (id: string) => {
     const snapshot = transactionsRef.current;
@@ -889,6 +1020,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
     try {
       await financeApi.deleteTransaction(id);
+      await refreshData();
       addLog('DELETE', `Deleted transaction: ${txToDelete?.merchant || id}`, 'Transaction', id);
     } catch (error) {
       setTransactions(snapshot);
@@ -904,7 +1036,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.error('Failed to delete transaction:', error);
       dispatchToastError(error);
     }
-  }, [addLog]);
+  }, [addLog, refreshData]);
 
   const bulkDeleteTransactions = useCallback(async (ids: string[]) => {
     try {
@@ -931,6 +1063,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return updatedAccs;
       });
 
+      await refreshData();
       addLog('DELETE', `Bulk deleted ${ids.length} transactions`, 'Transaction', ids.join(','));
     } catch (error) {
       console.error('Failed to bulk delete transactions:', error);
@@ -1308,6 +1441,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       spendingDataByCurrency,
       isLoading,
       addTransactions,
+      previewSmartAdd,
       addManualTransaction,
       analyzeFile,
       deleteTransaction,

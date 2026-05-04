@@ -2,6 +2,7 @@ package com.financetracker.service;
 
 import com.financetracker.model.Budget;
 import com.financetracker.repository.BudgetRepository;
+import com.financetracker.util.Guards;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,11 +12,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class BudgetService {
     private final BudgetRepository repo;
-
-    @Transactional(readOnly = true)
-    public List<Budget> findAll() {
-        return repo.findAll();
-    }
 
     @Transactional(readOnly = true)
     public List<Budget> findAllByUserId(String userId) {
@@ -32,8 +28,9 @@ public class BudgetService {
 
     @SuppressWarnings("null")
     @Transactional
-    public Budget update(String id, Budget updates) {
+    public Budget update(String id, Budget updates, String requestUserId) {
         Budget existing = repo.findById(id).orElseThrow(() -> new RuntimeException("Budget not found: " + id));
+        Guards.assertOwner(existing.getUserId(), requestUserId);
         if (updates.getCategory() != null) existing.setCategory(updates.getCategory());
         if (updates.getEmoji() != null) existing.setEmoji(updates.getEmoji());
         if (updates.getLimit() != null) existing.setLimit(updates.getLimit());
@@ -48,7 +45,9 @@ public class BudgetService {
     }
 
     @Transactional
-    public void delete(String id) {
+    public void delete(String id, String requestUserId) {
+        Budget existing = repo.findById(id).orElseThrow(() -> new RuntimeException("Budget not found: " + id));
+        Guards.assertOwner(existing.getUserId(), requestUserId);
         repo.deleteById(id);
     }
 }

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Users, Plus, Shield, Settings, 
+import {
+  Users, Plus, Shield, Settings,
   Mail, UserPlus, Trash2, CheckCircle2,
   Lock, Globe, Layout, Wallet,
   ArrowRight, Sparkles, Heart, X, AlertTriangle
@@ -56,6 +56,15 @@ export const FamilyPage: React.FC = () => {
     deleteFamily();
     setShowDeleteConfirm(false);
     setShowSettings(false);
+  };
+
+  const [showInviteCode, setShowInviteCode] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
+  const inviteCode = familyAccount ? `FAM-${familyAccount.id.slice(-6).toUpperCase()}` : '';
+  const copyInviteCode = () => {
+    navigator.clipboard.writeText(inviteCode);
+    setCodeCopied(true);
+    setTimeout(() => setCodeCopied(false), 2000);
   };
 
   const handleInviteMember = () => {
@@ -180,22 +189,61 @@ export const FamilyPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-4">
-          <button 
+          <button
+            onClick={() => setShowInviteCode(prev => !prev)}
+            className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/5 border border-white/10 text-white font-bold hover:bg-white/10 transition-all"
+          >
+            <Globe className="w-4 h-4" />
+            <span>Share Code</span>
+          </button>
+          <button
             onClick={() => setIsInviting(true)}
             className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/5 border border-white/10 text-white font-bold hover:bg-white/10 transition-all"
           >
             <UserPlus className="w-4 h-4" />
             <span>Invite Member</span>
           </button>
-          <button 
-            onClick={() => setShowSettings(!showSettings)} 
-            aria-label="Settings" 
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            aria-label="Settings"
             className="p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all"
           >
             <Settings className="w-5 h-5 text-white/40" />
           </button>
         </div>
       </div>
+
+      {/* Invite Code Panel */}
+      <AnimatePresence>
+        {showInviteCode && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="glass-card p-8 border-accent/30 bg-accent/[0.02] flex flex-col md:flex-row items-center justify-between gap-6">
+              <div>
+                <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Family Invite Code</p>
+                <p className="text-3xl font-mono font-bold tracking-widest text-accent">{inviteCode}</p>
+                <p className="text-xs text-white/30 mt-2">Share this code with family members so they can join your workspace.</p>
+              </div>
+              <button
+                onClick={copyInviteCode}
+                className={cn(
+                  "flex items-center gap-2 px-8 py-4 rounded-2xl font-bold transition-all",
+                  codeCopied
+                    ? "bg-positive/20 border border-positive/40 text-positive"
+                    : "bg-accent text-white hover:bg-accent/80 violet-glow"
+                )}
+              >
+                {codeCopied ? <CheckCircle2 className="w-4 h-4" /> : <Globe className="w-4 h-4" />}
+                <span>{codeCopied ? 'Copied!' : 'Copy Code'}</span>
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Invite Member Modal */}
       <AnimatePresence>

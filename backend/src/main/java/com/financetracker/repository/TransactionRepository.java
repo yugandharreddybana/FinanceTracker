@@ -11,6 +11,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
     List<Transaction> findByType(String type);
     List<Transaction> findByAccount(String account);
     List<Transaction> findAllByIdIn(List<String> ids);
+    List<Transaction> findAllByIdInAndUserId(List<String> ids, String userId);
     @Modifying
     @Transactional
     void deleteByUserId(String userId);

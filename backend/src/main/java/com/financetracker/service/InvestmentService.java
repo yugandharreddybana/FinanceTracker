@@ -2,6 +2,7 @@ package com.financetracker.service;
 
 import com.financetracker.model.Investment;
 import com.financetracker.repository.InvestmentRepository;
+import com.financetracker.util.Guards;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,11 +12,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class InvestmentService {
     private final InvestmentRepository repo;
-
-    @Transactional(readOnly = true)
-    public List<Investment> findAll() {
-        return repo.findAll();
-    }
 
     @Transactional(readOnly = true)
     public List<Investment> findAllByUserId(String userId) {
@@ -32,8 +28,9 @@ public class InvestmentService {
 
     @SuppressWarnings("null")
     @Transactional
-    public Investment update(String id, Investment updates) {
+    public Investment update(String id, Investment updates, String requestUserId) {
         Investment existing = repo.findById(id).orElseThrow(() -> new RuntimeException("Investment not found: " + id));
+        Guards.assertOwner(existing.getUserId(), requestUserId);
         if (updates.getSymbol() != null) existing.setSymbol(updates.getSymbol());
         if (updates.getName() != null) existing.setName(updates.getName());
         if (updates.getType() != null) existing.setType(updates.getType());
@@ -46,7 +43,9 @@ public class InvestmentService {
     }
 
     @Transactional
-    public void delete(String id) {
+    public void delete(String id, String requestUserId) {
+        Investment existing = repo.findById(id).orElseThrow(() -> new RuntimeException("Investment not found: " + id));
+        Guards.assertOwner(existing.getUserId(), requestUserId);
         repo.deleteById(id);
     }
 }

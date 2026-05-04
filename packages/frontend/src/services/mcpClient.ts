@@ -13,7 +13,7 @@ export class MCPClient {
 
     return new Promise((resolve, reject) => {
       console.log("Connecting to MCP SSE at:", this.sseUrl);
-      this.eventSource = new EventSource(this.sseUrl);
+      this.eventSource = new EventSource(this.sseUrl, { withCredentials: true });
 
       const onEndpoint = (event: any) => {
         this.messageEndpoint = event.data;
@@ -55,9 +55,20 @@ export class MCPClient {
     if (!this.messageEndpoint) throw new Error("MCP not connected");
 
     const id = this.nextId++;
-    const response = await fetch(this.messageEndpoint, {
+    let url = this.messageEndpoint;
+    
+    // Resolve relative paths against the sseUrl origin
+    if (url.startsWith('/')) {
+      const baseUrl = new URL(this.sseUrl);
+      url = `${baseUrl.origin}${url}`;
+    }
+
+    const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id,

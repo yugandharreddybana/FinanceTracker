@@ -2,6 +2,7 @@ package com.financetracker.controller;
 
 import com.financetracker.model.SavingsGoal;
 import com.financetracker.service.SavingsGoalService;
+import com.financetracker.util.Guards;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,28 +17,27 @@ public class SavingsGoalController {
 
     @GetMapping
     public List<SavingsGoal> getAll(@RequestHeader(value = "X-User-Id", required = false) String userId) {
-        if (userId != null) {
-            return service.findAllByUserId(userId);
-        }
-        return service.findAll();
+        Guards.requireUser(userId);
+        return service.findAllByUserId(userId);
     }
 
     @PostMapping
     public ResponseEntity<SavingsGoal> create(@RequestBody SavingsGoal goal, @RequestHeader(value = "X-User-Id", required = false) String userId) {
-        if (userId != null && goal.getUserId() == null) {
-            goal.setUserId(userId);
-        }
+        Guards.requireUser(userId);
+        goal.setUserId(userId);
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(goal));
     }
 
     @PutMapping("/{id}")
-    public SavingsGoal update(@PathVariable String id, @RequestBody SavingsGoal updates) {
-        return service.update(id, updates);
+    public SavingsGoal update(@PathVariable String id, @RequestBody SavingsGoal updates, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        Guards.requireUser(userId);
+        return service.update(id, updates, userId);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable String id) {
-        service.delete(id);
+    public ResponseEntity<Void> delete(@PathVariable String id, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        Guards.requireUser(userId);
+        service.delete(id, userId);
         return ResponseEntity.noContent().build();
     }
 }

@@ -2,6 +2,7 @@ package com.financetracker.service;
 
 import com.financetracker.model.IncomeSource;
 import com.financetracker.repository.IncomeSourceRepository;
+import com.financetracker.util.Guards;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,11 +12,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class IncomeSourceService {
     private final IncomeSourceRepository repo;
-
-    @Transactional(readOnly = true)
-    public List<IncomeSource> findAll() {
-        return repo.findAll();
-    }
 
     @Transactional(readOnly = true)
     public List<IncomeSource> findAllByUserId(String userId) {
@@ -32,8 +28,9 @@ public class IncomeSourceService {
 
     @SuppressWarnings("null")
     @Transactional
-    public IncomeSource update(String id, IncomeSource updates) {
+    public IncomeSource update(String id, IncomeSource updates, String requestUserId) {
         IncomeSource existing = repo.findById(id).orElseThrow(() -> new RuntimeException("Income source not found: " + id));
+        Guards.assertOwner(existing.getUserId(), requestUserId);
         if (updates.getSource() != null) existing.setSource(updates.getSource());
         if (updates.getAmount() != null) existing.setAmount(updates.getAmount());
         if (updates.getDate() != null) existing.setDate(updates.getDate());
@@ -44,7 +41,9 @@ public class IncomeSourceService {
     }
 
     @Transactional
-    public void delete(String id) {
+    public void delete(String id, String requestUserId) {
+        IncomeSource existing = repo.findById(id).orElseThrow(() -> new RuntimeException("Income source not found: " + id));
+        Guards.assertOwner(existing.getUserId(), requestUserId);
         repo.deleteById(id);
     }
 }

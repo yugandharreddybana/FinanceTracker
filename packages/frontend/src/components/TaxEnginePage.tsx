@@ -41,6 +41,8 @@ export const TaxEnginePage: React.FC = () => {
       totalIncome,
       estimatedTax,
       currency: currentCurrency,
+      estimatedLiability: estimatedTaxLiability,
+      breakdown: breakdown.map(b => ({ label: b.label, amount: b.amount })),
       optimizationSuggestions: suggestions,
       transactionsSummary: {
         total: transactions.length,
@@ -59,6 +61,27 @@ export const TaxEnginePage: React.FC = () => {
     showNotice('Tax report downloaded successfully!');
   };
 
+  const income = transactions
+    .filter(t => t.type === 'income')
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const TAX_RATE = 0.20;
+  const BASIC_EXEMPTION = 50000;
+  const taxableIncome = Math.max(0, income - BASIC_EXEMPTION);
+  const estimatedTaxLiability = Math.round(taxableIncome * TAX_RATE);
+
+  const deductibleSpend = transactions
+    .filter(t => t.type === 'expense' && ['Housing', 'Health', 'Education'].includes(t.category || ''))
+    .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  const potentialSavings = Math.round(deductibleSpend * 0.15);
+
+  const effectiveRate = income > 0 ? ((estimatedTaxLiability / income) * 100).toFixed(1) : '0.0';
+
+  const breakdown = [
+    { label: 'Federal Income Tax', amount: Math.round(estimatedTaxLiability * 0.68), color: '#7C6EFA', percent: 68 },
+    { label: 'State Income Tax', amount: Math.round(estimatedTaxLiability * 0.22), color: '#22D3A5', percent: 22 },
+    { label: 'Social Security', amount: Math.round(estimatedTaxLiability * 0.10), color: '#F59E0B', percent: 10 },
+  ];
   const analyzeTax = async () => {
     setIsLoading(true);
     const data = await aiService.getTaxOptimizationSuggestions(transactions.slice(0, 50));
@@ -169,7 +192,7 @@ export const TaxEnginePage: React.FC = () => {
           className="glass-card p-8"
         >
           <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Estimated Tax Liability</p>
-          <h2 className="text-4xl font-bold font-mono tracking-tighter mb-4">{currencyService.formatCurrency(estimatedTax, currentCurrency)}</h2>
+          <h2 className="text-4xl font-bold font-mono tracking-tighter mb-4">{currencyService.formatCurrency(estimatedTaxLiability, currentCurrency)}</h2>
           <div className="flex items-center gap-2 text-xs text-white/40">
             <Calculator className="w-3 h-3" />
             <span>~25% of total income ({currencyService.formatCurrency(totalIncome, currentCurrency)})</span>
@@ -183,9 +206,7 @@ export const TaxEnginePage: React.FC = () => {
           className="glass-card p-8 border-positive/20 bg-positive/[0.02]"
         >
           <p className="text-[10px] font-bold text-positive uppercase tracking-widest mb-2">Potential AI Savings</p>
-          <h2 className="text-4xl font-bold font-mono tracking-tighter text-positive mb-4">
-            {currencyService.formatCurrency(suggestions.reduce((s, sg) => s + (sg.potentialSavings || 0), 0), currentCurrency)}
-          </h2>
+          <h2 className="text-4xl font-bold font-mono tracking-tighter text-positive mb-4">{currencyService.formatCurrency(potentialSavings, currentCurrency)}</h2>
           <div className="flex items-center gap-2 text-xs text-positive/60">
             <Sparkles className="w-3 h-3" />
             <span>{suggestions.length} optimization opportunities found</span>
@@ -199,7 +220,7 @@ export const TaxEnginePage: React.FC = () => {
           className="glass-card p-8"
         >
           <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Effective Tax Rate</p>
-          <h2 className="text-4xl font-bold font-mono tracking-tighter mb-4">{totalIncome > 0 ? ((estimatedTax / totalIncome) * 100).toFixed(1) : '0.0'}%</h2>
+          <h2 className="text-4xl font-bold font-mono tracking-tighter mb-4">{effectiveRate}%</h2>
           <div className="flex items-center gap-2 text-xs text-white/40">
             <TrendingDown className="w-3 h-3" />
             <span>Based on {transactions.filter(t => t.type === 'income').length} income transactions</span>
@@ -273,7 +294,18 @@ export const TaxEnginePage: React.FC = () => {
                         exit={{ opacity: 0, height: 0 }}
                         className="mt-4 pt-4 border-t border-white/5"
                       >
-                        <p className="text-xs text-white/60 leading-relaxed">{s.description}</p>
+                        {s.steps && s.steps.length > 0 ? (
+                          <ol className="space-y-2">
+                            {s.steps.map((step, si) => (
+                              <li key={si} className="flex items-start gap-3 text-xs text-white/60 leading-relaxed">
+                                <span className="w-5 h-5 rounded-full bg-accent/20 text-accent flex items-center justify-center font-bold shrink-0 mt-0.5">{si + 1}</span>
+                                <span>{step}</span>
+                              </li>
+                            ))}
+                          </ol>
+                        ) : (
+                          <p className="text-xs text-white/60 leading-relaxed">{s.description}</p>
+                        )}
                         <div className="mt-3 p-3 rounded-xl bg-accent/5 border border-accent/20">
                           <p className="text-[10px] font-bold text-accent uppercase tracking-widest mb-1">Potential Savings</p>
                           <p className="text-sm font-bold text-positive">{currencyService.formatCurrency(s.potentialSavings, currentCurrency)}</p>
@@ -291,11 +323,7 @@ export const TaxEnginePage: React.FC = () => {
           <h3 className="text-xl font-bold mb-2">Tax Breakdown</h3>
           <div className="glass-card p-10">
             <div className="space-y-8">
-              {[
-                { label: 'Federal Income Tax', amount: 8450, color: '#7C6EFA', percent: 68 },
-                { label: 'State Income Tax', amount: 2800, color: '#22D3A5', percent: 22 },
-                { label: 'Social Security', amount: 1200, color: '#F59E0B', percent: 10 }
-              ].map((item, i) => (
+              {breakdown.map((item, i) => (
                 <div key={i} className="space-y-3">
                   <div className="flex justify-between items-end">
                     <div>
@@ -322,7 +350,7 @@ export const TaxEnginePage: React.FC = () => {
               <div>
                 <p className="text-xs font-bold text-white/80 mb-1">Upcoming Deadline</p>
                 <p className="text-xs text-white/40 leading-relaxed">
-                  The Q2 estimated tax payment deadline is June 15th. You have an estimated payment of {currencyService.formatCurrency(3112, currentCurrency)} due.
+                  The Q2 estimated tax payment deadline is June 15th. You have an estimated payment of {currencyService.formatCurrency(Math.round(estimatedTaxLiability / 4), currentCurrency)} due.
                 </p>
               </div>
             </div>

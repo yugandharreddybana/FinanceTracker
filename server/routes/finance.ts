@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { rateLimit } from "express-rate-limit";
 import { authMiddleware } from "../routes/auth.js";
+import { verifyToken } from "../lib/auth.js";
 
 const router = Router();
 
@@ -18,8 +19,11 @@ const financeLimiter = rateLimit({
 router.use(financeLimiter);
 
 // Spring Boot backend URL — configured via environment variable
-const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8080";
+const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8081";
 const BACKEND_API = `${BACKEND_URL}/api/finance`;
+
+// All finance routes require a valid JWT (single-user scope enforced via X-User-Id from token).
+router.use(authMiddleware);
 
 // ---------------------------------------------------------------------------
 // Generic proxy helper — forwards requests to Spring Boot
@@ -53,19 +57,17 @@ async function proxyToBackend(req: Request, res: Response, path: string, method?
       },
     };
 
-    // Forward request body for POST/PUT/PATCH
     if (["POST", "PUT", "PATCH"].includes(options.method!)) {
       let body = req.body;
-      // Inject userId into body if missing and we have it from token
-      if (userId && typeof body === 'object' && body !== null) {
-        body = { ...body, userId: body.userId || userId };
+      if (typeof body === "object" && body !== null) {
+        // Force userId from token; never trust client-supplied userId.
+        body = { ...body, userId };
       }
       options.body = JSON.stringify(body);
     }
 
     const response = await fetch(url, options);
 
-    // Forward status code
     if (response.status === 204) {
       return res.status(204).send();
     }
@@ -73,8 +75,8 @@ async function proxyToBackend(req: Request, res: Response, path: string, method?
     const data = await response.json().catch(() => null);
     res.status(response.status).json(data);
   } catch (err: any) {
-    console.error(`Proxy error [${req.method} ${path}]:`, err.message);
-    res.status(502).json({ error: "Backend unavailable", details: err.message });
+    console.error(`Proxy error [${req.method} ${path}]`);
+    res.status(502).json({ error: "Backend unavailable" });
   }
 }
 
@@ -84,11 +86,10 @@ async function proxyToBackend(req: Request, res: Response, path: string, method?
 
 router.get("/transactions", (req, res) => proxyToBackend(req, res, "/transactions"));
 router.post("/transactions", (req, res) => proxyToBackend(req, res, "/transactions"));
-router.put("/transactions/:id", (req, res) => proxyToBackend(req, res, `/transactions/${req.params.id}`));
+router.put("/transactions/:id", (req, res) => proxyToBackend(req, res, `/transactions/${encodeURIComponent(req.params.id)}`));
 router.patch("/transactions/bulk", (req, res) => proxyToBackend(req, res, "/transactions/bulk"));
 router.post("/transactions/bulk-delete", (req, res) => proxyToBackend(req, res, "/transactions/bulk-delete"));
-
-router.delete("/transactions/:id", (req, res) => proxyToBackend(req, res, `/transactions/${req.params.id}`));
+router.delete("/transactions/:id", (req, res) => proxyToBackend(req, res, `/transactions/${encodeURIComponent(req.params.id)}`));
 
 // ---------------------------------------------------------------------------
 // Accounts
@@ -96,8 +97,8 @@ router.delete("/transactions/:id", (req, res) => proxyToBackend(req, res, `/tran
 
 router.get("/accounts", (req, res) => proxyToBackend(req, res, "/accounts"));
 router.post("/accounts", (req, res) => proxyToBackend(req, res, "/accounts"));
-router.put("/accounts/:id", (req, res) => proxyToBackend(req, res, `/accounts/${req.params.id}`));
-router.delete("/accounts/:id", (req, res) => proxyToBackend(req, res, `/accounts/${req.params.id}`));
+router.put("/accounts/:id", (req, res) => proxyToBackend(req, res, `/accounts/${encodeURIComponent(req.params.id)}`));
+router.delete("/accounts/:id", (req, res) => proxyToBackend(req, res, `/accounts/${encodeURIComponent(req.params.id)}`));
 
 // ---------------------------------------------------------------------------
 // Budgets
@@ -105,8 +106,8 @@ router.delete("/accounts/:id", (req, res) => proxyToBackend(req, res, `/accounts
 
 router.get("/budgets", (req, res) => proxyToBackend(req, res, "/budgets"));
 router.post("/budgets", (req, res) => proxyToBackend(req, res, "/budgets"));
-router.put("/budgets/:id", (req, res) => proxyToBackend(req, res, `/budgets/${req.params.id}`));
-router.delete("/budgets/:id", (req, res) => proxyToBackend(req, res, `/budgets/${req.params.id}`));
+router.put("/budgets/:id", (req, res) => proxyToBackend(req, res, `/budgets/${encodeURIComponent(req.params.id)}`));
+router.delete("/budgets/:id", (req, res) => proxyToBackend(req, res, `/budgets/${encodeURIComponent(req.params.id)}`));
 
 // ---------------------------------------------------------------------------
 // Loans
@@ -114,8 +115,8 @@ router.delete("/budgets/:id", (req, res) => proxyToBackend(req, res, `/budgets/$
 
 router.get("/loans", (req, res) => proxyToBackend(req, res, "/loans"));
 router.post("/loans", (req, res) => proxyToBackend(req, res, "/loans"));
-router.put("/loans/:id", (req, res) => proxyToBackend(req, res, `/loans/${req.params.id}`));
-router.delete("/loans/:id", (req, res) => proxyToBackend(req, res, `/loans/${req.params.id}`));
+router.put("/loans/:id", (req, res) => proxyToBackend(req, res, `/loans/${encodeURIComponent(req.params.id)}`));
+router.delete("/loans/:id", (req, res) => proxyToBackend(req, res, `/loans/${encodeURIComponent(req.params.id)}`));
 
 // ---------------------------------------------------------------------------
 // Savings Goals
@@ -123,8 +124,8 @@ router.delete("/loans/:id", (req, res) => proxyToBackend(req, res, `/loans/${req
 
 router.get("/savings-goals", (req, res) => proxyToBackend(req, res, "/savings-goals"));
 router.post("/savings-goals", (req, res) => proxyToBackend(req, res, "/savings-goals"));
-router.put("/savings-goals/:id", (req, res) => proxyToBackend(req, res, `/savings-goals/${req.params.id}`));
-router.delete("/savings-goals/:id", (req, res) => proxyToBackend(req, res, `/savings-goals/${req.params.id}`));
+router.put("/savings-goals/:id", (req, res) => proxyToBackend(req, res, `/savings-goals/${encodeURIComponent(req.params.id)}`));
+router.delete("/savings-goals/:id", (req, res) => proxyToBackend(req, res, `/savings-goals/${encodeURIComponent(req.params.id)}`));
 
 // ---------------------------------------------------------------------------
 // Recurring Payments
@@ -132,8 +133,8 @@ router.delete("/savings-goals/:id", (req, res) => proxyToBackend(req, res, `/sav
 
 router.get("/recurring-payments", (req, res) => proxyToBackend(req, res, "/recurring-payments"));
 router.post("/recurring-payments", (req, res) => proxyToBackend(req, res, "/recurring-payments"));
-router.put("/recurring-payments/:id", (req, res) => proxyToBackend(req, res, `/recurring-payments/${req.params.id}`));
-router.delete("/recurring-payments/:id", (req, res) => proxyToBackend(req, res, `/recurring-payments/${req.params.id}`));
+router.put("/recurring-payments/:id", (req, res) => proxyToBackend(req, res, `/recurring-payments/${encodeURIComponent(req.params.id)}`));
+router.delete("/recurring-payments/:id", (req, res) => proxyToBackend(req, res, `/recurring-payments/${encodeURIComponent(req.params.id)}`));
 
 // ---------------------------------------------------------------------------
 // Income Sources
@@ -141,8 +142,8 @@ router.delete("/recurring-payments/:id", (req, res) => proxyToBackend(req, res, 
 
 router.get("/income-sources", (req, res) => proxyToBackend(req, res, "/income-sources"));
 router.post("/income-sources", (req, res) => proxyToBackend(req, res, "/income-sources"));
-router.put("/income-sources/:id", (req, res) => proxyToBackend(req, res, `/income-sources/${req.params.id}`));
-router.delete("/income-sources/:id", (req, res) => proxyToBackend(req, res, `/income-sources/${req.params.id}`));
+router.put("/income-sources/:id", (req, res) => proxyToBackend(req, res, `/income-sources/${encodeURIComponent(req.params.id)}`));
+router.delete("/income-sources/:id", (req, res) => proxyToBackend(req, res, `/income-sources/${encodeURIComponent(req.params.id)}`));
 
 // ---------------------------------------------------------------------------
 // Investments
@@ -150,23 +151,35 @@ router.delete("/income-sources/:id", (req, res) => proxyToBackend(req, res, `/in
 
 router.get("/investments", (req, res) => proxyToBackend(req, res, "/investments"));
 router.post("/investments", (req, res) => proxyToBackend(req, res, "/investments"));
-router.put("/investments/:id", (req, res) => proxyToBackend(req, res, `/investments/${req.params.id}`));
-router.delete("/investments/:id", (req, res) => proxyToBackend(req, res, `/investments/${req.params.id}`));
+router.put("/investments/:id", (req, res) => proxyToBackend(req, res, `/investments/${encodeURIComponent(req.params.id)}`));
+router.delete("/investments/:id", (req, res) => proxyToBackend(req, res, `/investments/${encodeURIComponent(req.params.id)}`));
 
 // ---------------------------------------------------------------------------
-// User Profiles
+// User Profiles (scoped to authenticated user only)
 // ---------------------------------------------------------------------------
 
-router.get("/user-profiles", (req, res) => proxyToBackend(req, res, "/user-profiles"));
 router.post("/user-profiles", (req, res) => proxyToBackend(req, res, "/user-profiles"));
 router.get("/user-profiles/by-email/:email", (req, res) =>
   proxyToBackend(req, res, `/user-profiles/by-email/${encodeURIComponent(req.params.email)}`));
-router.get("/user-profiles/:id", (req, res) => proxyToBackend(req, res, `/user-profiles/${req.params.id}`));
-router.put("/user-profiles/:id", (req, res) => proxyToBackend(req, res, `/user-profiles/${req.params.id}`));
-router.delete("/user-profiles/:id", (req, res) => proxyToBackend(req, res, `/user-profiles/${req.params.id}`));
+router.get("/user-profiles/:id", (req, res) => {
+  const userId = (req as any).user?.uid;
+  if (req.params.id !== userId) return res.status(403).json({ error: "Forbidden" });
+  return proxyToBackend(req, res, `/user-profiles/${encodeURIComponent(req.params.id)}`);
+});
+router.put("/user-profiles/:id", (req, res) => {
+  const userId = (req as any).user?.uid;
+  if (req.params.id !== userId) return res.status(403).json({ error: "Forbidden" });
+  return proxyToBackend(req, res, `/user-profiles/${encodeURIComponent(req.params.id)}`);
+});
+router.delete("/user-profiles/:id", (req, res) => {
+  const userId = (req as any).user?.uid;
+  if (req.params.id !== userId) return res.status(403).json({ error: "Forbidden" });
+  return proxyToBackend(req, res, `/user-profiles/${encodeURIComponent(req.params.id)}`);
+});
 
-// Convenience: delete by email — looks up the profile then deletes by id
 router.delete("/user-profiles/by-email/:email", async (req, res) => {
+  const userId = (req as any).user?.uid;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
   try {
     // 1. Delete by email (handles profile and cascade in backend)
     const del = await fetch(`${BACKEND_API}/user-profiles/by-email/${encodeURIComponent(req.params.email)}`, { method: "DELETE" });
@@ -178,8 +191,8 @@ router.delete("/user-profiles/by-email/:email", async (req, res) => {
     }
 
     res.status(del.status).send();
-  } catch (err: any) {
-    res.status(502).json({ error: "Backend unavailable", details: err.message });
+  } catch {
+    res.status(502).json({ error: "Backend unavailable" });
   }
 });
 
@@ -209,29 +222,39 @@ router.get("/sync-transactions", (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// MCP Endpoints (kept for AI Oracle integration)
+// MCP Endpoints (kept for AI Oracle integration) — auth-gated
 // ---------------------------------------------------------------------------
 
 let mcpClients: any[] = [];
 
 router.get("/mcp/sse", (req, res) => {
+  const userId = (req as any).user?.uid;
+  if (!userId) return res.status(401).end();
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
 
   const clientId = Date.now();
   const messageEndpoint = `/api/finance/mcp/message?clientId=${clientId}`;
   res.write(`event: endpoint\ndata: ${messageEndpoint}\n\n`);
 
-  const client = { id: clientId, res };
+  const keepAlive = setInterval(() => {
+    res.write(': keep-alive\n\n');
+  }, 30000);
+
+  const client = { id: clientId, userId, res };
   mcpClients.push(client);
 
   req.on("close", () => {
+    clearInterval(keepAlive);
     mcpClients = mcpClients.filter((c) => c.id !== clientId);
   });
 });
 
 router.post("/mcp/message", async (req, res) => {
+  const userId = (req as any).user?.uid;
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
   const { method, params, id } = req.body;
 
   let result: any = null;
@@ -241,34 +264,22 @@ router.post("/mcp/message", async (req, res) => {
     if (method === "tools/list") {
       result = {
         tools: [
-          {
-            name: "get_transactions",
-            description: "Get all financial transactions",
-            inputSchema: { type: "object", properties: {} },
-          },
-          {
-            name: "get_accounts",
-            description: "Get all bank accounts and balances",
-            inputSchema: { type: "object", properties: {} },
-          },
-          {
-            name: "get_budgets",
-            description: "Get all budget categories and limits",
-            inputSchema: { type: "object", properties: {} },
-          },
+          { name: "get_transactions", description: "Get all financial transactions", inputSchema: { type: "object", properties: {} } },
+          { name: "get_accounts", description: "Get all bank accounts and balances", inputSchema: { type: "object", properties: {} } },
+          { name: "get_budgets", description: "Get all budget categories and limits", inputSchema: { type: "object", properties: {} } },
           {
             name: "create_transaction",
             description: "Record a new financial transaction (expense or income)",
             inputSchema: {
               type: "object",
               properties: {
-                merchant: { type: "string", description: "The merchant or source (e.g. Starbucks, Salary)" },
-                amount: { type: "number", description: "The transaction amount" },
-                currency: { type: "string", description: "The currency code (e.g. EUR, USD, INR)" },
-                date: { type: "string", description: "The date in YYYY-MM-DD format" },
-                category: { type: "string", description: "The category (e.g. Food, Transport, Rent)" },
-                type: { type: "string", enum: ["EXPENSE", "INCOME"], description: "The transaction type" },
-                account: { type: "string", description: "The bank account name (e.g. Revolut, Main Current)" }
+                merchant: { type: "string" },
+                amount: { type: "number" },
+                currency: { type: "string" },
+                date: { type: "string" },
+                category: { type: "string" },
+                type: { type: "string", enum: ["EXPENSE", "INCOME"] },
+                account: { type: "string" }
               },
               required: ["merchant", "amount", "type"]
             }
@@ -371,7 +382,7 @@ router.post("/mcp/message", async (req, res) => {
       error = { code: -32601, message: "Method not found" };
     }
   } catch (err: any) {
-    error = { code: -32603, message: err.message };
+    error = { code: -32603, message: "Internal error" };
   }
 
   res.json({ jsonrpc: "2.0", id, result, error });

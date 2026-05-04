@@ -298,7 +298,6 @@ export const SettingsPage: React.FC = () => {
       requireConfirmText: 'DELETE',
       isDestructive: true,
       onConfirm: async () => {
-        const token = localStorage.getItem('auth_token') || '';
         let backendOk = true;
         let authOk = true;
         try {
@@ -306,7 +305,7 @@ export const SettingsPage: React.FC = () => {
             `${MIDDLEWARE_BASE}/api/finance/user-profiles/by-email/${encodeURIComponent(userProfile.email)}`,
             {
               method: 'DELETE',
-              headers: token ? { Authorization: `Bearer ${token}` } : {},
+              credentials: 'include',
             }
           );
           backendOk = r1.ok || r1.status === 404;
@@ -317,9 +316,9 @@ export const SettingsPage: React.FC = () => {
         try {
           const r2 = await fetch(`${MIDDLEWARE_BASE}/api/auth/account`, {
             method: 'DELETE',
+            credentials: 'include',
             headers: {
               'Content-Type': 'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
             body: JSON.stringify({ email: userProfile.email }),
           });

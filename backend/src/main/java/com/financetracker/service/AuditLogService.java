@@ -2,6 +2,7 @@ package com.financetracker.service;
 
 import com.financetracker.model.AuditLog;
 import com.financetracker.repository.AuditLogRepository;
+import com.financetracker.util.Guards;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,10 +13,9 @@ import java.util.List;
 public class AuditLogService {
     private final AuditLogRepository repo;
 
-    @SuppressWarnings("null")
     @Transactional(readOnly = true)
-    public List<AuditLog> findAll() {
-        return repo.findAllByOrderByTimestampDesc();
+    public List<AuditLog> findAllByUserId(String userId) {
+        return repo.findAllByUserId(userId);
     }
 
     @Transactional
@@ -30,7 +30,9 @@ public class AuditLogService {
     }
 
     @Transactional
-    public void delete(String id) {
+    public void delete(String id, String requestUserId) {
+        AuditLog existing = repo.findById(id).orElseThrow(() -> new RuntimeException("AuditLog not found: " + id));
+        Guards.assertOwner(existing.getUserId(), requestUserId);
         repo.deleteById(id);
     }
 }

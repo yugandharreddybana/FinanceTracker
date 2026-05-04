@@ -2,6 +2,7 @@ package com.financetracker.service;
 
 import com.financetracker.model.Loan;
 import com.financetracker.repository.LoanRepository;
+import com.financetracker.util.Guards;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,11 +12,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class LoanService {
     private final LoanRepository repo;
-
-    @Transactional(readOnly = true)
-    public List<Loan> findAll() {
-        return repo.findAll();
-    }
 
     @Transactional(readOnly = true)
     public List<Loan> findAllByUserId(String userId) {
@@ -32,8 +28,9 @@ public class LoanService {
 
     @SuppressWarnings("null")
     @Transactional
-    public Loan update(String id, Loan updates) {
+    public Loan update(String id, Loan updates, String requestUserId) {
         Loan existing = repo.findById(id).orElseThrow(() -> new RuntimeException("Loan not found: " + id));
+        Guards.assertOwner(existing.getUserId(), requestUserId);
         if (updates.getName() != null) existing.setName(updates.getName());
         if (updates.getTotalAmount() != null) existing.setTotalAmount(updates.getTotalAmount());
         if (updates.getRemainingAmount() != null) existing.setRemainingAmount(updates.getRemainingAmount());
@@ -50,7 +47,9 @@ public class LoanService {
     }
 
     @Transactional
-    public void delete(String id) {
+    public void delete(String id, String requestUserId) {
+        Loan existing = repo.findById(id).orElseThrow(() -> new RuntimeException("Loan not found: " + id));
+        Guards.assertOwner(existing.getUserId(), requestUserId);
         repo.deleteById(id);
     }
 }

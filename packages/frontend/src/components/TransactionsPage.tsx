@@ -32,7 +32,7 @@ export const TransactionsPage: React.FC = () => {
     amount: 0,
     category: 'Others',
     type: 'expense',
-    account: primaryAccount?.name || 'Main Current',
+    account: primaryAccount?.name || '',
     status: 'pending'
   });
 
@@ -96,8 +96,13 @@ export const TransactionsPage: React.FC = () => {
   const handleAddTransaction = async () => {
     if (!newTransactionForm.merchant || !newTransactionForm.amount) return;
     
+    const amount = newTransactionForm.type === 'expense'
+      ? -Math.abs(newTransactionForm.amount)
+      : Math.abs(newTransactionForm.amount);
+
     const transaction = {
       ...newTransactionForm,
+      amount,
       id: crypto.randomUUID(),
     } as Transaction;
 
@@ -109,7 +114,7 @@ export const TransactionsPage: React.FC = () => {
       amount: 0,
       category: 'Others',
       type: 'expense',
-      account: primaryAccount?.name || 'Main Current',
+      account: primaryAccount?.name || '',
       status: 'pending'
     });
   };

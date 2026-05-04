@@ -30,6 +30,8 @@ export const ForecastingPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [riskProfile, setRiskProfile] = useState<'Conservative' | 'Moderate' | 'Aggressive'>('Moderate');
   const [showHistory, setShowHistory] = useState(false);
+  const [inflationRate, setInflationRate] = useState(3.2);
+  const [marketReturn, setMarketReturn] = useState(8.5);
 
   const currentCurrency = selectedCurrency;
   const currentNetWorth = netWorthByCurrency[currentCurrency]?.total || 0;
@@ -37,6 +39,20 @@ export const ForecastingPage: React.FC = () => {
   const totalIncome = incomeSources.reduce((sum, inc) => sum + inc.amount, 0);
   const totalExpenses = recurringPayments.reduce((sum, rec) => sum + rec.amount, 0);
   const monthlySavings = Math.max(0, totalIncome - totalExpenses);
+
+  const FREEDOM_TARGET = 1000000;
+  const freedomProgress = currentNetWorth > 0
+    ? Math.min(100, Math.round((currentNetWorth / FREEDOM_TARGET) * 100))
+    : 0;
+  const remaining = Math.max(0, FREEDOM_TARGET - currentNetWorth);
+  const monthsToFreedom = monthlySavings > 0 ? Math.ceil(remaining / monthlySavings) : null;
+  const freedomDate = monthsToFreedom !== null
+    ? (() => {
+        const d = new Date();
+        d.setMonth(d.getMonth() + monthsToFreedom);
+        return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      })()
+    : 'Unknown';
 
   const generateForecast = async () => {
     setIsLoading(true);
@@ -144,7 +160,10 @@ export const ForecastingPage: React.FC = () => {
                     fontWeight="bold"
                     tickLine={false}
                     axisLine={false}
-                    tickFormatter={(val) => `${currentCurrency === 'INR' ? '₹' : '€'}${(val / 1000).toFixed(0)}k`}
+                    tickFormatter={(val) => {
+                      const sym: Record<string, string> = { INR: '₹', EUR: '€', USD: '$', GBP: '£' };
+                      return `${sym[currentCurrency] ?? currentCurrency}${(val / 1000).toFixed(0)}k`;
+                    }}
                   />
                   <Tooltip 
                     contentStyle={{ backgroundColor: '#0F0F19', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', padding: '16px' }}
@@ -210,17 +229,17 @@ export const ForecastingPage: React.FC = () => {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <span className="text-xs text-white/40 font-medium">Target Net Worth</span>
-                <span className="text-sm font-bold">{currencyService.formatCurrency(1000000, currentCurrency)}</span>
+                <span className="text-sm font-bold">{currencyService.formatCurrency(FREEDOM_TARGET, currentCurrency)}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-white/40 font-medium">Estimated Date</span>
-                <span className="text-sm font-bold text-accent">Oct 2038</span>
+                <span className="text-sm font-bold text-accent">{freedomDate}</span>
               </div>
               <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden mt-4">
-                <div className="h-full bg-positive w-[15%]" />
+                <div className="h-full bg-positive transition-all duration-1000" style={{ width: `${freedomProgress}%` }} />
               </div>
               <p className="text-[10px] text-white/30 text-center mt-2">
-                You are 15% of the way to your goal.
+                You are {freedomProgress}% of the way to your goal.
               </p>
             </div>
           </motion.div>
@@ -264,20 +283,28 @@ export const ForecastingPage: React.FC = () => {
             <div className="space-y-4">
               <div className="flex justify-between">
                 <label className="text-xs font-bold text-white/40 uppercase tracking-widest">Inflation Rate</label>
-                <span className="text-xs font-bold text-accent">3.2%</span>
+                <span className="text-xs font-bold text-accent">{inflationRate.toFixed(1)}%</span>
               </div>
-              <div className="h-1.5 w-full bg-white/5 rounded-full">
-                <div className="h-full bg-accent w-[32%]" />
-              </div>
+              <input
+                type="range" min="0" max="10" step="0.1"
+                value={inflationRate}
+                onChange={(e) => setInflationRate(Number(e.target.value))}
+                className="w-full accent-accent"
+                aria-label="Inflation rate"
+              />
             </div>
             <div className="space-y-4">
               <div className="flex justify-between">
                 <label className="text-xs font-bold text-white/40 uppercase tracking-widest">Market Return</label>
-                <span className="text-xs font-bold text-positive">8.5%</span>
+                <span className="text-xs font-bold text-positive">{marketReturn.toFixed(1)}%</span>
               </div>
-              <div className="h-1.5 w-full bg-white/5 rounded-full">
-                <div className="h-full bg-positive w-[85%]" />
-              </div>
+              <input
+                type="range" min="0" max="20" step="0.1"
+                value={marketReturn}
+                onChange={(e) => setMarketReturn(Number(e.target.value))}
+                className="w-full accent-positive"
+                aria-label="Market return"
+              />
             </div>
             <div className="p-6 rounded-2xl bg-white/5 border border-white/10 flex items-start gap-4">
               <Info className="w-5 h-5 text-white/20 mt-1" />

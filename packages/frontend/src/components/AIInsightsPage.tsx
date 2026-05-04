@@ -39,9 +39,13 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
   });
   const [insights, setInsights] = useState<Insight[]>([]);
   const [insightFilter, setInsightFilter] = useState('All Intelligence');
-  const [messages, setMessages] = useState<{ role: 'user' | 'ai', content: string }[]>([
-    { role: 'ai', content: "Welcome back, Yugandhar. I'm analyzing your real-time financial stream. How can I help you optimize your wealth today?" }
-  ]);
+  const [messages, setMessages] = useState<{ role: 'user' | 'ai', content: string }[]>(() => {
+    try {
+      const saved = localStorage.getItem('yugi_ai_chat_history');
+      if (saved) return JSON.parse(saved);
+    } catch { /* ignore */ }
+    return [{ role: 'ai' as const, content: "Welcome back. I'm analyzing your real-time financial stream. How can I help you optimize your wealth today?" }];
+  });
 
   const mcpClientRef = useRef<MCPClient | null>(null);
   const historyRef = useRef<any[]>([]);
@@ -53,6 +57,9 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
 
   useEffect(() => {
     scrollToBottom();
+    try {
+      localStorage.setItem('yugi_ai_chat_history', JSON.stringify(messages.slice(-50)));
+    } catch { /* ignore */ }
   }, [messages]);
 
   useEffect(() => {

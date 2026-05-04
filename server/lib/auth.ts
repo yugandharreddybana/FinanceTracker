@@ -21,6 +21,15 @@ if (!JWT_SECRET) {
 }
 const USERS_FILE = path.join(process.cwd(), "data", "users.json");
 
+export interface Authenticator {
+  credentialID: string;
+  credentialPublicKey: string; // base64url encoded
+  counter: number;
+  credentialDeviceType: string;
+  credentialBackedUp: boolean;
+  transports?: string[];
+}
+
 export interface StoredUser {
   uid: string;
   email: string;
@@ -28,6 +37,7 @@ export interface StoredUser {
   passwordHash: string;
   salt: string;
   createdAt: string;
+  authenticators?: Authenticator[];
 }
 
 // ---------------------------------------------------------------------------
@@ -98,7 +108,7 @@ function hashPassword(password: string, salt: string): string {
 
 export function createToken(payload: { uid: string; email: string; name: string }): string {
   if (!JWT_SECRET) throw new Error("Internal Server Error: JWT_SECRET is not configured");
-  
+
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
   const body = Buffer.from(
     JSON.stringify({ ...payload, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 86400 })
@@ -191,4 +201,84 @@ export async function deleteUserByEmail(email: string): Promise<boolean> {
 export function findUserByEmail(email: string): StoredUser | undefined {
   const users = loadUsers();
   return users.find((u) => u.email === email);
+}
+
+// In-memory store for reset tokens (Token -> {email, expiry})
+const resetTokens = new Map<string, { email: string; expiry: number }>();
+
+export function generateResetToken(email: string): string {
+  const user = findUserByEmail(email);
+  if (!user) throw new Error("User not found");
+
+  const token = crypto.randomUUID();
+  const expiry = Date.now() + 3600000; // 1 hour
+  resetTokens.set(token, { email, expiry });
+
+  return token;
+}
+
+export function resetPasswordWithToken(token: string, newPassword: string): void {
+  const resetInfo = resetTokens.get(token);
+  if (!resetInfo) throw new Error("Invalid or expired reset token");
+
+  if (Date.now() > resetInfo.expiry) {
+    resetTokens.delete(token);
+    throw new Error("Reset token has expired");
+  }
+
+  const users = loadUsers();
+  const idx = users.findIndex((u) => u.email === resetInfo.email);
+  if (idx === -1) throw new Error("User no longer exists");
+
+  const newSalt = crypto.randomBytes(32).toString("hex");
+  users[idx] = {
+    ...users[idx],
+    salt: newSalt,
+    passwordHash: hashPassword(newPassword, newSalt)
+  };
+
+  saveUsers(users);
+  resetTokens.delete(token); // Cleanup
+}
+
+export function updatePasswordDirectly(email: string, newPassword: string): void {
+  const users = loadUsers();
+  const idx = users.findIndex((u) => u.email === email);
+  if (idx === -1) throw new Error("User not found");
+
+  const newSalt = crypto.randomBytes(32).toString("hex");
+  users[idx] = {
+    ...users[idx],
+    salt: newSalt,
+    passwordHash: hashPassword(newPassword, newSalt)
+  };
+
+  saveUsers(users);
+}
+
+export function saveUserAuthenticator(email: string, authenticator: Authenticator): void {
+  const users = loadUsers();
+  const idx = users.findIndex((u) => u.email === email);
+  if (idx === -1) throw new Error("User not found");
+
+  if (!users[idx].authenticators) users[idx].authenticators = [];
+
+  // Update if exists, otherwise add
+  const existingIdx = users[idx].authenticators!.findIndex(a => a.credentialID === authenticator.credentialID);
+  if (existingIdx !== -1) {
+    users[idx].authenticators![existingIdx] = authenticator;
+  } else {
+    users[idx].authenticators!.push(authenticator);
+  }
+
+  saveUsers(users);
+}
+
+export function deleteUserAuthenticators(email: string): void {
+  const users = loadUsers();
+  const idx = users.findIndex((u) => u.email === email);
+  if (idx === -1) return;
+
+  users[idx].authenticators = [];
+  saveUsers(users);
 }

@@ -19,6 +19,7 @@ import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { SignupPage } from './components/SignupPage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
+import { ResetPasswordPage } from './components/ResetPasswordPage';
 import { SettingsPage } from './components/SettingsPage';
 import { InvestmentPage } from './components/InvestmentPage';
 import { ForecastingPage } from './components/ForecastingPage';
@@ -27,6 +28,7 @@ import { ReportBuilderPage } from './components/ReportBuilderPage';
 import { AuditLogPage } from './components/AuditLogPage';
 import { FamilyPage } from './components/FamilyPage';
 import { FinanceProvider, useFinance } from './context/FinanceContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { AnimatePresence, motion } from 'motion/react';
 import { cn } from './lib/utils';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
@@ -38,11 +40,13 @@ import { authApi, MIDDLEWARE_BASE } from './services/api';
 
 export default function App() {
   return (
-    <Router>
-      <FinanceProvider>
-        <MainApp />
-      </FinanceProvider>
-    </Router>
+    <ErrorBoundary>
+      <Router>
+        <FinanceProvider>
+          <MainApp />
+        </FinanceProvider>
+      </Router>
+    </ErrorBoundary>
   );
 }
 
@@ -75,7 +79,12 @@ function MainApp() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>(() => {
+    try {
+      const saved = localStorage.getItem('yugi_finance_notifications');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const [isAIProcessing, setIsAIProcessing] = useState(false);
 
   // Handle refresh and initial load
@@ -134,6 +143,11 @@ function MainApp() {
       clearInterval(interval);
     };
   }, [isLoggedIn]);
+
+  // Persist notifications across sessions
+  useEffect(() => {
+    localStorage.setItem('yugi_finance_notifications', JSON.stringify(notifications.slice(0, 50)));
+  }, [notifications]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -322,6 +336,11 @@ function MainApp() {
             />
           ) : <Navigate to="/dashboard" replace />
         } />
+        <Route path="/reset-password" element={
+          !isLoggedIn ? (
+            <ResetPasswordPage key="reset-password" />
+          ) : <Navigate to="/dashboard" replace />
+        } />
 
         {/* Protected App Routes */}
         <Route path="/dashboard/*" element={
@@ -330,7 +349,7 @@ function MainApp() {
             <div key="app-main" className="min-h-screen">
               <Sidebar activeTab={activeTab} setActiveTab={handleNavigate} onLogout={handleLogout} />
 
-              <main className="pl-[80px] min-h-screen relative z-10 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]">
+              <main className="pl-[80px] min-h-screen relative z-10 transition-all duration-500 ease-in-out">
                 {/* Fixed Header Bar */}
                 <header className="fixed top-0 left-[80px] right-0 h-20 flex items-center justify-between px-10 border-b border-white/5 bg-background/80 backdrop-blur-xl z-[90]">
                   <div className="flex items-center gap-4">

@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Read(//f/Projects/FinanceTracker/**)"
+      "Read(//f/Projects/FinanceTracker/**)",
+      "Bash(del *)"
     ]
   }
 }

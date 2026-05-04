@@ -27,7 +27,7 @@ const forgotPasswordLimiter = rateLimit({
 // General limiter for sensitive authenticated endpoints
 const sensitiveLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests, please try again later" },

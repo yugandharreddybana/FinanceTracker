@@ -4,12 +4,13 @@ import { useFinance } from '../context/FinanceContext';
 import { Activity, Shield, Wallet, PieChart, ArrowUp, Zap, Target } from 'lucide-react';
 import { cn } from '../lib/utils';
 
+
 interface HealthScorePageProps {
   onNavigate?: (tab: string) => void;
 }
 
 export const HealthScorePage: React.FC<HealthScorePageProps> = ({ onNavigate }) => {
-  const { healthMetricsByCurrency } = useFinance();
+  const { healthMetricsByCurrency, transactions } = useFinance();
   const metrics = healthMetricsByCurrency['INR'] || Object.values(healthMetricsByCurrency)[0] || {
     savingsRate: 0,
     debtRatio: 0,
@@ -17,6 +18,21 @@ export const HealthScorePage: React.FC<HealthScorePageProps> = ({ onNavigate }) 
     budgetAdherence: 0,
     overallScore: 0
   };
+
+  const now = new Date();
+  const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1);
+  const prevMonthStr = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, '0')}`;
+
+  const currentIncome = transactions
+    .filter(t => t.type === 'income' && t.date?.startsWith(currentMonthStr))
+    .reduce((s, t) => s + t.amount, 0);
+  const prevIncome = transactions
+    .filter(t => t.type === 'income' && t.date?.startsWith(prevMonthStr))
+    .reduce((s, t) => s + t.amount, 0);
+  const savingsDelta = prevIncome > 0
+    ? ((currentIncome - prevIncome) / prevIncome * 100).toFixed(1)
+    : null;
 
   const VITALS = [
     { label: 'Savings Rate', value: metrics.savingsRate, icon: Activity, color: '#7C6EFA', text: `${Math.round(metrics.savingsRate * 100)}% of income saved` },
@@ -124,10 +140,14 @@ export const HealthScorePage: React.FC<HealthScorePageProps> = ({ onNavigate }) 
               </div>
               
               <p className="text-xs font-medium text-white/60 mb-2">{v.text}</p>
-              <div className="flex items-center gap-1 text-positive text-[10px] font-bold">
-                <ArrowUp className="w-3 h-3" />
-                <span>+2% vs last month</span>
-              </div>
+              {savingsDelta !== null ? (
+                <div className={cn("flex items-center gap-1 text-[10px] font-bold", Number(savingsDelta) >= 0 ? "text-positive" : "text-negative")}>
+                  <ArrowUp className={cn("w-3 h-3", Number(savingsDelta) < 0 ? "rotate-180" : "")} />
+                  <span>{Number(savingsDelta) >= 0 ? '+' : ''}{savingsDelta}% vs last month</span>
+                </div>
+              ) : (
+                <span className="text-[10px] text-white/20 font-bold">No prior data</span>
+              )}
             </div>
           );
         })}

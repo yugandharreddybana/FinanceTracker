@@ -1,5 +1,4 @@
 import React from 'react';
-import { TopBar } from './TopBar';
 import { NetWorthHero } from './NetWorthHero';
 import { SpendingPulse } from './SpendingPulse';
 import { SpendingTrends } from './SpendingTrends';
@@ -38,13 +37,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
       animate="show"
       className="max-w-7xl mx-auto pb-20"
     >
-      <TopBar />
-      
       <div className="space-y-8">
         <motion.div variants={item}>
           <NetWorthHero />
         </motion.div>
-        
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <motion.div variants={item} className="lg:col-span-8">
             <SpendingTrends />
@@ -66,7 +63,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
             </TiltCard>
           </motion.div>
         </div>
- 
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <motion.div variants={item} className="lg:col-span-8">
             <CashFlowForecast />

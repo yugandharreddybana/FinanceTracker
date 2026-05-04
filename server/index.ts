@@ -16,6 +16,7 @@ import { financeRouter } from "./routes/finance.js";
 import { aiRouter } from "./routes/ai.js";
 import { investmentRouter } from "./routes/investment.js";
 import { authRouter } from "./routes/auth.js";
+import { familyRouter } from "./routes/family.js";
 
 async function startServer() {
   // ── Startup environment validation ────────────────────────────────────────
@@ -41,11 +42,13 @@ async function startServer() {
   }
 
   const app = express();
+  app.disable("x-powered-by");
 
   // Trust Railway's reverse proxy so rate-limit reads X-Forwarded-For correctly
   app.set("trust proxy", 1);
 
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4000;
+  const IS_PROD = process.env.NODE_ENV === "production";
 
   console.log("-------------------------------------------------------------------");
   console.log("DEPLOYMENT DIAGNOSTICS");
@@ -64,7 +67,7 @@ async function startServer() {
     ...extraOrigins,
     "http://localhost:5173",
     "http://localhost:3000",
-    "http://localhost:4173",
+    "http://localhost:8080",
   ].filter((v, i, arr) => v && arr.indexOf(v) === i);
 
   console.log("[CORS] Allowed origins:", ALLOWED_ORIGINS);
@@ -115,6 +118,7 @@ async function startServer() {
   app.use("/api/finance", financeRouter);
   app.use("/api/ai", aiRouter);
   app.use("/api/investment", investmentRouter);
+  app.use("/api/family", familyRouter);
 
   // ── Health check ──────────────────────────────────────────────────────────
   app.get("/api/health", async (_req, res) => {

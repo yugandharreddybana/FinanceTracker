@@ -2,6 +2,7 @@ package com.financetracker.service;
 
 import com.financetracker.model.SavingsGoal;
 import com.financetracker.repository.SavingsGoalRepository;
+import com.financetracker.util.Guards;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,11 +12,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SavingsGoalService {
     private final SavingsGoalRepository repo;
-
-    @Transactional(readOnly = true)
-    public List<SavingsGoal> findAll() {
-        return repo.findAll();
-    }
 
     @Transactional(readOnly = true)
     public List<SavingsGoal> findAllByUserId(String userId) {
@@ -32,8 +28,9 @@ public class SavingsGoalService {
 
     @SuppressWarnings("null")
     @Transactional
-    public SavingsGoal update(String id, SavingsGoal updates) {
+    public SavingsGoal update(String id, SavingsGoal updates, String requestUserId) {
         SavingsGoal existing = repo.findById(id).orElseThrow(() -> new RuntimeException("Savings goal not found: " + id));
+        Guards.assertOwner(existing.getUserId(), requestUserId);
         if (updates.getName() != null) existing.setName(updates.getName());
         if (updates.getTarget() != null) existing.setTarget(updates.getTarget());
         if (updates.getCurrent() != null) existing.setCurrent(updates.getCurrent());
@@ -45,7 +42,9 @@ public class SavingsGoalService {
     }
 
     @Transactional
-    public void delete(String id) {
+    public void delete(String id, String requestUserId) {
+        SavingsGoal existing = repo.findById(id).orElseThrow(() -> new RuntimeException("Savings goal not found: " + id));
+        Guards.assertOwner(existing.getUserId(), requestUserId);
         repo.deleteById(id);
     }
 }

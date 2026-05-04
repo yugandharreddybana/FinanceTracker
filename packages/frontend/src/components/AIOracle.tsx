@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Send, X, MessageSquare, Loader2, Mic, MicOff } from 'lucide-react';
+import { Sparkles, Send, X, MessageSquare, Loader2, Mic, MicOff, Trash2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { MCPClient } from '../services/mcpClient';
 import { MIDDLEWARE_BASE, financeApi } from '../services/api';
@@ -19,9 +19,23 @@ export const AIOracle: React.FC = () => {
     title: '',
     message: ''
   });
-  const [messages, setMessages] = useState<{ role: 'user' | 'ai', content: string }[]>([
-    { role: 'ai', content: "Greetings. I am the Yugi Oracle. I've connected to your real-time transaction stream via MCP. How may I assist your journey today?" }
-  ]);
+  const [messages, setMessages] = useState<{ role: 'user' | 'ai', content: string }[]>(() => {
+    const saved = localStorage.getItem('ft_oracle_messages');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to parse saved messages:", e);
+      }
+    }
+    return [
+      { role: 'ai', content: "Greetings. I am the Yugi Oracle. I've connected to your real-time transaction stream via MCP. How may I assist your journey today?" }
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('ft_oracle_messages', JSON.stringify(messages));
+  }, [messages]);
 
   const mcpClientRef = useRef<MCPClient | null>(null);
   const isInitializingRef = useRef(false);
@@ -38,10 +52,12 @@ export const AIOracle: React.FC = () => {
         await mcp.connect();
         mcpClientRef.current = mcp;
 
-        // Proactive initial analysis (now via server)
-        setIsLoading(true);
-        const result = await financeApi.oracleChat("Perform a quick proactive analysis of my recent transactions and give me one high-impact insight or suggestion.", []);
-        setMessages(prev => [...prev, { role: 'ai', content: result.content }]);
+        // Proactive initial analysis (now via server) - only if history is empty
+        if (messages.length <= 1) {
+          setIsLoading(true);
+          const result = await financeApi.oracleChat("Perform a quick proactive analysis of my recent transactions and give me one high-impact insight or suggestion.", []);
+          setMessages(prev => [...prev, { role: 'ai', content: result.content }]);
+        }
       } catch (err) {
         console.error("Failed to initialize AI Oracle:", err);
       } finally {
@@ -146,6 +162,14 @@ export const AIOracle: React.FC = () => {
     }
   };
 
+  const clearHistory = () => {
+    const initialMessage = [
+      { role: 'ai', content: "Greetings. I am the Yugi Oracle. I've connected to your real-time transaction stream via MCP. How may I assist your journey today?" }
+    ] as const;
+    setMessages([...initialMessage]);
+    localStorage.removeItem('ft_oracle_messages');
+  };
+
 
   return (
     <>
@@ -185,13 +209,22 @@ export const AIOracle: React.FC = () => {
                     <p className="text-[10px] text-accent font-bold uppercase tracking-[0.2em]">Financial Intelligence</p>
                   </div>
                 </div>
-                <button 
-                  onClick={() => setIsOpen(false)}
-                  aria-label="Close"
-                  className="w-10 h-10 flex items-center justify-center hover:bg-white/5 rounded-xl transition-colors group"
-                >
-                  <X className="w-5 h-5 text-white/20 group-hover:text-white transition-colors" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={clearHistory}
+                    title="Clear Chat History"
+                    className="w-10 h-10 flex items-center justify-center hover:bg-negative/10 rounded-xl transition-colors group"
+                  >
+                    <Trash2 className="w-5 h-5 text-white/40 group-hover:text-negative transition-colors" />
+                  </button>
+                  <button 
+                    onClick={() => setIsOpen(false)}
+                    aria-label="Close"
+                    className="w-10 h-10 flex items-center justify-center hover:bg-white/5 rounded-xl transition-colors group"
+                  >
+                    <X className="w-5 h-5 text-white/20 group-hover:text-white transition-colors" />
+                  </button>
+                </div>
               </div>
 
               {/* Chat Area */}
