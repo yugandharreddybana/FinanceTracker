@@ -1,10 +1,7 @@
 package com.financetracker.controller;
 
-import com.financetracker.dto.BulkDeleteRequest;
-import com.financetracker.dto.BulkUpdateRequest;
 import com.financetracker.model.Transaction;
 import com.financetracker.service.TransactionService;
-import com.financetracker.util.Guards;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -20,44 +17,69 @@ public class TransactionController {
     private final TransactionService service;
 
     @GetMapping
-    public List<Transaction> getAll(@RequestHeader(value = "X-User-Id", required = false) String userId) {
-        Guards.requireUser(userId);
+    public List<Transaction> getAll(@RequestHeader("X-User-Id") String userId) {
         return service.findAllByUserId(userId);
     }
 
+    // ISSUE #12 FIX: @Valid enforces Bean Validation constraints on incoming request body
     @PostMapping
-    public ResponseEntity<Transaction> create(@RequestBody Transaction tx, @RequestHeader(value = "X-User-Id", required = false) String userId) {
-        Guards.requireUser(userId);
+    public ResponseEntity<Transaction> create(
+            @Valid @RequestBody Transaction tx,
+            @RequestHeader("X-User-Id") String userId,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey) {
         tx.setUserId(userId);
+        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+            tx.setIdempotencyKey(idempotencyKey);
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(tx));
     }
 
     @PutMapping("/{id}")
-    public Transaction update(@PathVariable String id, @RequestBody Map<String, Object> updates, @RequestHeader(value = "X-User-Id", required = false) String userId) {
-        Guards.requireUser(userId);
+    public Transaction update(@PathVariable String id,
+            @RequestBody Map<String, Object> updates,
+            @RequestHeader("X-User-Id") String userId) {
         return service.update(id, updates, userId);
     }
 
+    @PatchMapping("/bulk")
+    public Map<String, Integer> bulkUpdate(@RequestBody Map<String, Object> body,
+            @RequestHeader("X-User-Id") String userId) {
+        @SuppressWarnings("unchecked")
+        List<String> ids = (List<String>) body.get("ids");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> updates = (Map<String, Object>) body.get("updates");
+        return Map.of("updated", service.bulkUpdate(ids, updates, userId));
+    }
+
+    @PostMapping("/bulk-delete")
+    public Map<String, Integer> bulkDelete(@RequestBody Map<String, Object> body,
+            @RequestHeader("X-User-Id") String userId) {
+        @SuppressWarnings("unchecked")
+        List<String> ids = (List<String>) body.get("ids");
+        return Map.of("deleted", service.bulkDelete(ids, userId));
+    }
+
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable String id, @RequestHeader(value = "X-User-Id", required = false) String userId) {
-        Guards.requireUser(userId);
+    public ResponseEntity<Void> delete(@PathVariable String id,
+            @RequestHeader("X-User-Id") String userId) {
         service.delete(id, userId);
         return ResponseEntity.noContent().build();
     }
 
-    @SuppressWarnings("null")
-    @PatchMapping("/bulk")
-    public Map<String, Object> bulkUpdate(@Valid @RequestBody BulkUpdateRequest request, @RequestHeader(value = "X-User-Id", required = false) String userId) {
-        Guards.requireUser(userId);
-        int count = service.bulkUpdate(request.getIds(), request.getUpdates(), userId);
-        return Map.of("success", true, "updatedCount", count);
-    }
-
-    @SuppressWarnings("null")
-    @PostMapping("/bulk-delete")
-    public Map<String, Object> bulkDelete(@Valid @RequestBody BulkDeleteRequest request, @RequestHeader(value = "X-User-Id", required = false) String userId) {
-        Guards.requireUser(userId);
-        int count = service.bulkDelete(request.getIds(), userId);
-        return Map.of("success", true, "deletedCount", count);
+    // ISSUE #13 FIX: User-confirmed recategorisation endpoint.
+    // Sets confidence = 1.0 (user-verified) and fires a correction audit event.
+    @PostMapping("/{id}/recategorise")
+    public ResponseEntity<Transaction> recategorise(
+            @PathVariable String id,
+            @RequestBody Map<String, String> body,
+            @RequestHeader("X-User-Id") String userId) {
+        String newCategory = body.get("category");
+        if (newCategory == null || newCategory.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        Transaction updated = service.update(id,
+            Map.of("category", newCategory, "aiTag", newCategory, "confidence", "1.00"),
+            userId);
+        return ResponseEntity.ok(updated);
     }
 }

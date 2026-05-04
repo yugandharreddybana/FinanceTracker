@@ -1,12 +1,13 @@
 package com.financetracker.service;
 
-import com.financetracker.model.UserProfile;
 import com.financetracker.repository.*;
+import com.financetracker.model.UserProfile;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -16,6 +17,7 @@ public class UserProfileService {
     private final BankAccountRepository bankAccountRepo;
     private final BudgetRepository budgetRepo;
     private final AuditLogRepository auditLogRepo;
+    private final AuditLogService auditLogService;
     private final AuthenticatorRepository authenticatorRepo;
     private final FamilyAccountRepository familyAccountRepo;
     private final IncomeSourceRepository incomeSourceRepo;
@@ -26,33 +28,27 @@ public class UserProfileService {
     private final AppUserRepository appUserRepo;
 
     @Transactional(readOnly = true)
-    public List<UserProfile> findAll() {
-        return repo.findAll();
-    }
+    public List<UserProfile> findAll() { return repo.findAll(); }
 
     @Transactional(readOnly = true)
-    public Optional<UserProfile> findById(String id) {
-        return repo.findById(id);
-    }
+    public Optional<UserProfile> findById(String id) { return repo.findById(id); }
 
-    @SuppressWarnings("null")
     @Transactional(readOnly = true)
-    public Optional<UserProfile> findByEmail(String email) {
-        return repo.findByEmail(email);
-    }
+    public Optional<UserProfile> findByEmail(String email) { return repo.findByEmail(email); }
 
     @Transactional
     public UserProfile create(UserProfile profile) {
+        // ISSUE #16 FIX: UUID-based ID
         if (profile.getId() == null || profile.getId().isBlank()) {
-            profile.setId("user-" + System.currentTimeMillis());
+            profile.setId("user-" + UUID.randomUUID());
         }
         return repo.save(profile);
     }
 
-    @SuppressWarnings("null")
     @Transactional
     public UserProfile update(String id, UserProfile updates) {
-        UserProfile existing = repo.findById(id).orElseThrow(() -> new RuntimeException("User profile not found: " + id));
+        UserProfile existing = repo.findById(id)
+            .orElseThrow(() -> new RuntimeException("User profile not found"));
         if (updates.getName() != null) existing.setName(updates.getName());
         if (updates.getEmail() != null) existing.setEmail(updates.getEmail());
         if (updates.getRole() != null) existing.setRole(updates.getRole());
@@ -63,13 +59,11 @@ public class UserProfileService {
     }
 
     @Transactional
-    public void delete(String id) {
-        purgeUserData(id);
-    }
+    public void delete(String id) { purgeUserData(id); }
 
     @Transactional
     public void deleteByEmail(String email) {
-        repo.findByEmail(email).ifPresent(profile -> purgeUserData(profile.getId()));
+        repo.findByEmail(email).ifPresent(p -> purgeUserData(p.getId()));
     }
 
     @Transactional
@@ -82,11 +76,10 @@ public class UserProfileService {
 
     @Transactional
     public void purgeUserData(String userId) {
-        // Cascade delete all mapping data
+        // Hard-delete transactional data
         transactionRepo.deleteByUserId(userId);
         bankAccountRepo.deleteByUserId(userId);
         budgetRepo.deleteByUserId(userId);
-        auditLogRepo.deleteByUserId(userId);
         authenticatorRepo.deleteByUserId(userId);
         familyAccountRepo.deleteByOwnerId(userId);
         incomeSourceRepo.deleteByUserId(userId);
@@ -94,13 +87,10 @@ public class UserProfileService {
         loanRepo.deleteByUserId(userId);
         recurringPaymentRepo.deleteByUserId(userId);
         savingsGoalRepo.deleteByUserId(userId);
-        
-        // Finally delete profile and credentials
-        if (repo.existsById(userId)) {
-            repo.deleteById(userId);
-        }
-        if (appUserRepo.existsById(userId)) {
-            appUserRepo.deleteById(userId);
-        }
+        // ISSUE #8 FIX: Anonymise audit logs — never hard-delete them.
+        // User PII is scrubbed but event records are preserved for compliance.
+        auditLogService.anonymiseByUserId(userId);
+        if (repo.existsById(userId)) repo.deleteById(userId);
+        if (appUserRepo.existsById(userId)) appUserRepo.deleteById(userId);
     }
 }

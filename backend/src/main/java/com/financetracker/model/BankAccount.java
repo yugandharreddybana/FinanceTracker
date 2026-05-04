@@ -2,8 +2,10 @@ package com.financetracker.model;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.*;
 import lombok.*;
 import java.math.BigDecimal;
+import java.time.Instant;
 
 @Data
 @Entity
@@ -19,22 +21,25 @@ public class BankAccount {
     @Column(name = "user_id", nullable = false)
     private String userId;
 
+    @NotBlank(message = "Account name is required")
     private String name;
+
     private String type;
 
     @Column(precision = 15, scale = 2)
     private BigDecimal balance;
 
-    // FLAW #6 FIX: @Version enables optimistic locking on balance updates.
-    // If two concurrent transactions read the same balance and both try to write,
-    // the second write will throw OptimisticLockException and be retried safely.
+    // ISSUE #6 FIX (from prev commit): Optimistic locking version
     @Version
     @Column(nullable = false)
     private Long version;
 
     private String bank;
     private String color;
-    private String lastSynced;
+
+    // ISSUE #21 FIX: lastSynced typed as Instant for timezone-safe staleness detection
+    @Column(name = "last_synced")
+    private Instant lastSynced;
 
     @Column(length = 10)
     private String currency;
@@ -55,4 +60,19 @@ public class BankAccount {
 
     private Boolean isJoint;
     private Boolean isPrimary;
+
+    // ISSUE #21 FIX: computed sync status — stale if not synced within 24h
+    @Transient
+    public String getSyncStatus() {
+        if (lastSynced == null) return "NEVER_SYNCED";
+        return lastSynced.isBefore(Instant.now().minusSeconds(86400)) ? "STALE" : "FRESH";
+    }
+
+    // ISSUE #22 FIX: Soft-delete
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean deleted = false;
+
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
 }

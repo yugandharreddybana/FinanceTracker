@@ -8,6 +8,8 @@ import java.util.List;
 
 public interface InvestmentRepository extends JpaRepository<Investment, String> {
     List<Investment> findAllByUserId(String userId);
+    // ISSUE #4 FIX: Used by InvestmentPriceRefreshScheduler
+    List<Investment> findAllBySymbol(String symbol);
 
     @Modifying
     @Transactional

@@ -2,11 +2,12 @@ package com.financetracker.service;
 
 import com.financetracker.model.AuditLog;
 import com.financetracker.repository.AuditLogRepository;
-import com.financetracker.util.Guards;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -20,19 +21,26 @@ public class AuditLogService {
 
     @Transactional
     public AuditLog create(AuditLog log) {
-        if (log.getId() == null || log.getId().isBlank()) {
-            log.setId("log-" + System.currentTimeMillis());
-        }
-        if (log.getTimestamp() == null) {
-            log.setTimestamp(java.time.Instant.now().toString());
-        }
+        // ISSUE #16 FIX: UUID-based ID
+        log.setId("log-" + UUID.randomUUID());
+        // Always set timestamp server-side — never trust client-supplied value
+        log.setTimestamp(Instant.now());
         return repo.save(log);
     }
 
+    // ISSUE #7 FIX: delete() method REMOVED ENTIRELY.
+    // Audit logs are append-only. DB-level rules (V2 migration) also prevent UPDATE/DELETE.
+    // For GDPR right-to-erasure, use anonymise() instead.
+
     @Transactional
-    public void delete(String id, String requestUserId) {
-        AuditLog existing = repo.findById(id).orElseThrow(() -> new RuntimeException("AuditLog not found: " + id));
-        Guards.assertOwner(existing.getUserId(), requestUserId);
-        repo.deleteById(id);
+    public void anonymiseByUserId(String userId) {
+        // ISSUE #8 FIX: Called on account deletion — replaces PII, preserves event records.
+        List<AuditLog> logs = repo.findAllByUserId(userId);
+        for (AuditLog log : logs) {
+            log.setUserId("[DELETED]");
+            log.setUserName("[DELETED]");
+            log.setDetails("[REDACTED]");
+            repo.save(log);
+        }
     }
 }
