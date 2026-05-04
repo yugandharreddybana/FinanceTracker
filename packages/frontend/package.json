@@ -8,7 +8,8 @@
     "build": "vite build",
     "build:frontend": "vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -33,9 +34,14 @@
     "vite-plugin-pwa": "^1.2.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.4.2",
+    "@testing-library/react": "^16.0.0",
     "@types/node": "^22.14.0",
+    "@vitest/ui": "^1.6.0",
     "autoprefixer": "^10.4.21",
+    "jsdom": "^24.0.0",
     "tailwindcss": "^4.1.14",
-    "typescript": "~5.8.2"
+    "typescript": "~5.8.2",
+    "vitest": "^1.6.0"
   }
 }
