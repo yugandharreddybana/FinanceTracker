@@ -4,6 +4,7 @@ import { useFinance } from '../context/FinanceContext';
 import { Plus, Target, TrendingUp, Calendar, ArrowRight, X, ChevronDown, Pencil, Trash2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { SavingsGoal } from '../types';
+import DeleteModal from './DeleteModal';
 
 interface SavingsPageProps {
   onNavigate?: (tab: string) => void;
@@ -20,7 +21,7 @@ export const SavingsPage: React.FC<SavingsPageProps> = ({ onNavigate }) => {
   const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
   const [newGoal, setNewGoal] = React.useState({ name: '', target: '', emoji: '🎯', deadline: '', currency: selectedCurrency });
   const [isSaving, setIsSaving] = React.useState(false);
-
+  const [deleteConfirmId, setDeleteConfirmId] = React.useState<string | null>(null);
 
   const filteredGoals = savingsGoals.filter(g => (g.currency || 'INR') === selectedCurrency);
 
@@ -70,9 +71,7 @@ export const SavingsPage: React.FC<SavingsPageProps> = ({ onNavigate }) => {
   };
 
   const handleDelete = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this savings goal?')) {
-      deleteSavingsGoal(id);
-    }
+    setDeleteConfirmId(id);
   };
 
   const handleTransfer = () => {
@@ -201,6 +200,18 @@ export const SavingsPage: React.FC<SavingsPageProps> = ({ onNavigate }) => {
           </motion.div>
         )}
       </AnimatePresence>
+      
+      {/* Empty state (P2) */}
+      {filteredGoals.length === 0 && (
+        <div className="flex flex-col items-center justify-center min-h-[40vh] gap-4">
+          <div className="text-7xl opacity-50">🎯</div>
+          <h3 className="text-xl font-bold text-white/70">No savings goals yet</h3>
+          <p className="text-white/40">Start working towards your dreams by adding a savings goal</p>
+          <button onClick={() => setIsAdding(true)} className="px-6 py-3 bg-accent rounded-2xl text-white font-bold hover:bg-accent/80 transition-all">
+            Add Your First Goal
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
         {filteredGoals.map((goal) => {
@@ -225,6 +236,7 @@ export const SavingsPage: React.FC<SavingsPageProps> = ({ onNavigate }) => {
                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button 
                     title="Edit goal"
+                    aria-label="Edit savings goal"
                     onClick={() => startEdit(goal)}
                     className="p-2 rounded-lg bg-white/5 hover:bg-accent/20 text-white/40 hover:text-accent transition-all"
                   >
@@ -232,6 +244,7 @@ export const SavingsPage: React.FC<SavingsPageProps> = ({ onNavigate }) => {
                   </button>
                   <button 
                     title="Delete goal"
+                    aria-label="Delete savings goal"
                     onClick={() => handleDelete(goal.id)}
                     className="p-2 rounded-lg bg-white/5 hover:bg-negative/20 text-white/40 hover:text-negative transition-all"
                   >
@@ -412,6 +425,14 @@ export const SavingsPage: React.FC<SavingsPageProps> = ({ onNavigate }) => {
           </div>
         )}
       </AnimatePresence>
+
+      <DeleteModal
+        isOpen={!!deleteConfirmId}
+        onClose={() => setDeleteConfirmId(null)}
+        onConfirm={() => { if (deleteConfirmId) deleteSavingsGoal(deleteConfirmId); }}
+        title="Delete Savings Goal?"
+        description="This will permanently remove this savings goal and all its progress. This action cannot be undone."
+      />
     </motion.div>
   );
 };

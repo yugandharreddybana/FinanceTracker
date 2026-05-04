@@ -1,40 +1,70 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import { Sidebar } from './components/Sidebar';
-import { Dashboard } from './components/Dashboard';
-import { TransactionsPage } from './components/TransactionsPage';
-import { BankAccountsPage } from './components/BankAccountsPage';
-import { BudgetsPage } from './components/BudgetsPage';
-import { SavingsPage } from './components/SavingsPage';
-import { RecurringPage } from './components/RecurringPage';
-import { NetWorthPage } from './components/NetWorthPage';
-import { HealthScorePage } from './components/HealthScorePage';
-import { CarbonFootprintPage } from './components/CarbonFootprintPage';
-import { CategoriesPage } from './components/CategoriesPage';
-import { AIInsightsPage } from './components/AIInsightsPage';
-import { IncomeAnalyticsPage } from './components/IncomeAnalyticsPage';
-import { MonthlyReview } from './components/MonthlyReview';
-import { LoansPage } from './components/LoansPage';
+const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
+const TransactionsPage = lazy(() => import('./components/TransactionsPage').then(m => ({ default: m.TransactionsPage })));
+const BankAccountsPage = lazy(() => import('./components/BankAccountsPage').then(m => ({ default: m.BankAccountsPage })));
+const BudgetsPage = lazy(() => import('./components/BudgetsPage').then(m => ({ default: m.BudgetsPage })));
+const SavingsPage = lazy(() => import('./components/SavingsPage').then(m => ({ default: m.SavingsPage })));
+const RecurringPage = lazy(() => import('./components/RecurringPage').then(m => ({ default: m.RecurringPage })));
+const NetWorthPage = lazy(() => import('./components/NetWorthPage').then(m => ({ default: m.NetWorthPage })));
+const HealthScorePage = lazy(() => import('./components/HealthScorePage').then(m => ({ default: m.HealthScorePage })));
+const CarbonFootprintPage = lazy(() => import('./components/CarbonFootprintPage').then(m => ({ default: m.CarbonFootprintPage })));
+const CategoriesPage = lazy(() => import('./components/CategoriesPage').then(m => ({ default: m.CategoriesPage })));
+const AIInsightsPage = lazy(() => import('./components/AIInsightsPage').then(m => ({ default: m.AIInsightsPage })));
+const IncomeAnalyticsPage = lazy(() => import('./components/IncomeAnalyticsPage').then(m => ({ default: m.IncomeAnalyticsPage })));
+const MonthlyReview = lazy(() => import('./components/MonthlyReview').then(m => ({ default: m.MonthlyReview })));
+const LoansPage = lazy(() => import('./components/LoansPage').then(m => ({ default: m.LoansPage })));
 import { SmartAdd } from './components/SmartAdd';
 import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { SignupPage } from './components/SignupPage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
-import { SettingsPage } from './components/SettingsPage';
-import { InvestmentPage } from './components/InvestmentPage';
-import { ForecastingPage } from './components/ForecastingPage';
-import { TaxEnginePage } from './components/TaxEnginePage';
-import { ReportBuilderPage } from './components/ReportBuilderPage';
-import { AuditLogPage } from './components/AuditLogPage';
-import { FamilyPage } from './components/FamilyPage';
+const SettingsPage = lazy(() => import('./components/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const InvestmentPage = lazy(() => import('./components/InvestmentPage').then(m => ({ default: m.InvestmentPage })));
+const ForecastingPage = lazy(() => import('./components/ForecastingPage').then(m => ({ default: m.ForecastingPage })));
+const TaxEnginePage = lazy(() => import('./components/TaxEnginePage').then(m => ({ default: m.TaxEnginePage })));
+const ReportBuilderPage = lazy(() => import('./components/ReportBuilderPage').then(m => ({ default: m.ReportBuilderPage })));
+const AuditLogPage = lazy(() => import('./components/AuditLogPage').then(m => ({ default: m.AuditLogPage })));
+const FamilyPage = lazy(() => import('./components/FamilyPage').then(m => ({ default: m.FamilyPage })));
 import { FinanceProvider, useFinance } from './context/FinanceContext';
 import { AnimatePresence, motion } from 'motion/react';
 import { cn } from './lib/utils';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { CommandPalette } from './components/CommandPalette';
 import { NotificationCenter, Notification as AppNotification } from './components/NotificationCenter';
-import { LayoutDashboard, Wallet, Receipt, CreditCard, PieChart, TrendingUp, Settings, LogOut, Bell, Sparkles, X, Command, Search, WifiOff, Activity, Leaf, Shield, History, Globe2, FileText, BarChart3, Calculator, UserCircle, Briefcase, HeartPulse, HelpCircle, AlertCircle, Calendar, CheckCircle2, AlertTriangle, TrendingDown } from 'lucide-react';
+import { LayoutDashboard, Wallet, Receipt, CreditCard, PieChart, TrendingUp, Settings, LogOut, Bell, Sparkles, X, Command, Search, WifiOff, Activity, Leaf, Shield, History, Globe2, FileText, BarChart3, Calculator, UserCircle, Briefcase, HeartPulse, HelpCircle, AlertCircle, Calendar, CheckCircle2, AlertTriangle, TrendingDown, Keyboard } from 'lucide-react';
 import { aiService, AIInsight } from './services/aiService';
 import { authApi, MIDDLEWARE_BASE } from './services/api';
+
+const PAGE_TITLES: Record<string, string> = {
+  dashboard: 'Dashboard — FinanceTracker',
+  transactions: 'Transactions — FinanceTracker',
+  accounts: 'Accounts — FinanceTracker',
+  budgets: 'Budgets — FinanceTracker',
+  savings: 'Savings — FinanceTracker',
+  recurring: 'Recurring Payments — FinanceTracker',
+  loans: 'Loans — FinanceTracker',
+  networth: 'Net Worth — FinanceTracker',
+  health: 'Health Score — FinanceTracker',
+  carbon: 'Carbon Footprint — FinanceTracker',
+  categories: 'Categories — FinanceTracker',
+  insights: 'AI Insights — FinanceTracker',
+  income: 'Income Analytics — FinanceTracker',
+  review: 'Monthly Review — FinanceTracker',
+  investments: 'Investments — FinanceTracker',
+  forecasting: 'Forecasting — FinanceTracker',
+  tax: 'Tax Engine — FinanceTracker',
+  reports: 'Reports — FinanceTracker',
+  audit: 'Audit Log — FinanceTracker',
+  family: 'Family — FinanceTracker',
+  settings: 'Settings — FinanceTracker',
+};
+
+const PageLoadingSpinner: React.FC = () => (
+  <div className="flex items-center justify-center min-h-[60vh]">
+    <div className="w-10 h-10 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+  </div>
+);
 
 export default function App() {
   return (
@@ -79,6 +109,7 @@ function MainApp() {
       .finally(() => setAuthChecking(false));
   }, []);
   const [showDemo, setShowDemo] = useState(false);
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -146,18 +177,6 @@ function MainApp() {
     return () => clearInterval(interval);
   }, [isLoggedIn]);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setIsCommandPaletteOpen(prev => !prev);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
   const handleLogin = (email: string, _token?: string, name?: string) => {
     // Token is now an httpOnly cookie set by the server — no localStorage storage needed
     clearDataForNewUser();
@@ -188,6 +207,48 @@ function MainApp() {
     setIsLoggedIn(false);
     navigate('/');
   }, [clearDataForNewUser, navigate]);
+
+  // Navigate to a tab and update the URL simultaneously
+  const handleNavigate = useCallback((tab: string) => {
+    setActiveTab(tab);
+    navigate(`/dashboard/${tab}`);
+  }, [navigate]);
+
+  // Keyboard shortcuts (P6) — declared after handleNavigate
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      const isEditing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable;
+
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen(prev => !prev);
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('open-add-transaction'));
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
+        e.preventDefault();
+        handleNavigate('dashboard');
+        return;
+      }
+      if (e.key === 'Escape') {
+        setIsCommandPaletteOpen(false);
+        setIsChatOpen(false);
+        setIsNotificationsOpen(false);
+        return;
+      }
+      if (e.key === '?' && !isEditing) {
+        setShowShortcutsModal(prev => !prev);
+        return;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleNavigate]);
 
   // Inactivity auto-logout (1 hour) — B8: show notification 2 sec before logout
   useEffect(() => {
@@ -236,15 +297,35 @@ function MainApp() {
         icon: AlertCircle
       }]);
     };
+    const handleToastSuccess = (e: Event) => {
+      const { message } = (e as CustomEvent).detail;
+      setNotifications(prev => [...prev, {
+        id: crypto.randomUUID(),
+        title: 'Success',
+        message,
+        type: 'success' as const,
+        time: 'Just now',
+        read: false,
+        icon: CheckCircle2
+      }]);
+    };
     window.addEventListener('finance-toast-error', handleToastError);
-    return () => window.removeEventListener('finance-toast-error', handleToastError);
+    window.addEventListener('finance-toast', handleToastSuccess);
+    return () => {
+      window.removeEventListener('finance-toast-error', handleToastError);
+      window.removeEventListener('finance-toast', handleToastSuccess);
+    };
   }, []);
 
-  // Navigate to a tab and update the URL simultaneously
-  const handleNavigate = useCallback((tab: string) => {
-    setActiveTab(tab);
-    navigate(`/dashboard/${tab}`);
-  }, [navigate]);
+  // Update document title when tab changes (A11Y3)
+  useEffect(() => {
+    document.title = PAGE_TITLES[activeTab] || 'FinanceTracker';
+  }, [activeTab]);
+
+  // Apply theme from user preferences (P7)
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', userProfile.preferences.theme || 'dark');
+  }, [userProfile.preferences.theme]);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -275,6 +356,14 @@ function MainApp() {
 
   return (
     <div className="min-h-screen bg-background text-white selection:bg-accent/30">
+      {/* Skip navigation link (A11Y5) */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-accent focus:text-white focus:rounded-lg focus:outline-none"
+      >
+        Skip to main content
+      </a>
+
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={
@@ -329,12 +418,13 @@ function MainApp() {
             <div key="app-main" className="min-h-screen">
               <Sidebar activeTab={activeTab} setActiveTab={handleNavigate} onLogout={handleLogout} />
 
-              <main className="pl-[80px] min-h-screen relative z-10 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]">
+              <main id="main-content" className="pl-[80px] min-h-screen relative z-10 transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]">
                 {/* Fixed Header Bar */}
                 <header className="fixed top-0 left-[80px] right-0 h-20 flex items-center justify-between px-10 border-b border-white/5 bg-background/80 backdrop-blur-xl z-[90]">
                   <div className="flex items-center gap-4">
                     <button
                       onClick={() => setIsCommandPaletteOpen(true)}
+                      aria-label="Open command palette"
                       className="flex items-center gap-3 px-4 py-2 rounded-2xl bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 transition-all group"
                     >
                       <Search className="w-4 h-4" />
@@ -355,6 +445,7 @@ function MainApp() {
                     )}
                     <button
                       onClick={() => setIsNotificationsOpen(true)}
+                      aria-label="Open notifications"
                       className="relative p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group"
                     >
                       <Bell className={cn("w-5 h-5 transition-colors",
@@ -379,9 +470,11 @@ function MainApp() {
                 </header>
 
                 <div className="pt-24 p-6 md:p-10 lg:p-12 pb-40" style={{ paddingTop: '96px' }}>
-                  <AnimatePresence mode="wait">
-                    {renderContent()}
-                  </AnimatePresence>
+                  <Suspense fallback={<PageLoadingSpinner />}>
+                    <AnimatePresence mode="wait">
+                      {renderContent()}
+                    </AnimatePresence>
+                  </Suspense>
                 </div>
 
                 <CommandPalette
@@ -407,10 +500,20 @@ function MainApp() {
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={() => setIsChatOpen(true)}
+                  aria-label="Open AI assistant"
                   className="fixed bottom-48 right-8 w-16 h-16 rounded-2xl bg-accent flex items-center justify-center violet-glow z-[80] shadow-2xl border border-white/10"
                 >
                   <Sparkles className="w-8 h-8 text-white animate-pulse" />
                 </motion.button>
+
+                {/* Keyboard shortcuts button */}
+                <button
+                  onClick={() => setShowShortcutsModal(true)}
+                  aria-label="Show keyboard shortcuts"
+                  className="fixed bottom-28 right-8 w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-all z-[80]"
+                >
+                  <Keyboard className="w-4 h-4 text-white/40" />
+                </button>
 
                 {/* Floating Chatbot Window */}
                 <AnimatePresence>
@@ -421,7 +524,9 @@ function MainApp() {
                       exit={{ opacity: 0, scale: 0.9, y: 20, x: 20 }}
                       className="fixed bottom-48 right-8 w-[450px] h-[600px] z-[150] shadow-[0_0_50px_rgba(0,0,0,0.5)]"
                     >
-                      <AIInsightsPage compact onClose={() => setIsChatOpen(false)} />
+                      <Suspense fallback={<PageLoadingSpinner />}>
+                        <AIInsightsPage compact onClose={() => setIsChatOpen(false)} />
+                      </Suspense>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -464,11 +569,66 @@ function MainApp() {
               </div>
               <button
                 onClick={() => setShowDemo(false)}
+                aria-label="Close demo"
                 title="Close demo"
                 className="absolute top-6 right-6 w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-all"
               >
                 <X className="w-6 h-6" />
               </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Keyboard Shortcuts Modal (P6) */}
+      <AnimatePresence>
+        {showShortcutsModal && (
+          <div className="fixed inset-0 z-[500] flex items-center justify-center p-6">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowShortcutsModal(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-xl"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative glass-card p-8 max-w-md w-full border-white/10"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Keyboard shortcuts"
+            >
+              <div className="flex items-center gap-3 mb-6">
+                <Keyboard className="w-5 h-5 text-accent" />
+                <h2 className="text-xl font-bold">Keyboard Shortcuts</h2>
+                <button
+                  onClick={() => setShowShortcutsModal(false)}
+                  aria-label="Close shortcuts modal"
+                  className="ml-auto p-1 text-white/40 hover:text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="space-y-3">
+                {[
+                  { keys: ['⌘/Ctrl', 'K'], label: 'Open command palette' },
+                  { keys: ['⌘/Ctrl', 'N'], label: 'Add new transaction' },
+                  { keys: ['⌘/Ctrl', 'D'], label: 'Go to Dashboard' },
+                  { keys: ['Esc'], label: 'Close modal / palette' },
+                  { keys: ['?'], label: 'Toggle this help' },
+                ].map(({ keys, label }) => (
+                  <div key={label} className="flex items-center justify-between">
+                    <span className="text-sm text-white/60">{label}</span>
+                    <div className="flex items-center gap-1">
+                      {keys.map(k => (
+                        <kbd key={k} className="px-2 py-1 rounded bg-white/10 border border-white/20 text-xs font-mono">{k}</kbd>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </motion.div>
           </div>
         )}

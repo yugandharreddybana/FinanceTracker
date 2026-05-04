@@ -333,6 +333,16 @@ export const RecurringPage: React.FC = () => {
 
           <div className="glass-card overflow-hidden">
             <div className="divide-y divide-white/5">
+              {filteredAndSortedPayments.length === 0 && (
+                <div className="flex flex-col items-center justify-center min-h-[30vh] gap-4 p-8">
+                  <div className="text-7xl opacity-50">🔄</div>
+                  <h3 className="text-xl font-bold text-white/70">No recurring payments yet</h3>
+                  <p className="text-white/40">Track subscriptions and bills by adding recurring payments</p>
+                  <button onClick={() => setIsAdding(true)} className="px-6 py-3 bg-accent rounded-2xl text-white font-bold hover:bg-accent/80 transition-all">
+                    Add Payment
+                  </button>
+                </div>
+              )}
               {filteredAndSortedPayments.map((item) => (
                 <div key={item.id} className="group flex items-center gap-6 p-6 hover:bg-white/[0.02] transition-all relative">
                   <div 

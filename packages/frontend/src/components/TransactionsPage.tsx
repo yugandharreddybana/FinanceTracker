@@ -1,10 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Filter, Sparkles, Check, Pencil, Trash2, X, Save, Loader2, Calendar, ChevronUp, ChevronDown, ArrowUpRight, ArrowDownRight, Download, Plus } from 'lucide-react';
+import { Search, Filter, Sparkles, Check, Pencil, Trash2, X, Save, Loader2, Calendar, ChevronUp, ChevronDown, ArrowUpRight, ArrowDownRight, Download, Plus, Upload, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useFinance } from '../context/FinanceContext';
 import { Transaction } from '../types';
 import DeleteModal from './DeleteModal';
+import { useSessionState } from '../hooks/useSessionState';
+import { useDebounce } from '../hooks/useDebounce';
+
+const ITEMS_PER_PAGE = 20;
 
 export const TransactionsPage: React.FC = () => {
   const { 
@@ -44,14 +48,23 @@ export const TransactionsPage: React.FC = () => {
   const [editForm, setEditForm] = useState<Partial<Transaction>>({});
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
-  const [filter, setFilter] = useState('All Time');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [filter, setFilter] = useSessionState<string>('txn_filter', 'All Time');
+  const [searchQuery, setSearchQuery] = useSessionState<string>('txn_search', '');
   const [showSearch, setShowSearch] = useState(false);
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useSessionState<string>('txn_start_date', '');
+  const [endDate, setEndDate] = useSessionState<string>('txn_end_date', '');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [sortField, setSortField] = useState<'date' | 'merchant' | 'amount'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // CSV import state
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvPreview, setCsvPreview] = useState<Partial<Transaction>[] | null>(null);
+  const [csvSummary, setCsvSummary] = useState<string | null>(null);
+  const csvInputRef = useRef<HTMLInputElement>(null);
+
+  const debouncedSearch = useDebounce(searchQuery, 300);
 
   const handleSort = (field: 'date' | 'merchant' | 'amount') => {
     if (sortField === field) {
@@ -167,8 +180,8 @@ export const TransactionsPage: React.FC = () => {
   };
 
   const filteredTransactions = transactions.filter(tx => {
-    const matchesSearch = tx.merchant.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         tx.category.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = tx.merchant.toLowerCase().includes(debouncedSearch.toLowerCase()) || 
+                         tx.category.toLowerCase().includes(debouncedSearch.toLowerCase());
     
     if (filter === 'All Time') return matchesSearch;
     if (filter === 'Food') return matchesSearch && tx.category === 'Food & Drink';
@@ -180,11 +193,10 @@ export const TransactionsPage: React.FC = () => {
       const txDate = new Date(tx.date);
       const start = new Date(startDate);
       const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999); // Include the end day
+      end.setHours(23, 59, 59, 999);
       return matchesSearch && txDate >= start && txDate <= end;
     }
 
-    // Simple date filtering for demo
     const txDate = new Date(tx.date);
     const now = new Date();
     if (filter === 'This Month') {
@@ -210,6 +222,89 @@ export const TransactionsPage: React.FC = () => {
     }
     return sortOrder === 'asc' ? comparison : -comparison;
   });
+
+  // Reset page when filters/search change (P9)
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, filter, startDate, endDate]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedTransactions.length / ITEMS_PER_PAGE));
+  const paginatedTransactions = sortedTransactions.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
+  // CSV Import (F2)
+  const parseCsvLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+        else { inQuotes = !inQuotes; }
+      } else if (ch === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  };
+
+  const handleCsvFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      const lines = text.trim().split('\n');
+      const parsed: Partial<Transaction>[] = [];
+      // Skip header row
+      for (let i = 1; i < lines.length; i++) {
+        const cols = parseCsvLine(lines[i]);
+        if (cols.length < 5) continue;
+        const [date, merchant, amountStr, category, type] = cols;
+        const amount = parseFloat(amountStr);
+        if (!date || !merchant || isNaN(amount)) continue;
+        parsed.push({
+          date,
+          merchant,
+          amount: type === 'expense' ? -Math.abs(amount) : Math.abs(amount),
+          category: category || 'Uncategorized',
+          type: (type === 'income' || type === 'expense') ? type : 'expense',
+          status: 'confirmed' as const,
+          aiTag: 'CSV Import',
+          account: 'Main Current',
+          confidence: 1.0
+        });
+      }
+      setCsvPreview(parsed);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handleCsvImport = async () => {
+    if (!csvPreview) return;
+    setCsvImporting(true);
+    let imported = 0;
+    let skipped = 0;
+    for (const tx of csvPreview) {
+      try {
+        await addManualTransaction(tx as Transaction);
+        imported++;
+      } catch {
+        skipped++;
+      }
+    }
+    setCsvSummary(`Imported ${imported} transaction${imported !== 1 ? 's' : ''}${skipped > 0 ? `, skipped ${skipped} (invalid)` : ''}`);
+    setCsvPreview(null);
+    setCsvImporting(false);
+  };
 
   return (
     <motion.div
@@ -285,6 +380,14 @@ export const TransactionsPage: React.FC = () => {
             <Download className="w-4 h-4" />
             <span>Export</span>
           </button>
+          <button
+            onClick={() => csvInputRef.current?.click()}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm font-bold text-white/60 hover:text-white hover:bg-white/10 transition-all"
+          >
+            <Upload className="w-4 h-4" />
+            <span>Import CSV</span>
+          </button>
+          <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleCsvFile} aria-label="Import CSV file" />
         </div>
       </div>
 
@@ -405,7 +508,20 @@ export const TransactionsPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="glass-card overflow-hidden border-white/5">
+      {/* Empty State (P2) */}
+      {sortedTransactions.length === 0 && (
+        <div className="flex flex-col items-center justify-center min-h-[40vh] gap-4">
+          <div className="text-7xl opacity-50">💸</div>
+          <h3 className="text-xl font-bold text-white/70">No transactions yet</h3>
+          <p className="text-white/40">Start tracking your finances by adding a transaction</p>
+          <button onClick={() => setIsAddTransactionModalOpen(true)} className="px-6 py-3 bg-accent rounded-2xl text-white font-bold hover:bg-accent/80 transition-all">
+            Add Transaction
+          </button>
+        </div>
+      )}
+
+      {sortedTransactions.length > 0 && (
+      <div className="glass-card overflow-hidden border-white/5" style={{ willChange: 'transform' }}>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -413,6 +529,7 @@ export const TransactionsPage: React.FC = () => {
                 <th className="px-8 py-5 w-10">
                   <button 
                     onClick={toggleSelectAll}
+                    aria-label={selectedIds.length === sortedTransactions.length && sortedTransactions.length > 0 ? "Deselect all transactions" : "Select all transactions"}
                     className={cn(
                       "w-5 h-5 rounded border flex items-center justify-center transition-all",
                       selectedIds.length === sortedTransactions.length && sortedTransactions.length > 0
@@ -456,7 +573,7 @@ export const TransactionsPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {sortedTransactions.map((tx, i) => (
+              {paginatedTransactions.map((tx, i) => (
                 <React.Fragment key={tx.id}>
                 <motion.tr 
                   initial={{ opacity: 0, y: 10 }}
@@ -768,7 +885,85 @@ export const TransactionsPage: React.FC = () => {
             </tbody>
           </table>
         </div>
+        {/* Pagination (P9) */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-8 py-4 border-t border-white/5">
+            <span className="text-xs text-white/40 font-medium">
+              Page {currentPage} of {totalPages} · {sortedTransactions.length} results
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                aria-label="Previous page"
+                className="p-2 rounded-lg bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 transition-all disabled:opacity-40"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                aria-label="Next page"
+                className="p-2 rounded-lg bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 transition-all disabled:opacity-40"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+      )}
+
+      {/* CSV Import Preview Modal (F2) */}
+      <AnimatePresence>
+        {csvPreview !== null && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-6">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setCsvPreview(null)} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="relative glass-card max-w-2xl w-full overflow-hidden border-white/10 shadow-2xl">
+              <div className="p-6 border-b border-white/5 flex justify-between items-center">
+                <h3 className="text-xl font-bold">CSV Import Preview</h3>
+                <button onClick={() => setCsvPreview(null)} aria-label="Close CSV import" className="p-2 hover:bg-white/5 rounded-xl transition-colors"><X className="w-5 h-5 text-white/40" /></button>
+              </div>
+              <div className="p-6 max-h-[50vh] overflow-y-auto">
+                <p className="text-sm text-white/60 mb-4">{csvPreview.length} row{csvPreview.length !== 1 ? 's' : ''} ready to import</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead><tr className="border-b border-white/10">{['Date','Merchant','Amount','Category','Type'].map(h => <th key={h} className="px-3 py-2 text-left text-white/30 font-bold uppercase tracking-widest">{h}</th>)}</tr></thead>
+                    <tbody>
+                      {csvPreview.slice(0, 10).map((row, i) => (
+                        <tr key={i} className="border-b border-white/5">
+                          <td className="px-3 py-2 text-white/60">{row.date}</td>
+                          <td className="px-3 py-2 text-white/80 font-medium">{row.merchant}</td>
+                          <td className={cn("px-3 py-2 font-mono font-bold", (row.amount || 0) > 0 ? 'text-positive' : 'text-white')}>{(row.amount || 0).toFixed(2)}</td>
+                          <td className="px-3 py-2 text-white/60">{row.category}</td>
+                          <td className="px-3 py-2 text-white/60">{row.type}</td>
+                        </tr>
+                      ))}
+                      {csvPreview.length > 10 && <tr><td colSpan={5} className="px-3 py-2 text-white/30 italic">…and {csvPreview.length - 10} more</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="p-6 border-t border-white/5 flex gap-3">
+                <button onClick={() => setCsvPreview(null)} className="flex-1 py-3 rounded-xl bg-white/5 border border-white/10 text-sm font-bold text-white/60 hover:bg-white/10 hover:text-white transition-all">Cancel</button>
+                <button onClick={handleCsvImport} disabled={csvImporting} className="flex-[2] py-3 rounded-xl bg-accent text-white text-sm font-bold hover:bg-accent/80 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                  {csvImporting ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Importing…</span></> : <><Upload className="w-4 h-4" /><span>Import {csvPreview.length} Transactions</span></>}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* CSV Import Summary */}
+      <AnimatePresence>
+        {csvSummary && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="fixed bottom-24 right-8 z-[200] glass-card px-6 py-4 border-positive/30 shadow-2xl">
+            <p className="text-sm font-bold text-positive">{csvSummary}</p>
+            <button onClick={() => setCsvSummary(null)} className="absolute top-2 right-2 p-1 text-white/40 hover:text-white" aria-label="Dismiss"><X className="w-4 h-4" /></button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Bulk Actions Bar */}
       <AnimatePresence>

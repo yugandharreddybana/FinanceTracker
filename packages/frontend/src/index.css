@@ -123,3 +123,54 @@
 ::-webkit-scrollbar-thumb {
   @apply bg-white/10 rounded-full hover:bg-white/20 transition-colors;
 }
+
+/* Theme CSS Variables */
+:root[data-theme='dark'] {
+  --theme-bg-primary: #0f1117;
+  --theme-bg-card: rgba(255,255,255,0.05);
+  --theme-text-primary: #ffffff;
+  --theme-text-secondary: rgba(255,255,255,0.6);
+  --theme-accent: #6366f1;
+}
+
+:root[data-theme='light'] {
+  --theme-bg-primary: #f8fafc;
+  --theme-bg-card: #ffffff;
+  --theme-text-primary: #0f172a;
+  --theme-text-secondary: #64748b;
+  --theme-accent: #6366f1;
+}
+
+:root[data-theme='glass'] {
+  --theme-bg-primary: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  --theme-bg-card: rgba(255,255,255,0.08);
+  --theme-text-primary: #ffffff;
+  --theme-text-secondary: rgba(255,255,255,0.7);
+  --theme-accent: #a78bfa;
+}
+
+/* sr-only utility for skip links */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.sr-only.focus\:not-sr-only:focus,
+.focus\:not-sr-only:focus {
+  position: absolute;
+  width: auto;
+  height: auto;
+  padding: 0;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+}
+

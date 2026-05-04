@@ -74,7 +74,7 @@ export const SettingsPage: React.FC = () => {
   const {
     userProfile, updateUserProfile,
     transactions, accounts, budgets, investments,
-    savingsGoals, recurringPayments, loans, incomeSources,
+    savingsGoals, recurringPayments, loans, incomeSources, auditLogs,
     clearDataForNewUser
   } = useFinance();
 
@@ -265,15 +265,15 @@ export const SettingsPage: React.FC = () => {
 
   const exportData = useCallback(() => {
     const payload = {
-      userProfile, transactions, accounts, budgets, investments,
-      savingsGoals, recurringPayments, loans, incomeSources,
       exportedAt: new Date().toISOString(),
+      userProfile, transactions, accounts, budgets, investments,
+      savingsGoals, recurringPayments, loans, incomeSources, auditLogs,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = Object.assign(document.createElement('a'), { href: url, download: `yugi_backup_${new Date().toISOString().split('T')[0]}.json` });
     a.click(); URL.revokeObjectURL(url);
-  }, [userProfile, transactions, accounts, budgets, investments, savingsGoals, recurringPayments, loans, incomeSources]);
+  }, [userProfile, transactions, accounts, budgets, investments, savingsGoals, recurringPayments, loans, incomeSources, auditLogs]);
 
   const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {

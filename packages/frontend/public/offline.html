@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Offline — FinanceTracker</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: #050508;
+      color: #fff;
+      font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2rem;
+    }
+    .container { max-width: 480px; }
+    .emoji { font-size: 5rem; margin-bottom: 1.5rem; opacity: 0.6; }
+    h1 { font-size: 2rem; font-weight: 700; margin-bottom: 1rem; }
+    p { color: rgba(255,255,255,0.5); margin-bottom: 2rem; line-height: 1.6; }
+    button {
+      background: #7C6EFA;
+      color: #fff;
+      border: none;
+      padding: 0.75rem 2rem;
+      border-radius: 1rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { opacity: 0.85; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="emoji">📡</div>
+    <h1>You're offline</h1>
+    <p>Please check your connection and try again. Your data will sync automatically once you're back online.</p>
+    <button onclick="window.location.reload()">Try Again</button>
+  </div>
+</body>
+</html>

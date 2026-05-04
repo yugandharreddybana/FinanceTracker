@@ -16,6 +16,11 @@ registerSW({
   },
 });
 
+// Register custom offline fallback service worker (PERF8)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => { /* non-critical */ });
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
