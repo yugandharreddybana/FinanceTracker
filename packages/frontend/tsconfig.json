@@ -2,8 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "forceConsistentCasingInFileNames": true,
-    "experimentalDecorators": true,
-    "useDefineForClassFields": false,
+    "useDefineForClassFields": true,
     "module": "ESNext",
     "lib": [
       "ES2022",
@@ -23,7 +22,15 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "types": ["vite/client", "vite-plugin-pwa/client"]
+    "types": [
+      "vite/client",
+      "vite-plugin-pwa/client"
+    ]
   },
-  "exclude": ["node_modules", "dist", "vitest.config.ts", "server/test/**"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "vitest.config.ts",
+    "server/test/**"
+  ]
 }

@@ -2,16 +2,16 @@ import { Router, Request, Response, NextFunction } from "express";
 import { rateLimit } from "express-rate-limit";
 import crypto from "crypto";
 import { registerUser, loginUser, changeUserPassword, deleteUserByEmail, verifyToken, resetUserPassword } from "../lib/auth.js";
-import { createClient } from "ioredis";
+import Redis from "ioredis";
 
 const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8080";
 
 // FLAW #8 FIX: OTP store moved to Redis for durability + multi-instance safety
 // Falls back to in-memory Map only in dev when REDIS_URL is not set.
-let redis: ReturnType<typeof createClient> | null = null;
+let redis: Redis | null = null;
 try {
   if (process.env.REDIS_URL) {
-    redis = new createClient(process.env.REDIS_URL);
+    redis = new Redis(process.env.REDIS_URL!);
     redis.on("error", (err: Error) => console.error("[Redis] auth error:", err.message));
   }
 } catch (e) {
@@ -78,7 +78,7 @@ const forgotPasswordLimiter = rateLimit({
 
 const sensitiveLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: 20, // Sensitive operations: change-password, logout, /me
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests, please try again later" },

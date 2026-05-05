@@ -95,6 +95,15 @@ async function startServer() {
     res.setHeader("X-XSS-Protection", "1; mode=block");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
+    // HSTS — only send in production to avoid breaking local dev
+    if (IS_PROD) {
+      res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+    }
+    // Content-Security-Policy — restrictive default; API server only serves JSON
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src 'none'; frame-ancestors 'none'"
+    );
     next();
   });
 

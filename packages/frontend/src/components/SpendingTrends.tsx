@@ -12,7 +12,7 @@ export const SpendingTrends: React.FC = () => {
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
 
-  const currencies = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
+  const currencies: string[] = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
   
   const currencyColors: Record<string, string> = {
     'INR': '#7C6EFA',

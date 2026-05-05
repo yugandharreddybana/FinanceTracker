@@ -60,6 +60,7 @@ export interface Budget {
   limit: number;
   spent: number;
   color: string;
+  period?: 'Monthly' | 'Weekly' | 'Annual';
   rolloverEnabled?: boolean;
   rolloverAmount?: number;
   perTransactionLimit?: number;

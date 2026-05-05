@@ -29,6 +29,10 @@ const NSE_MOCK: Record<string, { price: number; change: number }> = {
 
 investmentRouter.get("/stock/:symbol", async (req, res) => {
   const { symbol } = req.params;
+  // Input validation: symbols must be alphanumeric (1-20 chars)
+  if (!symbol || !/^[A-Za-z0-9]{1,20}$/.test(symbol)) {
+    return res.status(400).json({ error: "Invalid symbol format" });
+  }
   const upper = symbol.toUpperCase();
 
   // If no API key, return INR mock data for known NSE stocks

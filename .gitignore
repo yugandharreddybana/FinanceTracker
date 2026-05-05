@@ -26,3 +26,6 @@ server/data/
 
 # Scratch/notes files
 *.txt
+# Scratch/test files with potential secrets
+server/scratch/
+scratch/

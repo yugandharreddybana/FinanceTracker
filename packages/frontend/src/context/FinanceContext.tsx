@@ -520,7 +520,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return last6Months.map(m => {
       const monthData: { month: string;[key: string]: number | string } = { month: m.label };
 
-      const currencies = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
+      const currencies: string[] = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
       currencies.forEach(curr => {
         const tDate = (t: Transaction) => new Date(t.date);
         const expense = transactions
@@ -555,7 +555,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const healthMetricsByCurrency = React.useMemo(() => {
     const result: Record<string, { savingsRate: number; debtRatio: number; emergencyFund: number; budgetAdherence: number; overallScore: number }> = {};
 
-    const currencies = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
+    const currencies: string[] = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
 
     // L1: Use current month only for income/expenses
     const now = new Date();
@@ -644,7 +644,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const spendingDataByCurrency = React.useMemo(() => {
     const result: Record<string, { name: string, value: number, color: string }[]> = {};
-    const currencies = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
+    const currencies: string[] = Array.from(new Set(transactions.map(t => t.currency || 'INR')));
 
     currencies.forEach(curr => {
       const totals: Record<string, number> = {};

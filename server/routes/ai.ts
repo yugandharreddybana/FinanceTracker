@@ -156,6 +156,16 @@ async function callBackend(path: string, method: string, body: any, userId: stri
 router.post("/process-input", authMiddleware, async (req, res) => {
   try {
     const { input, savingsGoals } = req.body;
+    // Input validation: prevent empty or excessively long inputs
+    if (!input || typeof input !== 'string') {
+      return res.status(400).json({ error: "Input is required and must be a string" });
+    }
+    if (input.trim().length === 0) {
+      return res.status(400).json({ error: "Input cannot be empty" });
+    }
+    if (input.length > 2000) {
+      return res.status(400).json({ error: "Input too long (max 2000 characters)" });
+    }
     if (!NVIDIA_API_KEY) {
       console.warn("[process-input] Mocking AI response because NVIDIA_API_KEY is not set");
       const lowerInput = input.toLowerCase();
@@ -343,7 +353,13 @@ router.post("/oracle", authMiddleware, async (req, res) => {
     const { uid, name } = (req as any).user;
     const token = req.headers.authorization?.split(" ")[1] ||
       (req as any).cookies?.auth_token || "";
-
+    // Input validation
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return res.status(400).json({ error: "Message is required" });
+    }
+    if (message.length > 4000) {
+      return res.status(400).json({ error: "Message too long (max 4000 characters)" });
+    }
     if (!NVIDIA_API_KEY) return res.status(503).json({ error: "AI service not configured" });
 
     const tools: NvidiaTool[] = [
@@ -532,6 +548,13 @@ router.post("/chat", authMiddleware, async (req, res) => {
   try {
     const { message, history, transactions } = req.body;
     const { name } = (req as any).user;
+    // Input validation
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return res.status(400).json({ error: "Message is required" });
+    }
+    if (message.length > 4000) {
+      return res.status(400).json({ error: "Message too long (max 4000 characters)" });
+    }
     if (!NVIDIA_API_KEY) return res.status(503).json({ error: "AI service not configured" });
 
     const messages: NvidiaMessage[] = [

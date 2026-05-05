@@ -1,32 +1,33 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import { Sidebar } from './components/Sidebar';
-import { Dashboard } from './components/Dashboard';
-import { TransactionsPage } from './components/TransactionsPage';
-import { BankAccountsPage } from './components/BankAccountsPage';
-import { BudgetsPage } from './components/BudgetsPage';
-import { SavingsPage } from './components/SavingsPage';
-import { RecurringPage } from './components/RecurringPage';
-import { NetWorthPage } from './components/NetWorthPage';
-import { HealthScorePage } from './components/HealthScorePage';
-import { CarbonFootprintPage } from './components/CarbonFootprintPage';
-import { CategoriesPage } from './components/CategoriesPage';
-import { AIInsightsPage } from './components/AIInsightsPage';
-import { IncomeAnalyticsPage } from './components/IncomeAnalyticsPage';
-import { MonthlyReview } from './components/MonthlyReview';
-import { LoansPage } from './components/LoansPage';
 import { SmartAdd } from './components/SmartAdd';
 import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { SignupPage } from './components/SignupPage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
-import { SettingsPage } from './components/SettingsPage';
-import { InvestmentPage } from './components/InvestmentPage';
-import { ForecastingPage } from './components/ForecastingPage';
-import { TaxEnginePage } from './components/TaxEnginePage';
-import { ReportBuilderPage } from './components/ReportBuilderPage';
-import { AuditLogPage } from './components/AuditLogPage';
-import { FamilyPage } from './components/FamilyPage';
+// Lazy-loaded page components — reduces initial bundle size
+const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
+const TransactionsPage = lazy(() => import('./components/TransactionsPage').then(m => ({ default: m.TransactionsPage })));
+const BankAccountsPage = lazy(() => import('./components/BankAccountsPage').then(m => ({ default: m.BankAccountsPage })));
+const BudgetsPage = lazy(() => import('./components/BudgetsPage').then(m => ({ default: m.BudgetsPage })));
+const SavingsPage = lazy(() => import('./components/SavingsPage').then(m => ({ default: m.SavingsPage })));
+const RecurringPage = lazy(() => import('./components/RecurringPage').then(m => ({ default: m.RecurringPage })));
+const NetWorthPage = lazy(() => import('./components/NetWorthPage').then(m => ({ default: m.NetWorthPage })));
+const HealthScorePage = lazy(() => import('./components/HealthScorePage').then(m => ({ default: m.HealthScorePage })));
+const CarbonFootprintPage = lazy(() => import('./components/CarbonFootprintPage').then(m => ({ default: m.CarbonFootprintPage })));
+const CategoriesPage = lazy(() => import('./components/CategoriesPage').then(m => ({ default: m.CategoriesPage })));
+const AIInsightsPage = lazy(() => import('./components/AIInsightsPage').then(m => ({ default: m.AIInsightsPage })));
+const IncomeAnalyticsPage = lazy(() => import('./components/IncomeAnalyticsPage').then(m => ({ default: m.IncomeAnalyticsPage })));
+const MonthlyReview = lazy(() => import('./components/MonthlyReview').then(m => ({ default: m.MonthlyReview })));
+const LoansPage = lazy(() => import('./components/LoansPage').then(m => ({ default: m.LoansPage })));
+const SettingsPage = lazy(() => import('./components/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const InvestmentPage = lazy(() => import('./components/InvestmentPage').then(m => ({ default: m.InvestmentPage })));
+const ForecastingPage = lazy(() => import('./components/ForecastingPage').then(m => ({ default: m.ForecastingPage })));
+const TaxEnginePage = lazy(() => import('./components/TaxEnginePage').then(m => ({ default: m.TaxEnginePage })));
+const ReportBuilderPage = lazy(() => import('./components/ReportBuilderPage').then(m => ({ default: m.ReportBuilderPage })));
+const AuditLogPage = lazy(() => import('./components/AuditLogPage').then(m => ({ default: m.AuditLogPage })));
+const FamilyPage = lazy(() => import('./components/FamilyPage').then(m => ({ default: m.FamilyPage })));
 import { FinanceProvider, useFinance } from './context/FinanceContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AnimatePresence, motion } from 'motion/react';
@@ -399,9 +400,15 @@ function MainApp() {
                 </header>
 
                 <div className="pt-24 p-6 md:p-10 lg:p-12 pb-40" style={{ paddingTop: '96px' }}>
-                  <AnimatePresence mode="wait">
-                    {renderContent()}
-                  </AnimatePresence>
+                  <Suspense fallback={
+                    <div className="flex items-center justify-center min-h-[60vh]">
+                      <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+                    </div>
+                  }>
+                    <AnimatePresence mode="wait">
+                      {renderContent()}
+                    </AnimatePresence>
+                  </Suspense>
                 </div>
 
                 <CommandPalette

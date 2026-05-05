@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { rateLimit } from "express-rate-limit";
 import { authMiddleware } from "../routes/auth.js";
-import { createClient } from "ioredis";
+import Redis from "ioredis";
 import crypto from "crypto";
 
 const router = Router();
@@ -24,10 +24,10 @@ const BACKEND_API = `${BACKEND_URL}/api/finance`;
 
 // FLAW #2 FIX: Redis client for sync-transaction cache (replaces in-process Map)
 // Falls back gracefully if Redis is not configured so local dev still works.
-let redis: ReturnType<typeof createClient> | null = null;
+let redis: Redis | null = null;
 try {
   if (process.env.REDIS_URL) {
-    redis = new createClient(process.env.REDIS_URL);
+    redis = new Redis(process.env.REDIS_URL!);
     redis.on("error", (err: Error) => console.error("[Redis] connection error:", err.message));
   }
 } catch (e) {

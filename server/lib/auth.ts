@@ -18,6 +18,8 @@ if (!process.env.JWT_SECRET) {
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   console.warn("JWT_SECRET missing from process.env! Auth will fail.");
+} else if (JWT_SECRET.length < 32) {
+  console.warn("[SECURITY] JWT_SECRET is too short (< 32 characters). Use at least 64 random hex characters in production.");
 }
 const USERS_FILE = path.join(process.cwd(), "data", "users.json");
 

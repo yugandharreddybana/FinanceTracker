@@ -12,6 +12,23 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: path.resolve(__dirname, 'dist'),
       emptyOutDir: true,
+      chunkSizeWarningLimit: 600,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            // Core React runtime
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            // Animation library
+            'vendor-motion': ['motion/react'],
+            // Charts
+            'vendor-charts': ['recharts'],
+            // AI / markdown
+            'vendor-ai': ['react-markdown'],
+            // Icons
+            'vendor-icons': ['lucide-react'],
+          },
+        },
+      },
     },
     plugins: [
       react(),
