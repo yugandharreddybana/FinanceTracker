@@ -48,7 +48,7 @@ public class UserProfileService {
     @Transactional
     public UserProfile update(String id, UserProfile updates) {
         UserProfile existing = repo.findById(id)
-            .orElseThrow(() -> new RuntimeException("User profile not found"));
+            .orElseThrow(() -> new com.financetracker.exception.NotFoundException("User profile not found"));
         if (updates.getName() != null) existing.setName(updates.getName());
         if (updates.getEmail() != null) existing.setEmail(updates.getEmail());
         if (updates.getRole() != null) existing.setRole(updates.getRole());

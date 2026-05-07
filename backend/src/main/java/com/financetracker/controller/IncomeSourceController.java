@@ -16,26 +16,26 @@ public class IncomeSourceController {
     private final IncomeSourceService service;
 
     @GetMapping
-    public List<IncomeSource> getAll(@RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public List<IncomeSource> getAll(@RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         return service.findAllByUserId(userId);
     }
 
     @PostMapping
-    public ResponseEntity<IncomeSource> create(@RequestBody IncomeSource source, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public ResponseEntity<IncomeSource> create(@RequestBody IncomeSource source, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         source.setUserId(userId);
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(source));
     }
 
     @PutMapping("/{id}")
-    public IncomeSource update(@PathVariable String id, @RequestBody IncomeSource updates, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public IncomeSource update(@PathVariable String id, @RequestBody IncomeSource updates, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         return service.update(id, updates, userId);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable String id, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public ResponseEntity<Void> delete(@PathVariable String id, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         service.delete(id, userId);
         return ResponseEntity.noContent().build();

@@ -89,7 +89,7 @@ public class TransactionService {
     @SuppressWarnings("null")
     @Transactional(isolation = Isolation.REPEATABLE_READ)
     public Transaction update(String id, Map<String, Object> updates, String requestUserId) {
-        Transaction tx = repo.findById(id).orElseThrow(() -> new RuntimeException("Transaction not found: " + id));
+        Transaction tx = repo.findById(id).orElseThrow(() -> new com.financetracker.exception.NotFoundException("Transaction not found: " + id));
         Guards.assertOwner(tx.getUserId(), requestUserId);
 
         applyBalanceDeltaWithRetry(tx, -1);
@@ -105,9 +105,19 @@ public class TransactionService {
         return saved;
     }
 
+    // Phase4.0008: confidence is no longer accepted in the generic update payload.
+    // User-confirmed recategorisation flips category/aiTag and sets confidence to
+    // 1.00 server-side, where the value is trusted.
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    public Transaction recategorise(String id, String newCategory, String requestUserId) {
+        Transaction updated = update(id, Map.of("category", newCategory, "aiTag", newCategory), requestUserId);
+        updated.setConfidence(new BigDecimal("1.00"));
+        return repo.save(updated);
+    }
+
     @Transactional(isolation = Isolation.REPEATABLE_READ)
     public void delete(String id, String requestUserId) {
-        Transaction tx = repo.findById(id).orElseThrow(() -> new RuntimeException("Transaction not found: " + id));
+        Transaction tx = repo.findById(id).orElseThrow(() -> new com.financetracker.exception.NotFoundException("Transaction not found: " + id));
         Guards.assertOwner(tx.getUserId(), requestUserId);
         applyBalanceDeltaWithRetry(tx, -1);
         applyBudgetDelta(tx, -1);
@@ -284,7 +294,9 @@ public class TransactionService {
                 case "status" -> tx.setStatus((String) value);
                 case "aiTag" -> tx.setAiTag((String) value);
                 case "account" -> tx.setAccount((String) value);
-                case "confidence" -> tx.setConfidence(new BigDecimal(value.toString()));
+                // Phase4.0008: confidence is server-managed only (raised by the
+                // /recategorise endpoint when a user verifies an AI category).
+                // Allowing the client to set it would corrupt the AI feedback loop.
                 case "savingsGoalId" -> tx.setSavingsGoalId((String) value);
                 case "currency" -> tx.setCurrency((String) value);
                 default -> {}

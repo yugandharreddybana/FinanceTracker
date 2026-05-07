@@ -16,22 +16,19 @@ public class AuditLogController {
     private final AuditLogService service;
 
     @GetMapping
-    public List<AuditLog> getAll(@RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public List<AuditLog> getAll(@RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         return service.findAllByUserId(userId);
     }
 
     @PostMapping
-    public ResponseEntity<AuditLog> create(@RequestBody AuditLog log, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public ResponseEntity<AuditLog> create(@RequestBody AuditLog log, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         log.setUserId(userId);
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(log));
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable String id, @RequestHeader(value = "X-User-Id", required = false) String userId) {
-        Guards.requireUser(userId);
-        service.delete(id, userId);
-        return ResponseEntity.noContent().build();
-    }
+    // Phase4.0005: DELETE removed. Audit logs are append-only; the V2 migration
+    // also revokes UPDATE/DELETE at the DB level. For GDPR right-to-erasure use
+    // AuditLogService.anonymiseByUserId via account deletion flow.
 }

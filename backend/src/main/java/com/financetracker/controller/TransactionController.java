@@ -66,8 +66,8 @@ public class TransactionController {
         return ResponseEntity.noContent().build();
     }
 
-    // ISSUE #13 FIX: User-confirmed recategorisation endpoint.
-    // Sets confidence = 1.0 (user-verified) and fires a correction audit event.
+    // ISSUE #13 FIX + Phase4.0008: dedicated recategorisation endpoint. Confidence
+    // is set inside the service, never accepted from clients.
     @PostMapping("/{id}/recategorise")
     public ResponseEntity<Transaction> recategorise(
             @PathVariable String id,
@@ -77,9 +77,6 @@ public class TransactionController {
         if (newCategory == null || newCategory.isBlank()) {
             return ResponseEntity.badRequest().build();
         }
-        Transaction updated = service.update(id,
-            Map.of("category", newCategory, "aiTag", newCategory, "confidence", "1.00"),
-            userId);
-        return ResponseEntity.ok(updated);
+        return ResponseEntity.ok(service.recategorise(id, newCategory, userId));
     }
 }

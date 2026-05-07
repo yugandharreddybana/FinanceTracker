@@ -33,7 +33,7 @@ public class InvestmentService {
     @Transactional
     public Investment update(String id, Investment updates, String requestUserId) {
         Investment existing = repo.findById(id)
-            .orElseThrow(() -> new RuntimeException("Investment not found"));
+            .orElseThrow(() -> new com.financetracker.exception.NotFoundException("Investment not found"));
         Guards.assertOwner(existing.getUserId(), requestUserId);
         if (updates.getSymbol() != null) existing.setSymbol(updates.getSymbol());
         if (updates.getName() != null) existing.setName(updates.getName());
@@ -49,7 +49,7 @@ public class InvestmentService {
     @Transactional
     public void delete(String id, String requestUserId) {
         Investment existing = repo.findById(id)
-            .orElseThrow(() -> new RuntimeException("Investment not found"));
+            .orElseThrow(() -> new com.financetracker.exception.NotFoundException("Investment not found"));
         Guards.assertOwner(existing.getUserId(), requestUserId);
         // ISSUE #22 FIX: Soft-delete
         existing.setDeleted(true);

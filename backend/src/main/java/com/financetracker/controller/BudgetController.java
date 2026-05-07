@@ -16,26 +16,26 @@ public class BudgetController {
     private final BudgetService service;
 
     @GetMapping
-    public List<Budget> getAll(@RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public List<Budget> getAll(@RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         return service.findAllByUserId(userId);
     }
 
     @PostMapping
-    public ResponseEntity<Budget> create(@RequestBody Budget budget, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public ResponseEntity<Budget> create(@RequestBody Budget budget, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         budget.setUserId(userId);
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(budget));
     }
 
     @PutMapping("/{id}")
-    public Budget update(@PathVariable String id, @RequestBody Budget updates, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public Budget update(@PathVariable String id, @RequestBody Budget updates, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         return service.update(id, updates, userId);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable String id, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public ResponseEntity<Void> delete(@PathVariable String id, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         service.delete(id, userId);
         return ResponseEntity.noContent().build();

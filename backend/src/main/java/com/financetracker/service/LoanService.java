@@ -36,7 +36,7 @@ public class LoanService {
     @Transactional
     public Loan update(String id, Loan updates, String requestUserId) {
         Loan existing = repo.findById(id)
-            .orElseThrow(() -> new RuntimeException("Loan not found"));
+            .orElseThrow(() -> new com.financetracker.exception.NotFoundException("Loan not found"));
         Guards.assertOwner(existing.getUserId(), requestUserId);
         if (updates.getName() != null) existing.setName(updates.getName());
         if (updates.getTotalAmount() != null) existing.setTotalAmount(updates.getTotalAmount());
@@ -63,7 +63,7 @@ public class LoanService {
     @Transactional
     public void delete(String id, String requestUserId) {
         Loan existing = repo.findById(id)
-            .orElseThrow(() -> new RuntimeException("Loan not found"));
+            .orElseThrow(() -> new com.financetracker.exception.NotFoundException("Loan not found"));
         Guards.assertOwner(existing.getUserId(), requestUserId);
         repo.deleteById(id);
     }
