@@ -15,13 +15,23 @@ if (!process.env.JWT_SECRET) {
   }
 }
 
+// Hard fail at module load — never run with a missing or weak secret. Any code that
+// imports this module assumes a verified JWT_SECRET, so deferring the check causes
+// silent acceptance of forged tokens if downstream paths skip the secret.
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
-  console.warn("JWT_SECRET missing from process.env! Auth will fail.");
-} else if (JWT_SECRET.length < 32) {
-  console.warn("[SECURITY] JWT_SECRET is too short (< 32 characters). Use at least 64 random hex characters in production.");
+  throw new Error("JWT_SECRET is required — server cannot start without a signing secret");
 }
+if (JWT_SECRET.length < 32) {
+  throw new Error("JWT_SECRET must be at least 32 characters (use 64+ random hex bytes in production)");
+}
+
 const USERS_FILE = path.join(process.cwd(), "data", "users.json");
+
+// PBKDF2 strength — OWASP 2023 minimum for SHA-512 is 210k; we use 600k for headroom.
+// Old 100k hashes are migrated lazily on next successful login.
+const PBKDF2_ITERATIONS = 600_000;
+const LEGACY_PBKDF2_ITERATIONS = 100_000;
 
 export interface Authenticator {
   credentialID: string;
@@ -40,6 +50,8 @@ export interface StoredUser {
   salt: string;
   createdAt: string;
   authenticators?: Authenticator[];
+  hashIterations?: number; // absent → legacy 100k
+  emailVerified?: boolean; // absent → legacy users treated as verified
 }
 
 // ---------------------------------------------------------------------------
@@ -104,30 +116,48 @@ function initCache() {
 }
 initCache();
 
-function hashPassword(password: string, salt: string): string {
-  return crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
+function hashPassword(password: string, salt: string, iterations: number = PBKDF2_ITERATIONS): string {
+  return crypto.pbkdf2Sync(password, salt, iterations, 64, "sha512").toString("hex");
+}
+
+function safeHashEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, "hex");
+  const bufB = Buffer.from(b, "hex");
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
 }
 
 export function createToken(payload: { uid: string; email: string; name: string }): string {
-  if (!JWT_SECRET) throw new Error("Internal Server Error: JWT_SECRET is not configured");
-
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+  const now = Math.floor(Date.now() / 1000);
   const body = Buffer.from(
-    JSON.stringify({ ...payload, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 86400 })
+    JSON.stringify({ ...payload, iat: now, exp: now + 86400 })
   ).toString("base64url");
-  const signature = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${body}`).digest("base64url");
+  const signature = crypto.createHmac("sha256", JWT_SECRET!).update(`${header}.${body}`).digest("base64url");
   return `${header}.${body}.${signature}`;
 }
 
 export function verifyToken(token: string): { uid: string; email: string; name: string } | null {
+  if (!JWT_SECRET) return null;
   try {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
     const [header, body, signature] = parts;
-    const expected = crypto.createHmac("sha256", JWT_SECRET!).update(`${header}.${body}`).digest("base64url");
-    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+    const expected = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${body}`).digest("base64url");
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expected);
+    if (sigBuf.length !== expBuf.length) return null;
+    if (!crypto.timingSafeEqual(sigBuf, expBuf)) return null;
+
     const payload = JSON.parse(Buffer.from(body, "base64url").toString());
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
+    const now = Math.floor(Date.now() / 1000);
+
+    if (typeof payload.exp !== "number" || payload.exp < now) return null;
+    if (typeof payload.iat !== "number" || payload.iat > now + 60) return null;
+    if (typeof payload.uid !== "string" || payload.uid.length === 0) return null;
+    if (typeof payload.email !== "string" || payload.email.length === 0) return null;
+    if (typeof payload.name !== "string") return null;
+
     return { uid: payload.uid, email: payload.email, name: payload.name };
   } catch {
     return null;
@@ -145,9 +175,11 @@ export async function registerUser(email: string, password: string, name: string
     uid,
     email,
     name,
-    passwordHash: hashPassword(password, salt),
+    passwordHash: hashPassword(password, salt, PBKDF2_ITERATIONS),
     salt,
     createdAt: new Date().toISOString(),
+    hashIterations: PBKDF2_ITERATIONS,
+    emailVerified: false,
   };
   users.push(user);
   await saveUsers(users);
@@ -155,15 +187,30 @@ export async function registerUser(email: string, password: string, name: string
   return { user: { uid, email, name }, token };
 }
 
-export function loginUser(email: string, password: string): { user: { uid: string; email: string; name: string }; token: string } {
+export async function loginUser(email: string, password: string): Promise<{ user: { uid: string; email: string; name: string }; token: string }> {
   const users = loadUsers();
-  const user = users.find((u) => u.email === email);
-  if (!user) {
+  const idx = users.findIndex((u) => u.email === email);
+  if (idx === -1) {
+    // Spend the same CPU on a dummy hash to avoid timing oracle on user existence
+    hashPassword(password, "dummy-salt-for-timing-equalisation", PBKDF2_ITERATIONS);
     throw new Error("Invalid email or password");
   }
-  const hash = hashPassword(password, user.salt);
-  if (hash !== user.passwordHash) {
+  const user = users[idx];
+  const iterations = user.hashIterations ?? LEGACY_PBKDF2_ITERATIONS;
+  const hash = hashPassword(password, user.salt, iterations);
+  if (!safeHashEqual(hash, user.passwordHash)) {
     throw new Error("Invalid email or password");
+  }
+  // Lazy rehash: legacy hashes upgraded to current iteration count on successful login
+  if (iterations < PBKDF2_ITERATIONS) {
+    const newSalt = crypto.randomBytes(32).toString("hex");
+    users[idx] = {
+      ...user,
+      salt: newSalt,
+      passwordHash: hashPassword(password, newSalt, PBKDF2_ITERATIONS),
+      hashIterations: PBKDF2_ITERATIONS,
+    };
+    await saveUsers(users);
   }
   const token = createToken({ uid: user.uid, email: user.email, name: user.name });
   return { user: { uid: user.uid, email: user.email, name: user.name }, token };
@@ -174,12 +221,18 @@ export async function changeUserPassword(email: string, currentPassword: string,
   const idx = users.findIndex((u) => u.email === email);
   if (idx === -1) throw new Error("User not found");
   const user = users[idx];
-  const currentHash = hashPassword(currentPassword, user.salt);
-  if (!crypto.timingSafeEqual(Buffer.from(currentHash), Buffer.from(user.passwordHash))) {
+  const iterations = user.hashIterations ?? LEGACY_PBKDF2_ITERATIONS;
+  const currentHash = hashPassword(currentPassword, user.salt, iterations);
+  if (!safeHashEqual(currentHash, user.passwordHash)) {
     throw new Error("Current password is incorrect");
   }
   const newSalt = crypto.randomBytes(32).toString("hex");
-  users[idx] = { ...user, salt: newSalt, passwordHash: hashPassword(newPassword, newSalt) };
+  users[idx] = {
+    ...user,
+    salt: newSalt,
+    passwordHash: hashPassword(newPassword, newSalt, PBKDF2_ITERATIONS),
+    hashIterations: PBKDF2_ITERATIONS,
+  };
   await saveUsers(users);
 }
 
@@ -188,7 +241,12 @@ export async function resetUserPassword(email: string, newPassword: string): Pro
   const idx = users.findIndex((u) => u.email === email);
   if (idx === -1) throw new Error("User not found");
   const newSalt = crypto.randomBytes(32).toString("hex");
-  users[idx] = { ...users[idx], salt: newSalt, passwordHash: hashPassword(newPassword, newSalt) };
+  users[idx] = {
+    ...users[idx],
+    salt: newSalt,
+    passwordHash: hashPassword(newPassword, newSalt, PBKDF2_ITERATIONS),
+    hashIterations: PBKDF2_ITERATIONS,
+  };
   await saveUsers(users);
 }
 
@@ -205,57 +263,13 @@ export function findUserByEmail(email: string): StoredUser | undefined {
   return users.find((u) => u.email === email);
 }
 
-// In-memory store for reset tokens (Token -> {email, expiry})
-const resetTokens = new Map<string, { email: string; expiry: number }>();
-
-export function generateResetToken(email: string): string {
-  const user = findUserByEmail(email);
-  if (!user) throw new Error("User not found");
-
-  const token = crypto.randomUUID();
-  const expiry = Date.now() + 3600000; // 1 hour
-  resetTokens.set(token, { email, expiry });
-
-  return token;
-}
-
-export function resetPasswordWithToken(token: string, newPassword: string): void {
-  const resetInfo = resetTokens.get(token);
-  if (!resetInfo) throw new Error("Invalid or expired reset token");
-
-  if (Date.now() > resetInfo.expiry) {
-    resetTokens.delete(token);
-    throw new Error("Reset token has expired");
-  }
-
-  const users = loadUsers();
-  const idx = users.findIndex((u) => u.email === resetInfo.email);
-  if (idx === -1) throw new Error("User no longer exists");
-
-  const newSalt = crypto.randomBytes(32).toString("hex");
-  users[idx] = {
-    ...users[idx],
-    salt: newSalt,
-    passwordHash: hashPassword(newPassword, newSalt)
-  };
-
-  saveUsers(users);
-  resetTokens.delete(token); // Cleanup
-}
-
-export function updatePasswordDirectly(email: string, newPassword: string): void {
+export async function markEmailVerified(email: string): Promise<boolean> {
   const users = loadUsers();
   const idx = users.findIndex((u) => u.email === email);
-  if (idx === -1) throw new Error("User not found");
-
-  const newSalt = crypto.randomBytes(32).toString("hex");
-  users[idx] = {
-    ...users[idx],
-    salt: newSalt,
-    passwordHash: hashPassword(newPassword, newSalt)
-  };
-
-  saveUsers(users);
+  if (idx === -1) return false;
+  users[idx] = { ...users[idx], emailVerified: true };
+  await saveUsers(users);
+  return true;
 }
 
 export function saveUserAuthenticator(email: string, authenticator: Authenticator): void {

@@ -20,7 +20,9 @@ import { familyRouter } from "./routes/family.js";
 
 async function startServer() {
   // ── Startup environment validation ────────────────────────────────────────
+  const IS_PROD = process.env.NODE_ENV === "production";
   const REQUIRED_ENV = ["JWT_SECRET"];
+  if (IS_PROD) REQUIRED_ENV.push("DATABASE_URL");
   const missing = REQUIRED_ENV.filter(k => !process.env[k]);
   if (missing.length > 0) {
     console.error(`FATAL: Missing required environment variables: ${missing.join(", ")}`);
@@ -32,7 +34,7 @@ async function startServer() {
     console.warn("[WARN] NVIDIA_API_KEY is not set — all AI endpoints (/api/ai/*) will return 503.");
   }
   if (!process.env.DATABASE_URL) {
-    console.warn("[WARN] DATABASE_URL is not set — user accounts stored in local JSON file (not suitable for production).");
+    console.warn("[WARN] DATABASE_URL is not set — user accounts stored in local JSON file (dev only).");
   }
   if (!process.env.JAVA_BACKEND_URL && !process.env.BACKEND_URL) {
     console.warn("[WARN] JAVA_BACKEND_URL not set — finance data proxies will target http://localhost:8080.");
@@ -48,7 +50,6 @@ async function startServer() {
   app.set("trust proxy", 1);
 
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4000;
-  const IS_PROD = process.env.NODE_ENV === "production";
 
   console.log("-------------------------------------------------------------------");
   console.log("DEPLOYMENT DIAGNOSTICS");

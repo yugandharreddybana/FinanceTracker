@@ -1,8 +1,24 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { rateLimit } from "express-rate-limit";
 import crypto from "crypto";
-import { registerUser, loginUser, changeUserPassword, deleteUserByEmail, verifyToken, resetUserPassword } from "../lib/auth.js";
+import {
+  registerUser,
+  loginUser,
+  changeUserPassword,
+  deleteUserByEmail,
+  verifyToken,
+  resetUserPassword,
+  createToken,
+  markEmailVerified,
+  findUserByEmail,
+} from "../lib/auth.js";
 import Redis from "ioredis";
+
+const IS_PROD = process.env.NODE_ENV === "production";
+const EMAIL_PROVIDER_CONFIGURED =
+  !!process.env.SENDGRID_API_KEY ||
+  !!process.env.SMTP_HOST ||
+  !!process.env.SES_REGION;
 
 const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8080";
 
@@ -58,6 +74,124 @@ async function deleteOtp(email: string): Promise<void> {
   } else {
     memOtpStore.delete(email);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Per-email login lockout — Phase2.0007
+// IP-based rate limit alone is bypassable via rotating IPs, so we additionally
+// lock an account after N failed login attempts in the rolling window.
+// ---------------------------------------------------------------------------
+const LOCKOUT_THRESHOLD = 5;
+const LOCKOUT_WINDOW_SECONDS = 900; // 15 minutes
+const memLockoutStore = new Map<string, { count: number; expires: number }>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [email, record] of memLockoutStore.entries()) {
+    if (now > record.expires) memLockoutStore.delete(email);
+  }
+}, 5 * 60 * 1000);
+
+function lockoutKey(email: string): string {
+  return `login_fail:${email.toLowerCase()}`;
+}
+
+async function getFailureCount(email: string): Promise<number> {
+  const key = lockoutKey(email);
+  if (redis) {
+    const v = await redis.get(key);
+    return v ? parseInt(v, 10) : 0;
+  }
+  const rec = memLockoutStore.get(key);
+  if (!rec || rec.expires < Date.now()) return 0;
+  return rec.count;
+}
+
+async function incrementFailureCount(email: string): Promise<number> {
+  const key = lockoutKey(email);
+  if (redis) {
+    const n = await redis.incr(key);
+    if (n === 1) await redis.expire(key, LOCKOUT_WINDOW_SECONDS);
+    return n;
+  }
+  const rec = memLockoutStore.get(key);
+  const now = Date.now();
+  if (rec && rec.expires > now) {
+    rec.count += 1;
+    return rec.count;
+  }
+  memLockoutStore.set(key, { count: 1, expires: now + LOCKOUT_WINDOW_SECONDS * 1000 });
+  return 1;
+}
+
+async function clearFailureCount(email: string): Promise<void> {
+  const key = lockoutKey(email);
+  if (redis) {
+    await redis.del(key);
+  } else {
+    memLockoutStore.delete(key);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Email verification token store — Phase2.0013
+// Token TTL: 24 hours; bound to email; consumed on first successful verify.
+// ---------------------------------------------------------------------------
+const memVerifyTokenStore = new Map<string, { email: string; expires: number }>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, record] of memVerifyTokenStore.entries()) {
+    if (now > record.expires) memVerifyTokenStore.delete(token);
+  }
+}, 10 * 60 * 1000);
+
+async function storeVerificationToken(email: string): Promise<string> {
+  const token = crypto.randomBytes(32).toString("hex");
+  if (redis) {
+    await redis.setex(`verify:${token}`, 86400, email.toLowerCase());
+  } else {
+    memVerifyTokenStore.set(token, {
+      email: email.toLowerCase(),
+      expires: Date.now() + 86400 * 1000,
+    });
+  }
+  return token;
+}
+
+async function consumeVerificationToken(token: string): Promise<string | null> {
+  if (redis) {
+    const email = await redis.get(`verify:${token}`);
+    if (!email) return null;
+    await redis.del(`verify:${token}`);
+    return email;
+  }
+  const rec = memVerifyTokenStore.get(token);
+  if (!rec || rec.expires < Date.now()) return null;
+  memVerifyTokenStore.delete(token);
+  return rec.email;
+}
+
+// Email transport — placeholder until provider SDK is wired in.
+// In production, missing provider config blocks /forgot-password (returns 503).
+// In dev, /forgot-password records the OTP in Redis only — never logged.
+async function sendOtpEmail(_email: string, _otp: string): Promise<void> {
+  if (process.env.SENDGRID_API_KEY) {
+    // TODO: integrate SendGrid SDK
+    return;
+  }
+  if (process.env.SMTP_HOST) {
+    // TODO: integrate nodemailer
+    return;
+  }
+  // No provider configured — caller has already verified non-prod context
+  return;
+}
+
+async function sendVerificationEmail(_email: string, _link: string): Promise<void> {
+  if (process.env.SENDGRID_API_KEY || process.env.SMTP_HOST) {
+    // TODO: integrate provider SDK
+    return;
+  }
+  return;
 }
 
 const authLimiter = rateLimit({
@@ -131,6 +265,17 @@ router.post("/register", authLimiter, async (req: Request, res: Response) => {
       return;
     }
     const result = await registerUser(email, password, name);
+
+    // Phase2.0013: issue email verification token and dispatch verification email.
+    // The flag is recorded on the user; gating finance routes on verification is
+    // tracked separately under Phase8.0008 once SMTP delivery is fully wired.
+    if (EMAIL_PROVIDER_CONFIGURED) {
+      const token = await storeVerificationToken(email);
+      const frontend = (process.env.FRONTEND_URL || "").split(",")[0].trim() || "";
+      const link = frontend ? `${frontend}/verify-email?token=${token}` : `/verify-email?token=${token}`;
+      await sendVerificationEmail(email, link);
+    }
+
     res.cookie("auth_token", result.token, cookieOptions);
     res.json({ user: result.user });
   } catch (err: any) {
@@ -142,22 +287,40 @@ router.post("/register", authLimiter, async (req: Request, res: Response) => {
   }
 });
 
-router.post("/login", authLimiter, (req: Request, res: Response) => {
+router.post("/login", authLimiter, async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
       res.status(400).json({ error: "Email and password are required" });
       return;
     }
-    const result = loginUser(email, password);
-    res.cookie("auth_token", result.token, cookieOptions);
-    res.json({ user: result.user });
-  } catch (err: any) {
-    if (err.message === "Invalid email or password") {
-      res.status(401).json({ error: err.message });
-    } else {
-      res.status(500).json({ error: "Login failed" });
+
+    // Phase2.0007: per-email lockout — defends against IP-rotating brute force.
+    const failures = await getFailureCount(email);
+    if (failures >= LOCKOUT_THRESHOLD) {
+      res.status(429).json({ error: "Account temporarily locked. Try again in 15 minutes." });
+      return;
     }
+
+    try {
+      const result = await loginUser(email, password);
+      await clearFailureCount(email);
+      res.cookie("auth_token", result.token, cookieOptions);
+      res.json({ user: result.user });
+    } catch (err: any) {
+      if (err.message === "Invalid email or password") {
+        const next = await incrementFailureCount(email);
+        const remaining = Math.max(LOCKOUT_THRESHOLD - next, 0);
+        res.status(401).json({
+          error: "Invalid email or password",
+          attemptsRemaining: remaining,
+        });
+        return;
+      }
+      throw err;
+    }
+  } catch {
+    res.status(500).json({ error: "Login failed" });
   }
 });
 
@@ -171,33 +334,53 @@ router.post("/logout", sensitiveLimiter, (_req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
-router.get("/me", sensitiveLimiter, (req: Request, res: Response) => {
-  const token = (req as any).cookies?.auth_token || req.headers.authorization?.slice(7);
-  if (!token) {
-    res.status(401).json({ error: "Not authenticated" });
-    return;
-  }
-  const payload = verifyToken(token);
-  if (!payload) {
-    res.status(401).json({ error: "Invalid or expired token" });
-    return;
-  }
-  res.json({ user: { uid: payload.uid, email: payload.email, name: payload.name } });
+router.get("/me", sensitiveLimiter, authMiddleware, (req: Request, res: Response) => {
+  const payload = (req as any).user as { uid: string; email: string; name: string };
+  const stored = findUserByEmail(payload.email);
+  res.json({
+    user: {
+      uid: payload.uid,
+      email: payload.email,
+      name: payload.name,
+      emailVerified: stored?.emailVerified ?? true,
+    },
+  });
 });
 
-// FLAW #8 FIX: OTP generated, hashed, and stored in Redis — NOT logged to console
+// Phase2.0013: explicit email verification endpoint. Token issued at /register.
+router.post("/verify-email", authLimiter, async (req: Request, res: Response) => {
+  const { token } = req.body || {};
+  if (!token || typeof token !== "string") {
+    return res.status(400).json({ error: "token is required" });
+  }
+  const email = await consumeVerificationToken(token);
+  if (!email) {
+    return res.status(400).json({ error: "Invalid or expired verification token" });
+  }
+  const ok = await markEmailVerified(email);
+  if (!ok) {
+    return res.status(404).json({ error: "User not found" });
+  }
+  res.json({ ok: true });
+});
+
+// Phase2.0004: OTP delivery requires an email provider in production.
+// In dev with no provider, the OTP is stored (Redis or memory) but never logged
+// to stdout — that would leak to log aggregators if NODE_ENV is misconfigured.
+// Operators in dev can read the OTP via Redis CLI: `GET otp:<email>`.
 router.post("/forgot-password", forgotPasswordLimiter, async (req: Request, res: Response) => {
   const { email } = req.body;
   if (!email) {
     res.status(400).json({ error: "Email is required" });
     return;
   }
+  if (IS_PROD && !EMAIL_PROVIDER_CONFIGURED) {
+    return res.status(503).json({ error: "Password reset is temporarily unavailable" });
+  }
   const otp = String(crypto.randomInt(100000, 1000000));
   await storeOtp(email, otp);
-  // TODO: Replace with email provider (SendGrid / Mailgun / AWS SES)
-  // DO NOT log the OTP in production — removed console.log from prior version
-  if (process.env.NODE_ENV !== "production") {
-    console.log(`[DEV ONLY — REMOVE IN PROD] OTP for ${email}: ${otp}`);
+  if (EMAIL_PROVIDER_CONFIGURED) {
+    await sendOtpEmail(email, otp);
   }
   res.json({ success: true, message: "If that email exists, a reset code has been sent." });
 });
@@ -343,14 +526,69 @@ async function proxyWebAuthn(req: Request, res: Response, subPath: string) {
 router.post("/webauthn/register/options", (req, res) => proxyWebAuthn(req, res, "/register/options"));
 router.post("/webauthn/register/verify", (req, res) => proxyWebAuthn(req, res, "/register/verify"));
 router.post("/webauthn/login/options", (req, res) => proxyWebAuthn(req, res, "/login/options"));
-router.post("/webauthn/login/verify", (req, res) => proxyWebAuthn(req, res, "/login/verify"));
-router.delete("/webauthn/credentials", async (req: Request, res: Response) => {
+
+// Phase2.0010: WebAuthn login/verify must mint the JWT here — Spring backend does
+// not share JWT_SECRET. Without this, the frontend believes login succeeded but
+// every subsequent finance call returns 401.
+router.post("/webauthn/login/verify", async (req: Request, res: Response) => {
   try {
-    const email = (req.query.email as string) || req.body?.email;
-    if (!email) return res.status(400).json({ error: "email required" });
-    const upstream = await fetch(`${BACKEND_URL}/api/auth/webauthn/credentials?email=${encodeURIComponent(email)}`, {
-      method: "DELETE",
+    const url = `${BACKEND_URL}/api/auth/webauthn/login/verify`;
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (req.headers.cookie) headers.cookie = req.headers.cookie as string;
+    const upstream = await fetch(url, {
+      method: "POST",
+      headers,
+      body: typeof req.body === "string" ? req.body : JSON.stringify(req.body),
     });
+
+    const setCookie = upstream.headers.get("set-cookie");
+    if (setCookie) res.setHeader("Set-Cookie", setCookie);
+
+    if (!upstream.ok) {
+      const text = await upstream.text();
+      return res.status(upstream.status).json({
+        error: "Passkey verification failed",
+        details: text,
+      });
+    }
+
+    const user: any = await upstream.json().catch(() => null);
+    if (!user || typeof user.id !== "string" || typeof user.email !== "string") {
+      return res.status(502).json({ error: "Invalid user payload from backend" });
+    }
+
+    const displayName: string =
+      typeof user.displayName === "string" && user.displayName
+        ? user.displayName
+        : typeof user.username === "string" && user.username
+        ? user.username
+        : user.email;
+
+    const token = createToken({ uid: user.id, email: user.email, name: displayName });
+    res.cookie("auth_token", token, cookieOptions);
+    res.json({ user: { uid: user.id, email: user.email, name: displayName } });
+  } catch {
+    res.status(503).json({ error: "Passkey authentication is not available", available: false });
+  }
+});
+
+// Phase2.0009: deleting a user's passkeys requires authentication, and the caller
+// must own the email. Backend additionally enforces ownership via X-User-Id.
+router.delete("/webauthn/credentials", authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const caller = (req as any).user as { uid: string; email: string };
+    const requested = ((req.query.email as string) || req.body?.email || "").trim();
+    if (!requested) return res.status(400).json({ error: "email required" });
+    if (requested.toLowerCase() !== caller.email.toLowerCase()) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const upstream = await fetch(
+      `${BACKEND_URL}/api/auth/webauthn/credentials?email=${encodeURIComponent(requested)}`,
+      {
+        method: "DELETE",
+        headers: { "X-User-Id": caller.uid },
+      }
+    );
     res.status(upstream.status).send();
   } catch (err: any) {
     res.status(502).json({ error: "Backend unavailable", details: err.message });
