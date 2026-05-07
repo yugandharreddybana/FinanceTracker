@@ -1,6 +1,22 @@
 import { Router } from "express";
+import { rateLimit } from "express-rate-limit";
+import { authMiddleware } from "../middleware/auth.js";
 
 export const investmentRouter = Router();
+
+// Phase3.0010: every investment route requires authentication and a tight
+// per-IP rate limit. Without auth, anonymous traffic could exhaust the owner's
+// Alpha Vantage quota or scrape the mock catalog.
+investmentRouter.use(authMiddleware);
+investmentRouter.use(
+  rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many requests, please slow down" },
+  })
+);
 
 const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
 
