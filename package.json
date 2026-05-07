@@ -17,7 +17,9 @@
     "start:full": "npx concurrently \"npm run start:middleware\" \"npm run start:frontend\" \"java -jar backend/target/finance-tracker-backend-1.0.0.jar\"",
     "start:middleware": "npm --prefix server run start",
     "start:frontend": "npm --prefix packages/frontend run dev",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "npm test -w server && npm test -w packages/frontend",
+    "test:backend": "cd backend && mvn -B test",
+    "test:all": "npm test && npm run test:backend"
   },
   "devDependencies": {
     "concurrently": "^8.2.0",
