@@ -4,6 +4,7 @@ import com.financetracker.model.AuditLog;
 import com.financetracker.repository.AuditLogRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.List;
@@ -32,7 +33,11 @@ public class AuditLogService {
     // Audit logs are append-only. DB-level rules (V2 migration) also prevent UPDATE/DELETE.
     // For GDPR right-to-erasure, use anonymise() instead.
 
-    @Transactional
+    // Phase5.0011: REQUIRED propagation joins the caller's transaction
+    // (UserProfileService.purgeUserData) so a connection drop mid-purge rolls
+    // back the entire account deletion atomically, preventing partial states
+    // where some PII has been redacted but other data remains.
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
     public void anonymiseByUserId(String userId) {
         // ISSUE #8 FIX: Called on account deletion — replaces PII, preserves event records.
         List<AuditLog> logs = repo.findAllByUserId(userId);

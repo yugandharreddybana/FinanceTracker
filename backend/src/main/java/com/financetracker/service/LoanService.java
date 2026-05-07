@@ -77,6 +77,22 @@ public class LoanService {
         if (loan.getTotalAmount() == null || loan.getInterestRate() == null || loan.getTenureYears() == null) {
             return List.of();
         }
+        // Phase5.0007: belt-and-braces runtime guard. Bean Validation should
+        // already have rejected these inputs at the controller, but defence in
+        // depth: a negative rate divides by ((1+r)^n - 1) = 0, and tenure 0
+        // would make n = 0 and crash the loop / produce NaN.
+        if (loan.getInterestRate().signum() < 0 || loan.getInterestRate().compareTo(new BigDecimal("100")) > 0) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST, "interestRate out of range [0, 100]");
+        }
+        if (loan.getTenureYears() < 1 || loan.getTenureYears() > 50) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST, "tenureYears out of range [1, 50]");
+        }
+        if (loan.getTotalAmount().signum() <= 0) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST, "totalAmount must be positive");
+        }
         int n = loan.getTenureYears() * 12;
         BigDecimal principal = loan.getTotalAmount();
         BigDecimal annualRate = loan.getInterestRate();

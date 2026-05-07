@@ -4,6 +4,7 @@ import com.financetracker.repository.*;
 import com.financetracker.model.UserProfile;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Optional;
@@ -74,9 +75,13 @@ public class UserProfileService {
         });
     }
 
-    @Transactional
+    // Phase5.0011: account purge must be atomic across 12+ repositories. Without
+    // explicit propagation REQUIRED + rollbackFor=Exception, a connection drop
+    // mid-purge could leave orphaned rows or a half-anonymised audit log. The
+    // anonymise call shares this transaction (REQUIRED), so a failure there
+    // rolls back every preceding deletion as a single unit.
+    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
     public void purgeUserData(String userId) {
-        // Hard-delete transactional data
         transactionRepo.deleteByUserId(userId);
         bankAccountRepo.deleteByUserId(userId);
         budgetRepo.deleteByUserId(userId);

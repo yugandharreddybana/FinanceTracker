@@ -41,6 +41,15 @@ public class InvestmentPriceRefreshScheduler {
 
     @Scheduled(cron = "0 0 21 * * MON-FRI", zone = "UTC")
     public void refreshPrices() {
+        // Phase5.0010: the literal "demo" key is Alpha Vantage's public sample
+        // and only returns IBM. Running the scheduler with it silently leaves
+        // every other position with a zero P&L, so refuse and surface the
+        // misconfig loudly. Operators must set ALPHA_VANTAGE_API_KEY in env.
+        if (apiKey == null || apiKey.isBlank() || "demo".equalsIgnoreCase(apiKey)) {
+            log.warn("[InvestmentPriceRefreshScheduler] ALPHA_VANTAGE_API_KEY not configured (got '{}') — skipping refresh",
+                apiKey);
+            return;
+        }
         List<Investment> all = investmentRepo.findAll();
         List<String> symbols = all.stream()
             .map(Investment::getSymbol)

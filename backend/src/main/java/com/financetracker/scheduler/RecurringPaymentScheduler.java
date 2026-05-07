@@ -35,8 +35,9 @@ public class RecurringPaymentScheduler {
         log.info("[RecurringPaymentScheduler] {} payments due on {}", due.size(), today);
         for (RecurringPayment rp : due) {
             try {
+                String generatedId = "tx-" + UUID.randomUUID();
                 Transaction tx = Transaction.builder()
-                    .id("tx-" + UUID.randomUUID())
+                    .id(generatedId)
                     .idempotencyKey("rec-" + rp.getId() + "-" + today)
                     .userId(rp.getUserId())
                     .merchant(rp.getName())
@@ -48,15 +49,21 @@ public class RecurringPaymentScheduler {
                     .currency(rp.getCurrency())
                     .transactionDate(today)
                     .build();
-                txService.create(tx);
-                // Append to payment history
+                Transaction saved = txService.create(tx);
+                // Phase5.0008: idempotency — if create() returned the EXISTING
+                // transaction (Railway restart re-fired the same day), we must
+                // NOT advance history or dueDate, otherwise the user sees a
+                // duplicate history row and skips a real future occurrence.
+                if (saved == null || !generatedId.equals(saved.getId())) {
+                    log.info("[RecurringPaymentScheduler] Skipping {} — already fired today (idempotency)", rp.getId());
+                    continue;
+                }
                 java.util.List<RecurringPayment.PaymentHistory> history =
                     new java.util.ArrayList<>(rp.getHistory() != null ? rp.getHistory() : List.of());
                 history.add(new RecurringPayment.PaymentHistory(
                     today.toString(), rp.getAmount(), "PAID"
                 ));
                 rp.setHistory(history);
-                // Advance dueDate to next occurrence
                 rp.setDueDate(nextOccurrence(rp, today).toString());
                 repo.save(rp);
                 log.info("[RecurringPaymentScheduler] Fired payment for {} (user: {})",

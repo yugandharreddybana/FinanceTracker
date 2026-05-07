@@ -62,8 +62,10 @@ public class InvestmentService {
     public void updatePricesFromMarket(String symbol, java.math.BigDecimal price) {
         List<Investment> holdings = repo.findAllBySymbol(symbol);
         for (Investment inv : holdings) {
-            inv.setCurrentPrice(price);
-            inv.setLastUpdated(Instant.now());
+            // Phase5.0014: setCurrentPrice is now package-private; only the
+            // server-only setCurrentPriceInternal mutator (which also bumps
+            // lastUpdated) is reachable from this package.
+            inv.setCurrentPriceInternal(price);
             repo.save(inv);
         }
     }

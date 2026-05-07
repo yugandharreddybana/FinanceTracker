@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -21,7 +22,9 @@ public class BankAccountService {
     @Transactional
     public BankAccount create(BankAccount account) {
         if (account.getId() == null || account.getId().isBlank()) {
-            account.setId("acc-" + System.currentTimeMillis());
+            // Phase5.0013: UUID — millisecond timestamps collide under burst
+            // creation (two accounts in the same ms → DB integrity violation).
+            account.setId("acc-" + UUID.randomUUID());
         }
         if (Boolean.TRUE.equals(account.getIsPrimary())) {
             demoteOtherPrimaries(account.getUserId(), account.getCurrency(), account.getId());
