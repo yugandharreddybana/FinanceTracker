@@ -38,7 +38,7 @@ public class SavingsGoalService {
     @Transactional
     public SavingsGoal update(String id, SavingsGoal updates, String requestUserId) {
         SavingsGoal existing = repo.findById(id)
-            .orElseThrow(() -> new jakarta.ws.rs.NotFoundException("Savings goal not found"));
+            .orElseThrow(() -> new IllegalArgumentException("Savings goal not found"));
         Guards.assertOwner(existing.getUserId(), requestUserId);
         if (updates.getName() != null) existing.setName(updates.getName());
         if (updates.getTarget() != null) existing.setTarget(updates.getTarget());
@@ -53,7 +53,7 @@ public class SavingsGoalService {
     @Transactional
     public void delete(String id, String requestUserId) {
         SavingsGoal existing = repo.findById(id)
-            .orElseThrow(() -> new jakarta.ws.rs.NotFoundException("Savings goal not found"));
+            .orElseThrow(() -> new IllegalArgumentException("Savings goal not found"));
         Guards.assertOwner(existing.getUserId(), requestUserId);
         // ISSUE #22 FIX: Soft-delete — never hard-delete
         existing.setDeleted(true);

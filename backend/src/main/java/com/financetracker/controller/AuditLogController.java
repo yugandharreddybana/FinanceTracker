@@ -28,10 +28,4 @@ public class AuditLogController {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(log));
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable String id, @RequestHeader(value = "X-User-Id", required = false) String userId) {
-        Guards.requireUser(userId);
-        service.delete(id, userId);
-        return ResponseEntity.noContent().build();
-    }
 }

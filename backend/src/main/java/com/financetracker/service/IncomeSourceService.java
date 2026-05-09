@@ -33,7 +33,8 @@ public class IncomeSourceService {
         Guards.assertOwner(existing.getUserId(), requestUserId);
         if (updates.getSource() != null) existing.setSource(updates.getSource());
         if (updates.getAmount() != null) existing.setAmount(updates.getAmount());
-        if (updates.getDate() != null) existing.setDate(updates.getDate());
+        if (updates.getLastReceivedDate() != null) existing.setLastReceivedDate(updates.getLastReceivedDate());
+        if (updates.getNextPaymentDate() != null) existing.setNextPaymentDate(updates.getNextPaymentDate());
         if (updates.getFrequency() != null) existing.setFrequency(updates.getFrequency());
         if (updates.getColor() != null) existing.setColor(updates.getColor());
         if (updates.getCurrency() != null) existing.setCurrency(updates.getCurrency());

@@ -64,8 +64,8 @@ public class Budget {
         MONTHLY, WEEKLY, CUSTOM
     }
 
-    // Package-private spent setter — prevents accidental client-controlled writes
-    void setSpentInternal(BigDecimal spent) {
+    // Internal spent setter
+    public void setSpentInternal(BigDecimal spent) {
         this.spent = spent;
     }
 }

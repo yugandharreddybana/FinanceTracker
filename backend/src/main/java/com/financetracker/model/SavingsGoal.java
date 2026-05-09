@@ -49,8 +49,8 @@ public class SavingsGoal {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
-    // Package-private setter — only SavingsGoalService/TransactionService may call this
-    void setCurrentInternal(BigDecimal current) {
+    // Internal setter — only SavingsGoalService/TransactionService may call this
+    public void setCurrentInternal(BigDecimal current) {
         this.current = current;
     }
 }
