@@ -1,188 +1,132 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Link } from 'react-router-dom';
-import { Sparkles, Mail, Lock, User, ArrowRight, Loader2, AlertCircle, ShieldCheck } from 'lucide-react';
+import { useFinance } from '../context/FinanceContext';
+import { Wallet, Mail, Lock, User, ArrowRight, Loader2, Eye, EyeOff, Check } from 'lucide-react';
 
-interface SignupPageProps {
-  onSignup: (name: string, email: string, token?: string) => void;
-  onSwitchToLogin: () => void;
-  onBackToHome: () => void;
-}
-
-export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onSwitchToLogin, onBackToHome }) => {
+export function SignupPage() {
+  const { signup } = useFinance();
+  const navigate = useNavigate();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isReady, setIsReady] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const strength = password.length >= 8 ? (password.length >= 12 ? 3 : 2) : password.length > 0 ? 1 : 0;
+  const strengthLabels = ['', 'Weak', 'Good', 'Strong'];
+  const strengthColors = ['', 'bg-rose-500', 'bg-amber-500', 'bg-emerald-500'];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
-    if (!name || !email || !password) {
-      setError('Please fill in all fields');
-      return;
-    }
-
-    if (!/\S+@\S+\.\S+/.test(email)) {
-      setError('Please enter a valid email address');
-      return;
-    }
-
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
-      return;
-    }
-
     setIsLoading(true);
     try {
-      const { authApi } = await import('../services/api');
-      const result = await authApi.register(name, email, password);
-      
-      setIsLoading(false);
-      onSignup(name, result.user?.email || email, result.token);
-    } catch (err: any) {
-      console.error('Signup Error:', err);
-      setError(err.message || 'Registration failed. Please check your connection.');
-      setIsLoading(false);
-    }
+      const ok = await signup(name, email, password);
+      if (ok) navigate('/app/dashboard');
+      else setError('Failed to create account');
+    } catch { setError('Something went wrong'); }
+    finally { setIsLoading(false); }
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-6 relative overflow-hidden">
-      {/* Background Effects */}
-      <div className="fixed top-0 right-1/4 w-[800px] h-[800px] bg-accent/10 rounded-full blur-[160px] pointer-events-none -z-10" />
-      <div className="fixed bottom-0 left-1/4 w-[600px] h-[600px] bg-positive/5 rounded-full blur-[140px] pointer-events-none -z-10" />
+    <div className="flex min-h-screen">
+      <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.5 }}
+        className="flex flex-1 flex-col justify-center px-5 sm:px-8 py-8 sm:py-12 lg:px-16">
+        <div className="mx-auto w-full max-w-md">
+          <Link to="/" className="mb-10 inline-flex items-center gap-2.5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl animated-gradient shadow-lg shadow-emerald-200">
+              <Wallet className="h-5 w-5 text-white" />
+            </div>
+            <span className="text-xl font-extrabold text-slate-900">Yugi<span className="text-emerald-600">Finance</span></span>
+          </Link>
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
-      >
-        <div className="text-center mb-10">
-          <button 
-            onClick={onBackToHome}
-            aria-label="Back to home"
-            className="w-16 h-16 rounded-2xl bg-accent flex items-center justify-center mx-auto mb-6 violet-glow hover:scale-110 transition-transform"
-          >
-            <Sparkles className="w-8 h-8 text-white" />
-          </button>
-          <h1 className="text-4xl font-bold tracking-tighter mb-2 font-display">Join the Future</h1>
-          <p className="text-white/40 font-medium">Create your private financial intelligence account</p>
-        </div>
+          <h1 className="text-3xl font-black text-slate-900">Create your account 🚀</h1>
+          <p className="mt-2 text-slate-500">Start your journey to financial freedom</p>
 
-        <div className="glass-card p-8 border-white/5 shadow-2xl">
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Browser Autofill Honeypot */}
-            <input type="text" className="hidden" aria-hidden="true" />
-            <input type="password" className="hidden" aria-hidden="true" />
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="p-4 rounded-xl bg-negative/10 border border-negative/20 flex items-center gap-3 text-negative text-xs font-bold"
-              >
-                <AlertCircle className="w-4 h-4" />
-                <span>{error}</span>
-              </motion.div>
-            )}
+          <form onSubmit={handleSubmit} className="mt-10 space-y-5">
+            {error && <div className="rounded-2xl bg-rose-50 border border-rose-200 p-4 text-sm text-rose-600 font-medium">{error}</div>}
 
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest ml-1">Full Name</label>
-              <div className="relative group">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-accent transition-colors" />
-                <input 
-                  type="text" 
-                  placeholder="John Doe"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl py-4 pl-12 pr-4 outline-none focus:border-accent/50 transition-all font-medium"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  autoComplete="off"
-                  name="ft_signup_name"
-                  readOnly={!isReady}
-                  onFocus={() => setIsReady(true)}
-                />
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-700">Full Name</label>
+              <div className="group relative">
+                <User className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-300 group-focus-within:text-emerald-500 transition-colors" />
+                <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Yugandhar Reddy" required
+                  className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50/50 py-3.5 pl-12 pr-4 text-sm font-medium text-slate-900 placeholder:text-slate-300 focus:border-emerald-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-emerald-50 transition-all" />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest ml-1">Email Address</label>
-              <div className="relative group">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-accent transition-colors" />
-                <input 
-                  type="email" 
-                  placeholder="name@company.com"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl py-4 pl-12 pr-4 outline-none focus:border-accent/50 transition-all font-medium"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  autoComplete="off"
-                  name="ft_signup_email"
-                  readOnly={!isReady}
-                  onFocus={() => setIsReady(true)}
-                />
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-700">Email</label>
+              <div className="group relative">
+                <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-300 group-focus-within:text-emerald-500 transition-colors" />
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" required
+                  className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50/50 py-3.5 pl-12 pr-4 text-sm font-medium text-slate-900 placeholder:text-slate-300 focus:border-emerald-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-emerald-50 transition-all" />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold text-white/30 uppercase tracking-widest ml-1">Password</label>
-              <div className="relative group">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-accent transition-colors" />
-                <input 
-                  type="password" 
-                  placeholder="Min. 8 characters"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl py-4 pl-12 pr-4 outline-none focus:border-accent/50 transition-all font-medium"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="new-password"
-                  name="ft_signup_pass"
-                  readOnly={!isReady}
-                  onFocus={() => setIsReady(true)}
-                />
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-700">Password</label>
+              <div className="group relative">
+                <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-300 group-focus-within:text-emerald-500 transition-colors" />
+                <input type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="Min 8 characters" required minLength={6}
+                  className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50/50 py-3.5 pl-12 pr-12 text-sm font-medium text-slate-900 placeholder:text-slate-300 focus:border-emerald-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-emerald-50 transition-all" />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500">
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
               </div>
-            </div>
-
-            <div className="flex items-start gap-3 p-4 rounded-xl bg-white/[0.02] border border-white/5">
-              <ShieldCheck className="w-5 h-5 text-positive shrink-0 mt-0.5" />
-              <p className="text-[10px] text-white/40 leading-relaxed">
-                By signing up, you agree to our <span className="text-white/60 underline">Terms of Service</span> and <span className="text-white/60 underline">Privacy Policy</span>. Your data is always yours.
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-white/5 bg-white/[0.03] px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white/40">
-              Sessions stay active for up to 24 hours on this device, or until you sign out.
-            </div>
-
-            <button 
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-4 rounded-xl bg-accent text-white font-bold hover:bg-accent/80 transition-all violet-glow flex items-center justify-center gap-3 group disabled:opacity-50"
-            >
-              {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <>
-                  <span>Create Account</span>
-                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </>
+              {password.length > 0 && (
+                <div className="mt-3 flex items-center gap-3">
+                  <div className="flex flex-1 gap-1">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className={`h-1.5 flex-1 rounded-full transition-all ${i <= strength ? strengthColors[strength] : 'bg-slate-100'}`} />
+                    ))}
+                  </div>
+                  <span className={`text-xs font-semibold ${strength === 3 ? 'text-emerald-600' : strength === 2 ? 'text-amber-600' : 'text-rose-500'}`}>{strengthLabels[strength]}</span>
+                </div>
               )}
-            </button>
+            </div>
+
+            <motion.button type="submit" disabled={isLoading} whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl animated-gradient py-4 text-sm font-bold text-white shadow-xl shadow-emerald-200/50 transition-all disabled:opacity-60">
+              {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <>Create Account <ArrowRight className="h-4 w-4" /></>}
+            </motion.button>
           </form>
 
-          <div className="mt-8 pt-8 border-t border-white/5 text-center">
-            <p className="text-sm text-white/30 font-medium">
-              Already have an account?{' '}
-              <Link 
-                to="/login"
-                className="text-accent font-bold hover:text-white transition-colors"
-              >
-                Sign in
-              </Link>
-            </p>
-          </div>
+          <p className="mt-8 text-center text-sm text-slate-400">
+            Already have an account?{' '}
+            <Link to="/login" className="font-bold text-emerald-600 hover:text-emerald-700">Sign in</Link>
+          </p>
         </div>
       </motion.div>
+
+      {/* Right */}
+      <div className="hidden lg:flex flex-1 items-center justify-center relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-900">
+        <div className="absolute top-20 right-20 h-64 w-64 rounded-full bg-emerald-500/10 blob" />
+        <div className="absolute bottom-20 left-20 h-48 w-48 rounded-full bg-violet-500/10 blob" style={{ animationDelay: '4s' }} />
+
+        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8, delay: 0.3 }}
+          className="relative z-10 max-w-md p-12 text-white">
+          <h2 className="text-3xl font-black">Why choose Yugi?</h2>
+          <div className="mt-8 space-y-5">
+            {[
+              'Track every rupee with zero effort',
+              'AI-powered insights that save you ₹10K+/yr',
+              'Grow your investments 3x faster',
+              'Bank-grade encryption for peace of mind',
+            ].map((t, i) => (
+              <motion.div key={i} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 + i * 0.15 }}
+                className="flex items-center gap-4">
+                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-emerald-500/20">
+                  <Check className="h-4 w-4 text-emerald-400" />
+                </div>
+                <span className="text-slate-300">{t}</span>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      </div>
     </div>
   );
-};
+}

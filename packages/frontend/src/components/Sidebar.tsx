@@ -1,231 +1,151 @@
-import React, { useState } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  LayoutDashboard, 
-  ArrowLeftRight, 
-  Sparkles, 
-  CalendarRange, 
-  Settings, 
-  LogOut,
-  Wallet,
-  PieChart,
-  Target,
-  RefreshCw,
-  TrendingUp,
-  TrendingDown,
-  Activity,
-  Leaf,
-  Tags,
-  BarChart3,
-  Cpu,
-  Coins,
-  BrainCircuit,
-  Shield,
-  Layout,
-  History,
-  Users
-} from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useFinance } from '../context/FinanceContext';
+import {
+  LayoutDashboard, Receipt, CreditCard, PieChart, Target, TrendingUp,
+  Settings, LogOut, Sparkles, CalendarClock, Briefcase, Wallet, Calculator,
+  ChevronLeft, ChevronRight, X,
+} from 'lucide-react';
+import { useState } from 'react';
 
-interface SidebarProps {
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
-  onLogout: () => void;
-}
-
-const NAV_ITEMS = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'transactions', label: 'Transactions', icon: ArrowLeftRight },
-  { id: 'accounts', label: 'Bank Accounts', icon: Wallet },
-  { id: 'budgets', label: 'Budgets', icon: PieChart },
-  { id: 'savings', label: 'Savings Goals', icon: Target },
-  { id: 'recurring', label: 'Recurring', icon: RefreshCw },
-  { id: 'loans', label: 'Loans & EMIs', icon: TrendingDown },
-  { id: 'networth', label: 'Net Worth', icon: TrendingUp },
-  { id: 'health', label: 'Health Score', icon: Activity },
-  { id: 'carbon', label: 'Carbon Footprint', icon: Leaf },
-  { id: 'categories', label: 'Categories', icon: Tags },
-  { id: 'investments', label: 'Investments', icon: Coins },
-  { id: 'forecasting', label: 'Forecasting', icon: BrainCircuit },
-  { id: 'tax', label: 'Tax Engine', icon: Shield },
-  { id: 'reports', label: 'Reports', icon: Layout },
-  { id: 'family', label: 'Family', icon: Users },
-  { id: 'audit', label: 'Audit Logs', icon: History },
-  { id: 'insights', label: 'AI Insights', icon: Sparkles },
-  { id: 'income', label: 'Income Analytics', icon: BarChart3 },
-  { id: 'review', label: 'Monthly Review', icon: CalendarRange },
+const nav = [
+  { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', color: 'text-emerald-400' },
+  { path: '/dashboard/transactions', icon: Receipt, label: 'Transactions', color: 'text-blue-400' },
+  { path: '/dashboard/accounts', icon: CreditCard, label: 'Accounts', color: 'text-violet-400' },
+  { path: '/dashboard/budgets', icon: PieChart, label: 'Budgets', color: 'text-amber-400' },
+  { path: '/dashboard/savings', icon: Target, label: 'Goals', color: 'text-pink-400' },
+  { path: '/dashboard/investments', icon: TrendingUp, label: 'Investments', color: 'text-cyan-400' },
+  { path: '/dashboard/recurring', icon: CalendarClock, label: 'Recurring', color: 'text-orange-400' },
+  { path: '/dashboard/loans', icon: Briefcase, label: 'Loans', color: 'text-rose-400' },
+  { path: '/dashboard/insights', icon: Sparkles, label: 'AI Oracle', color: 'text-purple-400' },
+  { path: '/dashboard/networth', icon: Calculator, label: 'Net Worth', color: 'text-teal-400' },
+  { path: '/dashboard/settings', icon: Settings, label: 'Settings', color: 'text-slate-400' },
 ];
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLogout }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+interface Props {
+  mobileOpen: boolean;
+  onMobileClose: () => void;
+}
 
-  return (
-    <motion.aside
-      initial={false}
-      animate={{ width: isExpanded ? 240 : 80 }}
-      onMouseEnter={() => setIsExpanded(true)}
-      onMouseLeave={() => setIsExpanded(false)}
-      className="fixed left-0 top-0 h-screen glass-card border-r border-white/5 z-50 flex flex-col py-8 overflow-visible transition-all duration-500 ease-[0.22, 1, 0.36, 1]"
-    >
-      <div className="px-6 mb-12 flex items-center gap-4">
-        <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center shrink-0 violet-glow relative group/logo">
-          <Sparkles className="w-6 h-6 text-white group-hover/logo:scale-110 transition-transform" />
-          <div className="absolute inset-0 bg-white/20 rounded-xl opacity-0 group-hover/logo:opacity-100 transition-opacity" />
-        </div>
-        <AnimatePresence>
-          {isExpanded && (
-            <motion.div
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -10 }}
-              className="flex flex-col"
-            >
-              <span className="font-display font-bold text-xl tracking-tight whitespace-nowrap">Yugi</span>
-              <span className="text-[10px] font-bold text-accent uppercase tracking-[0.3em] -mt-1">Finance Tracker</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
+export function Sidebar({ mobileOpen, onMobileClose }: Props) {
+  const { logout, userProfile } = useFinance();
+  const navigate = useNavigate();
+  const [collapsed, setCollapsed] = useState(false);
+
+  const sidebarContent = (isMobile: boolean) => (
+    <div className={cn(
+      'flex flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-white h-full relative',
+      !isMobile && (collapsed ? 'w-[72px]' : 'w-[260px]'),
+      !isMobile && 'transition-all duration-300',
+      isMobile && 'w-[280px]'
+    )}>
+      <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-emerald-500/5 to-transparent pointer-events-none" />
+
+      {/* Logo */}
+      <div className="flex h-16 items-center justify-between px-4 relative z-10">
+        {(!collapsed || isMobile) ? (
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl animated-gradient pulse-glow">
+              <Wallet className="h-5 w-5 text-white" />
+            </div>
+            <span className="text-base font-extrabold tracking-tight">Yugi<span className="text-emerald-400">Finance</span></span>
+          </div>
+        ) : (
+          <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-xl animated-gradient pulse-glow">
+            <Wallet className="h-5 w-5 text-white" />
+          </div>
+        )}
+        {isMobile && (
+          <button onClick={onMobileClose} className="rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-white/10">
+            <X className="h-5 w-5" />
+          </button>
+        )}
       </div>
 
-      <nav className="flex-1 px-3 space-y-1.5 overflow-y-auto no-scrollbar">
-        {NAV_ITEMS.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-          
-          return (
-            <div key={item.id} className="relative">
-              <button
-                onClick={() => setActiveTab(item.id)}
-                onMouseEnter={() => setHoveredItem(item.id)}
-                onMouseLeave={() => setHoveredItem(null)}
-                className={cn(
-                  "w-full flex items-center gap-4 p-3.5 rounded-2xl transition-all duration-300 group relative",
-                  isActive 
-                    ? "bg-accent/10 text-accent shadow-[inset_0_0_20px_rgba(124,110,250,0.05)]" 
-                    : "text-white/40 hover:text-white hover:bg-white/5"
-                )}
-              >
-                <Icon className={cn(
-                  "w-5 h-5 shrink-0 transition-all duration-300", 
-                  isActive && "drop-shadow-[0_0_8px_rgba(124,110,250,0.6)] scale-110",
-                  !isActive && "group-hover:scale-110"
-                )} />
-                
-                <AnimatePresence>
-                  {isExpanded && (
-                    <motion.span
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -10 }}
-                      className="text-sm font-semibold whitespace-nowrap tracking-tight"
-                    >
-                      {item.label}
-                    </motion.span>
-                  )}
-                </AnimatePresence>
+      {/* Desktop collapse toggle */}
+      {!isMobile && (
+        <button onClick={() => setCollapsed(!collapsed)}
+          className="absolute -right-3 top-[60px] z-20 flex h-6 w-6 items-center justify-center rounded-full bg-slate-800 border border-slate-700 text-slate-400 hover:text-white hover:bg-slate-700 transition-all shadow-lg">
+          {collapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronLeft className="h-3 w-3" />}
+        </button>
+      )}
 
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto px-3 pt-4 space-y-1">
+        {nav.map(n => (
+          <NavLink key={n.path} to={n.path}
+            onClick={isMobile ? onMobileClose : undefined}
+            className={({ isActive }) => cn(
+              'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold transition-all duration-200 relative',
+              isActive
+                ? 'bg-white/10 text-white shadow-lg shadow-emerald-500/5'
+                : 'text-slate-400 hover:bg-white/5 hover:text-white',
+              !isMobile && collapsed && 'justify-center px-0'
+            )}>
+            {({ isActive }) => (
+              <>
                 {isActive && (
-                  <motion.div
-                    layoutId="active-indicator"
-                    className="absolute left-[-12px] w-1.5 h-6 bg-accent rounded-r-full violet-glow"
-                  />
+                  <motion.div layoutId={isMobile ? 'mobileTab' : 'activeTab'}
+                    className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 rounded-r-full bg-emerald-400"
+                    transition={{ type: 'spring', stiffness: 400, damping: 30 }} />
                 )}
-              </button>
-
-              {/* Tooltip for collapsed state */}
-              <AnimatePresence>
-                {!isExpanded && hoveredItem === item.id && (
-                  <motion.div
-                    initial={{ opacity: 0, x: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, x: 20, scale: 1 }}
-                    exit={{ opacity: 0, x: 10, scale: 0.95 }}
-                    className="absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-1.5 bg-card border border-white/10 rounded-lg text-xs font-bold whitespace-nowrap z-[60] shadow-2xl pointer-events-none"
-                  >
-                    {item.label}
-                    <div className="absolute left-[-4px] top-1/2 -translate-y-1/2 w-2 h-2 bg-card border-l border-b border-white/10 rotate-45" />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          );
-        })}
+                <n.icon className={cn('h-[18px] w-[18px] flex-shrink-0 transition-colors', isActive ? n.color : '')} />
+                {(!collapsed || isMobile) && <span>{n.label}</span>}
+              </>
+            )}
+          </NavLink>
+        ))}
       </nav>
 
-      <div className="px-3 pt-6 mt-6 border-t border-white/5 space-y-1.5">
-        <AnimatePresence>
-          {isExpanded && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              className="px-4 py-4 mb-4 rounded-2xl bg-accent/5 border border-accent/10 relative overflow-hidden group/neural"
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-accent/10 to-transparent opacity-0 group-hover/neural:opacity-100 transition-opacity" />
-              <div className="flex items-center gap-3 relative z-10">
-                <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center">
-                  <Cpu className="w-4 h-4 text-accent animate-pulse" />
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold text-accent uppercase tracking-widest">Neural Core</p>
-                  <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">Active • 98% Load</p>
-                </div>
-              </div>
-              <div className="mt-3 h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                <motion.div 
-                  initial={{ width: 0 }}
-                  animate={{ width: '98%' }}
-                  transition={{ duration: 2, repeat: Infinity, repeatType: 'reverse' }}
-                  className="h-full bg-accent"
-                />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <button 
-          onClick={() => setActiveTab('settings')}
+      {/* User section */}
+      <div className="relative z-10 p-3 border-t border-white/5">
+        {(!collapsed || isMobile) && (
+          <div className="mb-3 flex items-center gap-3 rounded-xl bg-white/5 p-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full animated-gradient text-sm font-bold flex-shrink-0">
+              {userProfile.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <p className="truncate text-sm font-semibold">{userProfile.name}</p>
+              <p className="truncate text-xs text-slate-400">{userProfile.email}</p>
+            </div>
+          </div>
+        )}
+        <button onClick={() => { logout(); navigate('/'); onMobileClose(); }}
           className={cn(
-            "w-full flex items-center gap-4 p-3.5 rounded-2xl transition-all group",
-            activeTab === 'settings' ? "bg-accent/10 text-accent shadow-[inset_0_0_20px_rgba(124,110,250,0.05)]" : "text-white/40 hover:text-white hover:bg-white/5"
-          )}
-        >
-          <Settings className={cn(
-            "w-5 h-5 shrink-0 transition-transform duration-500",
-            activeTab === 'settings' ? "rotate-45 text-accent" : "group-hover:rotate-45"
-          )} />
-          <AnimatePresence>
-            {isExpanded && (
-              <motion.span
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -10 }}
-                className="text-sm font-semibold whitespace-nowrap tracking-tight"
-              >
-                Settings
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </button>
-        <button 
-          onClick={onLogout}
-          className="w-full flex items-center gap-4 p-3.5 rounded-2xl text-white/40 hover:text-negative hover:bg-negative/5 transition-all group"
-        >
-          <LogOut className="w-5 h-5 shrink-0 group-hover:-translate-x-1 transition-transform" />
-          <AnimatePresence>
-            {isExpanded && (
-              <motion.span
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -10 }}
-                className="text-sm font-semibold whitespace-nowrap tracking-tight"
-              >
-                Logout
-              </motion.span>
-            )}
-          </AnimatePresence>
+            'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-400 transition-all hover:bg-rose-500/10 hover:text-rose-400',
+            !isMobile && collapsed && 'justify-center'
+          )}>
+          <LogOut className="h-[18px] w-[18px]" />
+          {(!collapsed || isMobile) && <span>Logout</span>}
         </button>
       </div>
-    </motion.aside>
+    </div>
   );
-};
+
+  return (
+    <>
+      {/* Desktop sidebar */}
+      <motion.aside initial={{ x: -10, opacity: 0 }} animate={{ x: 0, opacity: 1 }}
+        className="hidden lg:flex flex-shrink-0">
+        {sidebarContent(false)}
+      </motion.aside>
+
+      {/* Mobile drawer overlay */}
+      <AnimatePresence>
+        {mobileOpen && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm lg:hidden"
+              onClick={onMobileClose} />
+            <motion.div initial={{ x: -300 }} animate={{ x: 0 }} exit={{ x: -300 }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              className="fixed inset-y-0 left-0 z-[70] lg:hidden">
+              {sidebarContent(true)}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}

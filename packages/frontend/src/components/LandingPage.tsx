@@ -1,387 +1,192 @@
-import React from 'react';
-import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
-import {
-  Sparkles, Shield, TrendingUp, Zap, ArrowRight, Wallet, PieChart, Target,
-  Leaf, Coins, BrainCircuit, Users, History, BarChart3, Calculator,
-  RefreshCw, FileText, CreditCard, Activity, Globe2, ReceiptText,
-} from 'lucide-react';
+import { motion } from 'motion/react';
+import { Wallet, BarChart3, Target, TrendingUp, Shield, Sparkles, ArrowRight, Check, Zap, Globe, Users } from 'lucide-react';
 
-interface LandingPageProps {
-  onGetStarted: () => void;
-  onLogin: () => void;
-  onWatchDemo: () => void;
-}
-
-const FEATURES = [
-  {
-    icon: Zap,
-    title: 'Smart Add',
-    desc: 'Add transactions, goals, or loans using natural language. Just type what happened — Yugi parses and categorises automatically.',
-    color: 'text-accent bg-accent/10',
-    tag: 'AI-Powered',
-  },
-  {
-    icon: Coins,
-    title: 'NSE / BSE Investments',
-    desc: 'Track your Indian stock market portfolio in ₹. Real-time NSE/BSE quotes, P&L, and sector allocation — all in one view.',
-    color: 'text-positive bg-positive/10',
-    tag: 'Indian Markets',
-  },
-  {
-    icon: BrainCircuit,
-    title: 'AI Oracle',
-    desc: 'Your personal financial analyst powered by MCP. Ask anything — spending trends, forecasts, anomaly alerts — and get instant answers.',
-    color: 'text-accent bg-accent/10',
-    tag: 'MCP-Powered',
-  },
-  {
-    icon: Leaf,
-    title: 'Carbon Footprint',
-    desc: 'Every rupee spent is automatically mapped to a carbon footprint. Understand your environmental impact and track reductions over time.',
-    color: 'text-positive bg-positive/10',
-    tag: 'Eco Intelligence',
-  },
-  {
-    icon: Calculator,
-    title: 'Tax Engine',
-    desc: 'Auto-compute income tax with HRA, 80C, 80D deductions under both Old and New Indian tax regimes. Estimate your liability instantly.',
-    color: 'text-yellow-400 bg-yellow-400/10',
-    tag: 'Indian Tax',
-  },
-  {
-    icon: Users,
-    title: 'Family Accounts',
-    desc: 'Manage shared finances with real-time contribution tracking, member roles, and unified family net worth — perfect for joint households.',
-    color: 'text-pink-400 bg-pink-400/10',
-    tag: 'Multi-User',
-  },
-  {
-    icon: TrendingUp,
-    title: 'Cash Flow Forecasting',
-    desc: 'ML-powered 30/60/90-day cash flow projections with confidence bands and Monte Carlo simulation for scenario planning.',
-    color: 'text-cyan-400 bg-cyan-400/10',
-    tag: 'Predictive',
-  },
-  {
-    icon: Activity,
-    title: 'Health Score & Vitals',
-    desc: 'A dynamic 0-100 financial health score updated daily — covering savings rate, budget adherence, debt ratio, and emergency fund.',
-    color: 'text-rose-400 bg-rose-400/10',
-    tag: 'Wellness',
-  },
-  {
-    icon: History,
-    title: 'Audit Log with Trash',
-    desc: 'Every create, update, and delete action is logged with full transparency. Deleted entries rest in a 24-hour recoverable trash bin.',
-    color: 'text-orange-400 bg-orange-400/10',
-    tag: 'Compliance',
-  },
-  {
-    icon: FileText,
-    title: 'Monthly Review',
-    desc: 'Auto-generated monthly intelligence report summarising income, top expense categories, budget performance, and month-over-month trends.',
-    color: 'text-violet-400 bg-violet-400/10',
-    tag: 'Insights',
-  },
-  {
-    icon: RefreshCw,
-    title: 'Recurring Payments',
-    desc: 'Never miss a subscription again. Track, categorise, and forecast all recurring charges from SIPs to streaming services.',
-    color: 'text-blue-400 bg-blue-400/10',
-    tag: 'Automation',
-  },
-  {
-    icon: ReceiptText,
-    title: 'Report Builder',
-    desc: 'Design custom financial reports with drag-and-drop filters across time, category, account, and currency for full analytical control.',
-    color: 'text-indigo-400 bg-indigo-400/10',
-    tag: 'Analytics',
-  },
+const features = [
+  { icon: BarChart3, title: 'Smart Budgeting', desc: 'AI-powered budget tracking that learns your habits and adapts.', gradient: 'from-blue-500 to-cyan-400' },
+  { icon: Target, title: 'Savings Goals', desc: 'Visual goal tracking with smart milestones and auto-reminders.', gradient: 'from-emerald-500 to-teal-400' },
+  { icon: TrendingUp, title: 'Live Investments', desc: 'Real-time portfolio tracking with market insights.', gradient: 'from-violet-500 to-purple-400' },
+  { icon: Sparkles, title: 'AI Oracle', desc: 'Chat with your personal AI finance advisor anytime.', gradient: 'from-amber-500 to-orange-400' },
+  { icon: Shield, title: 'Bank-Grade Security', desc: 'End-to-end encryption with zero-knowledge architecture.', gradient: 'from-rose-500 to-pink-400' },
+  { icon: Zap, title: 'Instant Sync', desc: 'All your accounts synced in real-time across devices.', gradient: 'from-cyan-500 to-blue-400' },
 ];
 
-const STATS = [
-  { value: '20+', label: 'Financial Modules' },
-  { value: '₹ & €', label: 'Supported Currencies' },
-  { value: 'AI', label: 'Oracle Insights' },
-  { value: 'NSE', label: 'Stock Market' },
-];
+const container = { hidden: {}, show: { transition: { staggerChildren: 0.1 } } };
+const item = { hidden: { opacity: 0, y: 30 }, show: { opacity: 1, y: 0, transition: { duration: 0.5 } } };
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLogin, onWatchDemo }) => {
+export function LandingPage() {
   return (
-    <div className="min-h-screen bg-background text-white overflow-hidden selection:bg-accent/30">
-      {/* Navigation */}
-      <nav className="fixed top-0 w-full z-50 bg-background/50 backdrop-blur-xl border-b border-white/5">
-        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center violet-glow">
-              <Sparkles className="w-6 h-6 text-white" />
+    <div className="min-h-screen bg-white overflow-x-hidden">
+      {/* Nav */}
+      <motion.header initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="sticky top-0 z-50 glass border-b border-slate-200/50">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl animated-gradient shadow-lg shadow-emerald-200">
+              <Wallet className="h-5 w-5 text-white" />
             </div>
-            <span className="font-display font-bold text-2xl tracking-tighter">Yugi Finance Tracker</span>
+            <span className="text-lg font-extrabold tracking-tight text-slate-900">Yugi<span className="text-emerald-600">Finance</span></span>
           </div>
-          <div className="flex items-center gap-8">
-            <Link to="/login" className="text-sm font-bold text-white/60 hover:text-white transition-colors">Login</Link>
-            <Link to="/signup">
-              <button
-                className="px-6 py-2.5 rounded-xl bg-accent text-white text-sm font-bold hover:bg-accent/80 transition-all violet-glow"
-              >
-                Get Started
-              </button>
-            </Link>
+          <div className="hidden md:flex items-center gap-8">
+            <a href="#features" className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">Features</a>
+            <a href="#pricing" className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">Pricing</a>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link to="/login" className="hidden sm:inline text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors px-4 py-2">Sign In</Link>
+            <Link to="/signup" className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition-all shadow-lg shadow-slate-300">Get Started</Link>
           </div>
         </div>
-      </nav>
+      </motion.header>
 
-      {/* Hero Section */}
-      <section className="relative pt-40 pb-20 px-6">
-        <div className="max-w-7xl mx-auto text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent/10 border border-accent/20 text-accent text-[10px] font-bold uppercase tracking-widest mb-8"
-          >
-            <Sparkles className="w-3 h-3" />
-            <span>Your Personal Financial Intelligence Terminal</span>
+      {/* Hero */}
+      <section className="relative pt-16 pb-24 md:pt-24 md:pb-32 overflow-hidden">
+        {/* Decorative blobs */}
+        <div className="absolute -top-40 -right-40 h-96 w-96 rounded-full bg-emerald-200/40 blur-3xl" />
+        <div className="absolute -bottom-20 -left-40 h-80 w-80 rounded-full bg-violet-200/40 blur-3xl" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[600px] w-[600px] rounded-full bg-cyan-100/30 blur-3xl" />
+
+        <div className="relative mx-auto max-w-7xl px-6 text-center">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 border border-emerald-200 px-4 py-1.5 mb-8">
+              <Sparkles className="h-4 w-4 text-emerald-600" />
+              <span className="text-sm font-semibold text-emerald-700">AI-Powered Finance Tracking</span>
+            </div>
           </motion.div>
 
           <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="text-6xl md:text-8xl font-bold tracking-tighter mb-8 font-display leading-[0.9]"
+            initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.1 }}
+            className="text-3xl sm:text-5xl lg:text-7xl font-black tracking-tight text-slate-900 leading-[1.1]"
           >
-            Master Your Money <br />
-            <span className="text-accent">With Neural Precision.</span>
+            Your Money,{' '}
+            <span className="relative">
+              <span className="bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 bg-clip-text text-transparent">Simplified</span>
+              <svg className="absolute -bottom-2 left-0 w-full" viewBox="0 0 300 12" fill="none"><path d="M2 10C50 4 150 -2 298 6" stroke="url(#grad)" strokeWidth="3" strokeLinecap="round"/><defs><linearGradient id="grad" x1="0" y1="0" x2="300" y2="0"><stop stopColor="#10b981"/><stop offset="1" stopColor="#06b6d4"/></linearGradient></defs></svg>
+            </span>
           </motion.h1>
 
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="text-xl text-white/40 max-w-2xl mx-auto mb-12 font-medium leading-relaxed"
-          >
-            Yugi Finance Tracker combines AI-powered insights, Indian market intelligence, carbon tracking, 
-            tax calculations, and family finance management — all in one unified terminal.
+          <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.3 }}
+            className="mx-auto mt-8 max-w-2xl text-lg md:text-xl text-slate-500 leading-relaxed">
+            Track expenses, grow investments, and get AI-powered insights — all in one beautiful dashboard.
           </motion.p>
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="flex flex-col md:flex-row items-center justify-center gap-6"
-          >
-            <Link to="/signup" className="w-full md:w-auto">
-              <button
-                className="w-full md:w-auto px-10 py-5 rounded-2xl bg-white text-black font-bold text-lg hover:bg-white/90 transition-all flex items-center justify-center gap-3 group"
-              >
-                <span>Start Your Journey</span>
-                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </button>
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.5 }}
+            className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link to="/signup"
+              className="group inline-flex items-center gap-2.5 rounded-full animated-gradient px-6 py-3 sm:px-8 sm:py-4 text-base sm:text-lg font-bold text-white shadow-xl shadow-emerald-200/50 transition-all hover:shadow-2xl hover:scale-[1.02] w-full sm:w-auto justify-center">
+              Start Free
+              <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
             </Link>
-            <button
-              onClick={onWatchDemo}
-              className="w-full md:w-auto px-10 py-5 rounded-2xl bg-white/5 border border-white/10 text-white font-bold text-lg hover:bg-white/10 transition-all"
-            >
-              Watch Demo
-            </button>
+            <Link to="/login"
+              className="inline-flex items-center gap-2 rounded-full border-2 border-slate-200 bg-white px-6 py-3 sm:px-8 sm:py-4 text-base sm:text-lg font-bold text-slate-700 transition-all hover:border-slate-300 hover:shadow-lg w-full sm:w-auto justify-center">
+              Try Demo
+            </Link>
+          </motion.div>
+
+          {/* Stats */}
+          <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, delay: 0.7 }}
+            className="mt-20 mx-auto max-w-3xl grid grid-cols-2 md:grid-cols-4 gap-6">
+            {[
+              { icon: Users, val: '50K+', label: 'Active Users' },
+              { icon: Globe, val: '₹500Cr+', label: 'Tracked' },
+              { icon: Sparkles, val: '4.9★', label: 'App Rating' },
+              { icon: Shield, val: '99.9%', label: 'Uptime' },
+            ].map((s, i) => (
+              <div key={i} className="glass rounded-2xl p-5 text-center hover:shadow-lg transition-shadow">
+                <s.icon className="mx-auto h-5 w-5 text-emerald-500 mb-2" />
+                <p className="text-2xl font-extrabold text-slate-900">{s.val}</p>
+                <p className="text-xs font-medium text-slate-400 mt-1">{s.label}</p>
+              </div>
+            ))}
           </motion.div>
         </div>
+      </section>
 
-        {/* Floating Elements */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -z-10 w-full h-full">
-          <div className="absolute top-0 left-1/4 w-96 h-96 bg-accent/20 rounded-full blur-[120px] animate-pulse" />
-          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-positive/10 rounded-full blur-[120px]" />
+      {/* Features */}
+      <section id="features" className="py-24 bg-slate-50/50">
+        <div className="mx-auto max-w-7xl px-6">
+          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
+            <span className="text-sm font-bold uppercase tracking-widest text-emerald-600">Features</span>
+            <h2 className="mt-3 text-3xl sm:text-4xl font-extrabold text-slate-900">Everything you need, nothing you don't</h2>
+          </motion.div>
+
+          <motion.div variants={container} initial="hidden" whileInView="show" viewport={{ once: true }} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {features.map((f, i) => (
+              <motion.div key={i} variants={item}
+                className="group relative rounded-3xl bg-white p-8 border border-slate-100 hover:border-transparent hover:shadow-2xl hover:shadow-slate-200/50 transition-all duration-300 cursor-default">
+                <div className={`inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${f.gradient} shadow-lg`}>
+                  <f.icon className="h-6 w-6 text-white" />
+                </div>
+                <h3 className="mt-5 text-lg font-bold text-slate-900">{f.title}</h3>
+                <p className="mt-2 text-slate-500 leading-relaxed">{f.desc}</p>
+              </motion.div>
+            ))}
+          </motion.div>
         </div>
       </section>
 
-      {/* Stats Bar */}
-      <section className="py-12 px-6 border-y border-white/5 bg-white/[0.02]">
-        <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8">
-          {STATS.map((stat, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 10 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: i * 0.05 }}
-              className="text-center"
-            >
-              <div className="text-3xl font-bold text-accent font-display mb-1">{stat.value}</div>
-              <div className="text-xs font-bold text-white/30 uppercase tracking-widest">{stat.label}</div>
-            </motion.div>
-          ))}
-        </div>
-      </section>
+      {/* Pricing */}
+      <section id="pricing" className="py-24">
+        <div className="mx-auto max-w-5xl px-6">
+          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
+            <span className="text-sm font-bold uppercase tracking-widest text-emerald-600">Pricing</span>
+            <h2 className="mt-3 text-3xl sm:text-4xl font-extrabold text-slate-900">Simple, transparent pricing</h2>
+          </motion.div>
 
-      {/* Features Grid */}
-      <section className="py-24 px-6 max-w-7xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="text-center mb-16"
-        >
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 text-white/40 text-[10px] font-bold uppercase tracking-widest mb-6">
-            <Globe2 className="w-3 h-3" />
-            <span>Everything in one place</span>
-          </div>
-          <h2 className="text-5xl font-bold tracking-tighter font-display">
-            Built for the modern <span className="text-accent">Indian investor.</span>
-          </h2>
-          <p className="text-white/40 mt-4 max-w-xl mx-auto font-medium">
-            From NSE investments to carbon tracking — Yugi Finance Tracker covers every dimension of your financial life.
-          </p>
-        </motion.div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {FEATURES.map((feature, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: (i % 3) * 0.1 }}
-              className="glass-card p-8 border-white/5 hover:border-accent/20 transition-all group"
-            >
-              <div className="flex items-start justify-between mb-6">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform ${feature.color}`}>
-                  <feature.icon className="w-6 h-6" />
+          <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+            className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              { name: 'Free', price: '₹0', desc: 'Get started', features: ['3 accounts', 'Basic budgeting', 'Transaction tracking', 'Mobile access'] },
+              { name: 'Pro', price: '₹199', period: '/mo', desc: 'Power users', popular: true, features: ['Unlimited accounts', 'AI insights & chat', 'Investment tracking', 'Custom reports', 'Priority support', 'Export data'] },
+              { name: 'Family', price: '₹399', period: '/mo', desc: 'For families', features: ['Everything in Pro', '5 family members', 'Shared budgets', 'Parental controls', 'Family goals', 'Dedicated support'] },
+            ].map((p, i) => (
+              <div key={i} className={`relative rounded-3xl p-8 transition-all duration-300 hover:scale-[1.02] ${p.popular ? 'bg-slate-900 text-white shadow-2xl shadow-slate-400/30 ring-4 ring-emerald-400/30' : 'bg-white border border-slate-200 hover:shadow-xl'}`}>
+                {p.popular && <div className="absolute -top-3 left-1/2 -translate-x-1/2"><span className="rounded-full bg-emerald-400 px-4 py-1 text-xs font-bold text-slate-900">MOST POPULAR</span></div>}
+                <h3 className={`text-lg font-bold ${p.popular ? 'text-white' : 'text-slate-900'}`}>{p.name}</h3>
+                <div className="mt-4 flex items-end gap-1">
+                  <span className={`text-4xl font-black ${p.popular ? 'text-white' : 'text-slate-900'}`}>{p.price}</span>
+                  {p.period && <span className={p.popular ? 'text-slate-400' : 'text-slate-500'}>{p.period}</span>}
                 </div>
-                <span className="text-[9px] font-bold uppercase tracking-widest text-white/20 border border-white/10 px-2 py-1 rounded-full">
-                  {feature.tag}
-                </span>
-              </div>
-              <h3 className="text-xl font-bold mb-3 tracking-tight">{feature.title}</h3>
-              <p className="text-white/40 font-medium leading-relaxed text-sm">{feature.desc}</p>
-            </motion.div>
-          ))}
-        </div>
-      </section>
-
-      {/* Benefits Section */}
-      <section className="py-24 px-6 bg-white/[0.02] border-y border-white/5">
-        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-20 items-center">
-          <div>
-            <h2 className="text-5xl font-bold tracking-tighter mb-8 font-display">
-              Everything you need to <br />
-              <span className="text-accent">reach financial freedom.</span>
-            </h2>
-            <div className="space-y-8">
-              {[
-                { icon: Wallet, title: 'Unified Accounts', desc: 'Connect all your bank accounts, credit cards, loans and investments in one secure dashboard.' },
-                { icon: PieChart, title: 'Smart Budgets', desc: 'Adaptive budgets with rollover, per-transaction limits, and AI-powered overspend alerts.' },
-                { icon: Target, title: 'Savings Goals', desc: 'Track progress toward your big dreams — Japan trip, emergency fund, new home — with automated savings rules.' },
-                { icon: Shield, title: 'Bank-Grade Security', desc: 'All data is encrypted in transit and at rest. Every change is immutably logged in the audit trail.' },
-                { icon: CreditCard, title: 'Loan Management', desc: 'EMI calculator, repayment schedules, and early closure simulations for personal loans, home loans, and more.' },
-                { icon: BarChart3, title: 'Income Analytics', desc: 'Deep-dive into income sources, month-over-month growth, and tax-adjusted take-home projections.' },
-              ].map((item, i) => (
-                <div key={i} className="flex gap-6">
-                  <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
-                    <item.icon className="w-6 h-6 text-white/60" />
-                  </div>
-                  <div>
-                    <h4 className="text-xl font-bold mb-2 tracking-tight">{item.title}</h4>
-                    <p className="text-white/40 font-medium">{item.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="relative hidden lg:block">
-            <div className="glass-card p-6 border-accent/20 shadow-[0_0_100px_rgba(124,110,250,0.1)]">
-              <div className="space-y-4">
-                {/* Mini dashboard preview */}
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <div className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-1">Net Worth</div>
-                    <div className="text-3xl font-bold font-mono tracking-tighter text-positive">₹24,58,320</div>
-                  </div>
-                  <div className="text-xs font-bold text-positive bg-positive/10 px-3 py-1.5 rounded-full">↑ 12.4%</div>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  {[['Savings', '₹8.2L'], ['Investments', '₹14.1L'], ['Cash Flow', '+₹42K']].map(([k, v]) => (
-                    <div key={k} className="bg-white/5 rounded-xl p-3">
-                      <div className="text-[9px] font-bold text-white/30 uppercase tracking-wider mb-1">{k}</div>
-                      <div className="text-sm font-bold font-mono">{v}</div>
-                    </div>
+                <p className={`mt-2 text-sm ${p.popular ? 'text-slate-400' : 'text-slate-500'}`}>{p.desc}</p>
+                <ul className="mt-6 space-y-3">
+                  {p.features.map((f, j) => (
+                    <li key={j} className="flex items-center gap-3">
+                      <Check className={`h-4 w-4 flex-shrink-0 ${p.popular ? 'text-emerald-400' : 'text-emerald-500'}`} />
+                      <span className={`text-sm ${p.popular ? 'text-slate-300' : 'text-slate-600'}`}>{f}</span>
+                    </li>
                   ))}
-                </div>
-                <div className="space-y-2">
-                  {[['RELIANCE', '+2.4%', 'text-positive'], ['TCS', '+0.8%', 'text-positive'], ['HDFC', '-1.2%', 'text-negative']].map(([s, c, cls]) => (
-                    <div key={s} className="flex items-center justify-between bg-white/5 rounded-xl px-4 py-2.5">
-                      <span className="text-sm font-bold">{s}</span>
-                      <span className={`text-sm font-bold font-mono ${cls}`}>{c}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="bg-accent/10 border border-accent/20 rounded-xl p-4">
-                  <div className="flex gap-2 items-start">
-                    <BrainCircuit className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-                    <p className="text-xs text-white/60 leading-relaxed">
-                      <span className="text-accent font-bold">AI Oracle:</span> Your transport spend increased 34% this month. Subscriptions auto-renewed for ₹4,200. Consider reviewing.
-                    </p>
-                  </div>
-                </div>
+                </ul>
+                <Link to="/signup" className={`mt-8 block w-full rounded-xl py-3 text-center text-sm font-bold transition-all ${p.popular ? 'bg-emerald-400 text-slate-900 hover:bg-emerald-300' : 'bg-slate-900 text-white hover:bg-slate-800'}`}>Get Started</Link>
               </div>
-            </div>
-            <div className="absolute -top-10 -right-10 w-40 h-40 bg-accent/30 rounded-full blur-[80px]" />
-            <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-positive/20 rounded-full blur-[60px]" />
-          </div>
+            ))}
+          </motion.div>
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-24 px-6">
-        <div className="max-w-3xl mx-auto text-center">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            className="glass-card p-16 border-accent/20 shadow-[0_0_80px_rgba(124,110,250,0.08)]"
-          >
-            <div className="w-16 h-16 rounded-2xl bg-accent/20 flex items-center justify-center mx-auto mb-8 violet-glow">
-              <Sparkles className="w-8 h-8 text-accent" />
-            </div>
-            <h2 className="text-4xl font-bold tracking-tighter font-display mb-4">
-              Ready to take control?
-            </h2>
-            <p className="text-white/40 mb-10 font-medium leading-relaxed">
-              Join thousands of Indians who use Yugi Finance Tracker to grow wealth, eliminate wasteful spending, 
-              and make every financial decision with confidence.
-            </p>
-            <Link to="/signup">
-              <button
-                className="px-12 py-5 rounded-2xl bg-accent text-white font-bold text-lg hover:bg-accent/80 transition-all violet-glow flex items-center gap-3 mx-auto group"
-              >
-                <span>Create Free Account</span>
-                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </button>
+      {/* CTA */}
+      <section className="py-24">
+        <div className="mx-auto max-w-5xl px-6">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }}
+            className="rounded-[2rem] animated-gradient p-12 lg:p-16 text-center text-white relative overflow-hidden">
+            <div className="absolute top-10 right-10 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+            <div className="absolute bottom-10 left-10 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
+            <h2 className="relative text-3xl sm:text-4xl font-black">Ready to take control?</h2>
+            <p className="relative mt-4 text-lg text-white/80 max-w-xl mx-auto">Join 50,000+ users saving smarter every month.</p>
+            <Link to="/signup" className="relative mt-8 inline-flex items-center gap-2 rounded-full bg-white px-8 py-4 text-lg font-bold text-slate-900 shadow-xl transition-all hover:scale-105 hover:shadow-2xl">
+              Get Started Free <ArrowRight className="h-5 w-5" />
             </Link>
           </motion.div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="py-16 px-6 border-t border-white/5">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-10">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-white" />
-            </div>
-            <span className="font-display font-bold text-xl tracking-tighter">Yugi Finance Tracker</span>
+      <footer className="border-t border-slate-100 py-10">
+        <div className="mx-auto max-w-7xl px-6 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="h-7 w-7 rounded-lg animated-gradient flex items-center justify-center"><Wallet className="h-4 w-4 text-white" /></div>
+            <span className="font-bold text-slate-900">YugiFinance</span>
           </div>
-          <div className="flex gap-10 text-sm font-bold text-white/20">
-            <Link to="/privacy" className="hover:text-white transition-colors">Privacy</Link>
-            <Link to="/terms" className="hover:text-white transition-colors">Terms</Link>
-            <Link to="/security" className="hover:text-white transition-colors">Security</Link>
-            <Link to="/contact" className="hover:text-white transition-colors">Contact</Link>
-          </div>
-          <p className="text-xs font-bold text-white/10 uppercase tracking-widest">© 2026 Yugi Finance Tracker Neural Engine</p>
+          <p className="text-sm text-slate-400">© 2025 Yugi Finance. Built with ❤️</p>
         </div>
       </footer>
     </div>
   );
-};
-
-
-
+}

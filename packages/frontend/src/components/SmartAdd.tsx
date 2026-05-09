@@ -37,14 +37,14 @@ export const SmartAdd: React.FC<{ setActiveTab: (tab: string) => void }> = ({ se
   const [analysisType, setAnalysisType] = useState<'text' | 'file'>('text');
   const [previewItems, setPreviewItems] = useState<any[] | null>(null);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
-  const [showCoachmark, setShowCoachmark] = useState<boolean>(() => !safeStorage.get(COACHMARK_KEY));
+  const [showCoachmark, setShowCoachmark] = useState<boolean>(() => !safeStorage.getItem(COACHMARK_KEY));
   const { addTransactions, previewSmartAdd, analyzeFile, setIsAddTransactionModalOpen } = useFinance();
   const recognitionRef = useRef<any>(null);
   const committedRef = useRef<string>('');
 
   useEffect(() => {
     if (isAdding && showCoachmark) {
-      safeStorage.set(COACHMARK_KEY, '1');
+      safeStorage.setItem(COACHMARK_KEY, '1');
       const t = setTimeout(() => setShowCoachmark(false), 4000);
       return () => clearTimeout(t);
     }

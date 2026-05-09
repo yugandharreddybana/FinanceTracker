@@ -1,152 +1,251 @@
-import React from 'react';
-import { NetWorthHero } from './NetWorthHero';
-import { SpendingPulse } from './SpendingPulse';
-import { SpendingTrends } from './SpendingTrends';
-import { AIInsightCard } from './AIInsightCard';
-import { CashFlowForecast } from './CashFlowForecast';
-import { RecentTransactions } from './RecentTransactions';
-import { SavingsGoals } from './SavingsGoals';
-import { HealthScoreVitals } from './HealthScoreVitals';
-import { motion } from 'motion/react';
-import { TiltCard } from './TiltCard';
-import { ArrowRight, CreditCard, Sparkles } from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
+import { formatCurrency, formatShortDate, cn } from '../lib/utils';
+import { motion } from 'motion/react';
+import {
+  TrendingUp, TrendingDown, Wallet, CreditCard, Target, ArrowUpRight, ArrowDownRight, Sparkles, BarChart3, Eye, EyeOff,
+} from 'lucide-react';
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
+} from 'recharts';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-const container = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1
-    }
-  }
-};
+const COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EC4899', '#8B5CF6', '#06B6D4', '#EF4444', '#F97316'];
+const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
+const fadeUp = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.35 } } };
 
-const item = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0 }
-};
+export function Dashboard() {
+  const nav = useNavigate();
+  const { transactions, budgets, investments, userProfile, getTotalBalance, getMonthlyIncome, getMonthlyExpenses, getNetWorth } = useFinance();
+  const [hidden, setHidden] = useState(false);
 
-interface DashboardProps {
-  setActiveTab: (tab: string) => void;
-}
+  const bal = getTotalBalance();
+  const inc = getMonthlyIncome();
+  const exp = getMonthlyExpenses();
+  const nw = getNetWorth();
+  const sr = inc > 0 ? ((inc - exp) / inc) * 100 : 0;
 
-export const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
-  const { accounts, budgets, investments, loans, recurringPayments, savingsGoals, transactions } = useFinance();
-  const hasAnyFinanceData = [
-    transactions.length,
-    accounts.length,
-    budgets.length,
-    savingsGoals.length,
-    investments.length,
-    recurringPayments.length,
-    loans.length,
-  ].some(Boolean);
+  const catSpend = transactions.filter(t => t.type === 'expense').reduce((a, t) => { a[t.category] = (a[t.category] || 0) + t.amount; return a; }, {} as Record<string, number>);
+  const pie = Object.entries(catSpend).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }));
 
-  if (!hasAnyFinanceData) {
-    return (
-      <motion.div
-        variants={container}
-        initial="hidden"
-        animate="show"
-        className="mx-auto max-w-5xl pb-20"
-      >
-        <motion.div variants={item} className="glass-card overflow-hidden border-accent/20 shadow-[0_0_70px_rgba(124,110,250,0.08)]">
-          <div className="grid gap-0 lg:grid-cols-[1.3fr_0.7fr]">
-            <div className="border-b border-white/5 bg-white/[0.02] p-8 md:p-12 lg:border-b-0 lg:border-r">
-              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/10 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-accent">
-                <Sparkles className="h-3 w-3" />
-                <span>Start your workspace</span>
-              </div>
-              <h1 className="font-display text-4xl font-bold tracking-tighter md:text-5xl">
-                Add your first financial record to unlock the dashboard.
-              </h1>
-              <p className="mt-5 max-w-2xl text-base font-medium leading-8 text-white/50">
-                Your charts, alerts, forecasts, and AI insights appear once you add a transaction or connect an account. Start with one entry and the rest of the workspace will populate from there.
-              </p>
-              <div className="mt-8 flex flex-col gap-4 sm:flex-row">
-                <button
-                  onClick={() => setActiveTab('transactions')}
-                  className="inline-flex items-center justify-center gap-3 rounded-2xl bg-accent px-6 py-4 text-sm font-bold text-white transition-all hover:bg-accent/80 violet-glow"
-                >
-                  <span>Add your first transaction</span>
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => setActiveTab('accounts')}
-                  className="inline-flex items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-sm font-bold text-white/70 transition-all hover:bg-white/10 hover:text-white"
-                >
-                  <CreditCard className="h-4 w-4" />
-                  <span>Set up an account</span>
-                </button>
-              </div>
+  const trend = [
+    { m: 'Oct', inc: 82000, exp: 55000 },
+    { m: 'Nov', inc: 88000, exp: 52000 },
+    { m: 'Dec', inc: 98000, exp: 68000 },
+    { m: 'Jan', inc, exp },
+  ];
+
+  const invVal = investments.reduce((s, i) => s + i.quantity * i.currentPrice, 0);
+  const invCost = investments.reduce((s, i) => s + i.quantity * i.averagePrice, 0);
+  const invGain = invVal - invCost;
+  const invPct = invCost > 0 ? (invGain / invCost) * 100 : 0;
+
+  const firstName = userProfile.name.split(' ')[0];
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
+  return (
+    <div className="p-4 sm:p-6 lg:p-8 space-y-5 sm:space-y-6 max-w-[1440px] mx-auto">
+      {/* ── Header ── */}
+      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
+        <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-slate-900 tracking-tight">{greeting}, {firstName} 👋</h1>
+        <p className="text-slate-400 text-sm sm:text-base mt-0.5">Here's your financial snapshot</p>
+      </motion.div>
+
+      {/* ── Stat Cards ── */}
+      <motion.div variants={stagger} initial="hidden" animate="show" className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {/* Balance — full width on mobile */}
+        <motion.div variants={fadeUp} className="col-span-2 sm:col-span-1 relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-emerald-500 to-teal-600 p-4 sm:p-6 text-white shadow-xl shadow-emerald-200/30">
+          <div className="absolute -right-4 -top-4 h-20 w-20 sm:h-24 sm:w-24 rounded-full bg-white/10" />
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
+            <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl sm:rounded-2xl bg-white/20"><Wallet className="h-4 w-4 sm:h-5 sm:w-5" /></div>
+            <button onClick={() => setHidden(!hidden)} className="text-white/50 hover:text-white active:scale-90 transition-all">{hidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
+          </div>
+          <p className="text-xs sm:text-sm text-emerald-100 font-medium">Total Balance</p>
+          <p className="text-2xl sm:text-3xl font-black mt-0.5 sm:mt-1 tabular-nums">{hidden ? '•••••••' : formatCurrency(bal)}</p>
+          <div className="mt-2 sm:mt-3 flex items-center gap-1"><TrendingUp className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-emerald-200" /><span className="text-[11px] sm:text-xs font-semibold text-emerald-100">+12.5%</span></div>
+        </motion.div>
+
+        <motion.div variants={fadeUp} className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-white p-4 sm:p-6 shadow-sm border border-slate-100">
+          <div className="absolute -right-3 -top-3 h-16 w-16 sm:h-24 sm:w-24 rounded-full bg-blue-50/80" />
+          <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl sm:rounded-2xl bg-blue-50 text-blue-500 mb-3 sm:mb-4"><TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" /></div>
+          <p className="text-xs sm:text-sm text-slate-400 font-medium">Income</p>
+          <p className="text-lg sm:text-2xl font-black text-slate-900 mt-0.5 tabular-nums">{formatCurrency(inc)}</p>
+          <div className="mt-2 flex items-center gap-1"><TrendingUp className="h-3 w-3 text-emerald-500" /><span className="text-[11px] font-semibold text-emerald-600">+8.2%</span></div>
+        </motion.div>
+
+        <motion.div variants={fadeUp} className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-white p-4 sm:p-6 shadow-sm border border-slate-100">
+          <div className="absolute -right-3 -top-3 h-16 w-16 sm:h-24 sm:w-24 rounded-full bg-rose-50/80" />
+          <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl sm:rounded-2xl bg-rose-50 text-rose-500 mb-3 sm:mb-4"><CreditCard className="h-4 w-4 sm:h-5 sm:w-5" /></div>
+          <p className="text-xs sm:text-sm text-slate-400 font-medium">Expenses</p>
+          <p className="text-lg sm:text-2xl font-black text-slate-900 mt-0.5 tabular-nums">{formatCurrency(exp)}</p>
+          <div className="mt-2 flex items-center gap-1"><TrendingDown className="h-3 w-3 text-rose-500" /><span className="text-[11px] font-semibold text-rose-500">-5.1%</span></div>
+        </motion.div>
+
+        <motion.div variants={fadeUp} className="col-span-2 sm:col-span-1 relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-violet-500 to-purple-600 p-4 sm:p-6 text-white shadow-xl shadow-violet-200/30">
+          <div className="absolute -right-4 -top-4 h-20 w-20 sm:h-24 sm:w-24 rounded-full bg-white/10" />
+          <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl sm:rounded-2xl bg-white/20 mb-3 sm:mb-4"><Target className="h-4 w-4 sm:h-5 sm:w-5" /></div>
+          <p className="text-xs sm:text-sm text-violet-100 font-medium">Net Worth</p>
+          <p className="text-2xl sm:text-3xl font-black mt-0.5 sm:mt-1 tabular-nums">{hidden ? '•••••••' : formatCurrency(nw)}</p>
+          <div className="mt-2 sm:mt-3 flex items-center gap-1"><TrendingUp className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-violet-200" /><span className="text-[11px] sm:text-xs font-semibold text-violet-100">+15.3%</span></div>
+        </motion.div>
+      </motion.div>
+
+      {/* ── Charts Row ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6">
+        {/* Cash Flow — takes 3/5 on desktop */}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
+          className="lg:col-span-3 rounded-2xl sm:rounded-3xl bg-white p-4 sm:p-6 shadow-sm border border-slate-100">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 sm:mb-6 gap-2">
+            <div>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900">Cash Flow</h3>
+              <p className="text-xs sm:text-sm text-slate-400">Income vs expenses</p>
             </div>
+            <div className="flex items-center gap-3 sm:gap-4 text-[11px] sm:text-xs font-semibold">
+              <span className="flex items-center gap-1.5"><span className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-emerald-500" />Income</span>
+              <span className="flex items-center gap-1.5"><span className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-rose-500" />Expenses</span>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={220}>
+            <AreaChart data={trend}>
+              <defs>
+                <linearGradient id="ig" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10B981" stopOpacity={0.2} /><stop offset="100%" stopColor="#10B981" stopOpacity={0} /></linearGradient>
+                <linearGradient id="eg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#F43F5E" stopOpacity={0.15} /><stop offset="100%" stopColor="#F43F5E" stopOpacity={0} /></linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis dataKey="m" stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
+              <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} tickFormatter={v => `₹${v/1000}k`} width={48} />
+              <Tooltip contentStyle={{ background: 'rgba(15,23,42,0.92)', border: 'none', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,.2)', fontSize: 12 }} itemStyle={{ color: '#fff' }} labelStyle={{ color: '#94a3b8' }} formatter={(v) => formatCurrency(Number(v))} />
+              <Area type="monotone" dataKey="inc" name="Income" stroke="#10B981" strokeWidth={2} fill="url(#ig)" dot={{ r: 3, fill: '#10B981', strokeWidth: 2, stroke: '#fff' }} />
+              <Area type="monotone" dataKey="exp" name="Expenses" stroke="#F43F5E" strokeWidth={2} fill="url(#eg)" dot={{ r: 3, fill: '#F43F5E', strokeWidth: 2, stroke: '#fff' }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </motion.div>
 
-            <div className="space-y-4 p-8 md:p-12">
-              {[
-                'Track cash in and cash out with one transaction.',
-                'Create your first account to organize balances by bank or wallet.',
-                'Return here to see net worth, trends, alerts, and planning widgets.',
-              ].map((step, index) => (
-                <div key={step} className="rounded-2xl border border-white/5 bg-white/[0.03] p-5">
-                  <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-accent">Step {index + 1}</div>
-                  <p className="text-sm font-medium leading-7 text-white/55">{step}</p>
+        {/* Spending Pie — 2/5 on desktop */}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
+          className="lg:col-span-2 rounded-2xl sm:rounded-3xl bg-white p-4 sm:p-6 shadow-sm border border-slate-100">
+          <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-1">Spending</h3>
+          <p className="text-xs sm:text-sm text-slate-400 mb-3 sm:mb-4">By category</p>
+          <div className="flex items-center gap-4">
+            <div className="w-[120px] sm:w-[140px] flex-shrink-0">
+              <ResponsiveContainer width="100%" height={120}>
+                <PieChart>
+                  <Pie data={pie} cx="50%" cy="50%" innerRadius={32} outerRadius={55} paddingAngle={2} dataKey="value" strokeWidth={0}>
+                    {pie.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip formatter={v => formatCurrency(Number(v))} contentStyle={{ background: 'rgba(15,23,42,0.92)', border: 'none', borderRadius: 10, fontSize: 12 }} itemStyle={{ color: '#fff' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex-1 space-y-1.5 sm:space-y-2 min-w-0">
+              {pie.slice(0, 5).map((d, i) => (
+                <div key={d.name} className="flex items-center justify-between text-xs sm:text-sm gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0"><div className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} /><span className="text-slate-500 font-medium truncate">{d.name}</span></div>
+                  <span className="font-bold text-slate-900 tabular-nums flex-shrink-0">{formatCurrency(d.value)}</span>
                 </div>
               ))}
             </div>
           </div>
         </motion.div>
-      </motion.div>
-    );
-  }
+      </div>
 
-  return (
-    <motion.div
-      variants={container}
-      initial="hidden"
-      animate="show"
-      className="max-w-7xl mx-auto pb-20"
-    >
-      <div className="space-y-8">
-        <motion.div variants={item}>
-          <NetWorthHero />
+      {/* ── Bottom Row ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+        {/* Recent Activity */}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
+          className="rounded-2xl sm:rounded-3xl bg-white p-4 sm:p-6 shadow-sm border border-slate-100">
+          <div className="flex items-center justify-between mb-4 sm:mb-5">
+            <h3 className="text-base sm:text-lg font-bold text-slate-900">Recent</h3>
+            <button onClick={() => nav('/dashboard/transactions')} className="text-[11px] sm:text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-full transition-colors">View all</button>
+          </div>
+          <div className="space-y-1.5 sm:space-y-2">
+            {transactions.slice(0, 5).map((t, i) => (
+              <motion.div key={t.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.45 + i * 0.04 }}
+                className="flex items-center justify-between rounded-xl sm:rounded-2xl bg-slate-50/80 p-2.5 sm:p-3">
+                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                  <div className={cn('flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg sm:rounded-xl flex-shrink-0', t.type === 'income' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-500')}>
+                    {t.type === 'income' ? <ArrowUpRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> : <ArrowDownRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm font-semibold text-slate-800 truncate">{t.merchant}</p>
+                    <p className="text-[10px] sm:text-[11px] text-slate-400">{formatShortDate(t.date)}</p>
+                  </div>
+                </div>
+                <span className={cn('text-xs sm:text-sm font-bold tabular-nums flex-shrink-0 ml-2', t.type === 'income' ? 'text-emerald-600' : 'text-rose-500')}>
+                  {t.type === 'income' ? '+' : '−'}{formatCurrency(t.amount)}
+                </span>
+              </motion.div>
+            ))}
+          </div>
         </motion.div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <motion.div variants={item} className="lg:col-span-8">
-            <SpendingTrends />
-          </motion.div>
-          <motion.div variants={item} className="lg:col-span-4">
-            <SpendingPulse />
-          </motion.div>
-        </div>
+        {/* Budget Health */}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}
+          className="rounded-2xl sm:rounded-3xl bg-white p-4 sm:p-6 shadow-sm border border-slate-100">
+          <div className="flex items-center justify-between mb-4 sm:mb-5">
+            <h3 className="text-base sm:text-lg font-bold text-slate-900">Budgets</h3>
+            <button onClick={() => nav('/dashboard/budgets')} className="text-[11px] sm:text-xs font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 px-2.5 py-1 rounded-full transition-colors">Manage</button>
+          </div>
+          <div className="space-y-3 sm:space-y-4">
+            {budgets.slice(0, 5).map(b => {
+              const pct = Math.min((b.spent / b.limit) * 100, 100);
+              return (
+                <div key={b.id}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs sm:text-sm font-semibold text-slate-700">{b.category}</span>
+                    <span className="text-[11px] font-bold text-slate-400 tabular-nums">{pct.toFixed(0)}%</span>
+                  </div>
+                  <div className="h-1.5 sm:h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.8, delay: 0.5 }}
+                      className={cn('h-full rounded-full', pct > 90 ? 'bg-rose-500' : pct > 70 ? 'bg-amber-500' : 'bg-emerald-500')} />
+                  </div>
+                  <div className="flex justify-between mt-0.5">
+                    <span className="text-[10px] text-slate-400 tabular-nums">{formatCurrency(b.spent)}</span>
+                    <span className="text-[10px] text-slate-400 tabular-nums">{formatCurrency(b.limit)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </motion.div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <motion.div variants={item} className="lg:col-span-6">
-            <TiltCard>
-              <HealthScoreVitals />
-            </TiltCard>
-          </motion.div>
-          <motion.div variants={item} className="lg:col-span-6">
-            <TiltCard>
-              <AIInsightCard setActiveTab={setActiveTab} />
-            </TiltCard>
-          </motion.div>
-        </div>
+        {/* Quick Insights */}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.65 }}
+          className="space-y-3 sm:space-y-4 md:col-span-2 lg:col-span-1">
+          {/* On tablet (md) this spans 2 cols so show cards side-by-side */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-1 gap-3 sm:gap-4">
+            <div className="rounded-2xl sm:rounded-3xl bg-gradient-to-br from-emerald-500 to-teal-600 p-4 sm:p-5 text-white shadow-lg shadow-emerald-100/40 relative overflow-hidden">
+              <div className="absolute -right-4 -bottom-4 h-16 w-16 sm:h-20 sm:w-20 rounded-full bg-white/10" />
+              <div className="flex items-center justify-between">
+                <div><p className="text-[11px] sm:text-sm text-emerald-100">Savings Rate</p><p className="text-2xl sm:text-3xl font-black mt-0.5 tabular-nums">{sr.toFixed(1)}%</p></div>
+                <div className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-xl sm:rounded-2xl bg-white/20"><Target className="h-5 w-5 sm:h-6 sm:w-6" /></div>
+              </div>
+              <p className="text-[10px] sm:text-xs text-emerald-200 mt-2">🎯 Above the recommended 20%</p>
+            </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <motion.div variants={item} className="lg:col-span-8">
-            <CashFlowForecast />
-          </motion.div>
-          <motion.div variants={item} className="lg:col-span-4">
-            <RecentTransactions setActiveTab={setActiveTab} />
-          </motion.div>
-        </div>
+            <div className="rounded-2xl sm:rounded-3xl bg-gradient-to-br from-violet-500 to-purple-600 p-4 sm:p-5 text-white shadow-lg shadow-violet-100/40 relative overflow-hidden">
+              <div className="absolute -right-4 -bottom-4 h-16 w-16 sm:h-20 sm:w-20 rounded-full bg-white/10" />
+              <div className="flex items-center justify-between">
+                <div><p className="text-[11px] sm:text-sm text-violet-100">Returns</p><p className="text-2xl sm:text-3xl font-black mt-0.5 tabular-nums">{invPct >= 0 ? '+' : ''}{invPct.toFixed(1)}%</p></div>
+                <div className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-xl sm:rounded-2xl bg-white/20"><BarChart3 className="h-5 w-5 sm:h-6 sm:w-6" /></div>
+              </div>
+              <p className="text-[10px] sm:text-xs text-violet-200 mt-2">📈 {formatCurrency(invGain)} unrealized</p>
+            </div>
 
-        <motion.div variants={item}>
-          <SavingsGoals />
+            <div className="rounded-2xl sm:rounded-3xl bg-gradient-to-br from-amber-500 to-orange-500 p-4 sm:p-5 text-white shadow-lg shadow-amber-100/40 relative overflow-hidden sm:col-span-2 md:col-span-2 lg:col-span-1">
+              <div className="absolute -right-4 -bottom-4 h-16 w-16 sm:h-20 sm:w-20 rounded-full bg-white/10" />
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl sm:rounded-2xl bg-white/20 flex-shrink-0"><Sparkles className="h-4 w-4 sm:h-5 sm:w-5" /></div>
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm font-bold">AI Tip</p>
+                  <p className="text-[10px] sm:text-xs text-amber-100 mt-0.5 leading-relaxed truncate sm:whitespace-normal">Cook at home 3x/week to save ₹3,500/month 🍳</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </motion.div>
       </div>
-    </motion.div>
+    </div>
   );
-};
+}

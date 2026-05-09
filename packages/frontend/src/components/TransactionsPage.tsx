@@ -1,1091 +1,217 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Search, Filter, Sparkles, Check, Pencil, Trash2, X, Save, Loader2, Calendar, ChevronUp, ChevronDown, ArrowUpRight, ArrowDownRight, Download, Plus, AlertCircle } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { useState, useMemo } from 'react';
 import { useFinance } from '../context/FinanceContext';
-import { Transaction } from '../types';
-import DeleteModal from './DeleteModal';
+import { formatCurrency, formatDate, cn } from '../lib/utils';
+import { motion, AnimatePresence } from 'motion/react';
+import { SmartAddModal } from './SmartAddModal';
+import { useToast } from './Toast';
+import {
+  Plus, Search, ArrowUpRight, ArrowDownRight, Trash2,
+  SlidersHorizontal, Sparkles, Mic, Upload, Keyboard,
+  ChevronDown, Calendar, Tag,
+} from 'lucide-react';
 
-export const TransactionsPage: React.FC = () => {
-  const today = new Date().toISOString().split('T')[0];
-  const MAX_TRANSACTION_AMOUNT = 1_000_000_000;
-  const { 
-    transactions, 
-    deleteTransaction, 
-    bulkDeleteTransactions,
-    updateTransaction, 
-    bulkUpdateTransactions,
-    categorizeTransactions, 
-    confirmCategory, 
-    suggestions, 
-    isCategorizing,
-    accounts,
-    addManualTransaction,
-    isAddTransactionModalOpen,
-    setIsAddTransactionModalOpen
-  } = useFinance();
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const primaryAccount = (accounts || []).find(a => a.isPrimary) || (accounts && accounts[0]);
+export function TransactionsPage() {
+  const { transactions, deleteTransaction } = useFinance();
+  const { toast } = useToast();
+  const [search, setSearch] = useState('');
+  const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
+  const [filterCategory, setFilterCategory] = useState('all');
+  const [showSmartAdd, setShowSmartAdd] = useState(false);
+  const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
+  const allCategories = useMemo(() => {
+    const cats = new Set(transactions.map(t => t.category));
+    return Array.from(cats).sort();
+  }, [transactions]);
 
-  const [newTransactionForm, setNewTransactionForm] = useState<Partial<Transaction>>({
-    date: new Date().toISOString().split('T')[0],
-    merchant: '',
-    amount: 0,
-    category: 'Others',
-    type: 'expense',
-    account: primaryAccount?.name || '',
-    status: 'pending'
-  });
+  const filtered = useMemo(() => {
+    let result = transactions.filter(t => {
+      const matchSearch =
+        t.merchant.toLowerCase().includes(search.toLowerCase()) ||
+        t.category.toLowerCase().includes(search.toLowerCase());
+      const matchType = filterType === 'all' || t.type === filterType;
+      const matchCat = filterCategory === 'all' || t.category === filterCategory;
+      return matchSearch && matchType && matchCat;
+    });
+    result.sort((a, b) => {
+      const mul = sortDir === 'desc' ? -1 : 1;
+      if (sortBy === 'date') return mul * (new Date(a.date).getTime() - new Date(b.date).getTime());
+      return mul * (a.amount - b.amount);
+    });
+    return result;
+  }, [transactions, search, filterType, filterCategory, sortBy, sortDir]);
 
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [showBulkActions, setShowBulkActions] = useState(false);
-  const [bulkCategory, setBulkCategory] = useState('');
-  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
-  const [editForm, setEditForm] = useState<Partial<Transaction>>({});
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
-  const [filter, setFilter] = useState('All Time');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showSearch, setShowSearch] = useState(false);
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [sortField, setSortField] = useState<'date' | 'merchant' | 'amount'>('date');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [isSavingTransaction, setIsSavingTransaction] = useState(false);
-  const [addTransactionError, setAddTransactionError] = useState('');
+  const totalIncome = filtered.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const totalExpenses = filtered.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
 
-  const normalizeMerchant = (merchant: string) => merchant
-    .replace(/[\u0000-\u001F\u007F]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 255);
-
-  const getAddTransactionValidationError = () => {
-    const merchant = normalizeMerchant(newTransactionForm.merchant || '');
-    const amount = Number(newTransactionForm.amount);
-
-    if (!merchant) return 'Enter a merchant or description.';
-    if (!newTransactionForm.date) return 'Choose a transaction date.';
-    if (newTransactionForm.date > today) return 'Future-dated transactions are blocked. Use today or an earlier date.';
-    if (!Number.isFinite(amount) || amount <= 0) return 'Enter an amount greater than zero.';
-    if (amount > MAX_TRANSACTION_AMOUNT) return 'Amount exceeds the supported limit for a single transaction.';
-    return '';
-  };
-
-  const isAddTransactionDisabled = Boolean(getAddTransactionValidationError()) || isSavingTransaction;
-
-  const handleSort = (field: 'date' | 'merchant' | 'amount') => {
-    if (sortField === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortOrder('desc');
+  // Group by date
+  const grouped = useMemo(() => {
+    const map = new Map<string, typeof filtered>();
+    for (const t of filtered) {
+      const key = t.date;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(t);
     }
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedIds.length === sortedTransactions.length) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(sortedTransactions.map(t => t.id));
-    }
-  };
-
-  const toggleSelect = (id: string) => {
-    setSelectedIds(prev => 
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    );
-  };
-
-  const handleBulkCategorize = async () => {
-    if (!bulkCategory || selectedIds.length === 0) return;
-    setIsBulkUpdating(true);
-    await bulkUpdateTransactions(selectedIds, { category: bulkCategory });
-    setSelectedIds([]);
-    setBulkCategory('');
-    setIsBulkUpdating(false);
-  };
-
-  const handleBulkMarkReviewed = async () => {
-    if (selectedIds.length === 0) return;
-    setIsBulkUpdating(true);
-    await bulkUpdateTransactions(selectedIds, { status: 'confirmed', aiTag: 'Reviewed' });
-    setSelectedIds([]);
-    setIsBulkUpdating(false);
-  };
-
-  const handleAddTransaction = async () => {
-    const validationError = getAddTransactionValidationError();
-    if (validationError) {
-      setAddTransactionError(validationError);
-      return;
-    }
-
-    const merchant = normalizeMerchant(newTransactionForm.merchant || '');
-    const numericAmount = Number(newTransactionForm.amount);
-    setIsSavingTransaction(true);
-    setAddTransactionError('');
-    
-    const amount = newTransactionForm.type === 'expense'
-      ? -Math.abs(numericAmount)
-      : Math.abs(numericAmount);
-
-    const transaction = {
-      ...newTransactionForm,
-      merchant,
-      amount,
-      id: crypto.randomUUID(),
-    } as Transaction;
-
-    try {
-      await Promise.resolve(addManualTransaction(transaction));
-      setIsAddTransactionModalOpen(false);
-      setNewTransactionForm({
-        date: today,
-        merchant: '',
-        amount: 0,
-        category: 'Others',
-        type: 'expense',
-        account: primaryAccount?.name || '',
-        status: 'pending'
-      });
-    } catch {
-      setAddTransactionError('Unable to save the transaction right now. Please try again.');
-    } finally {
-      setIsSavingTransaction(false);
-    }
-  };
-
-  const handleEdit = (tx: Transaction) => {
-    setEditingId(tx.id);
-    setEditForm(tx);
-  };
-
-  const handleSave = () => {
-    if (editingId) {
-      updateTransaction(editingId, editForm);
-      setEditingId(null);
-    }
-  };
-
-  const handleDelete = (id: string) => {
-    deleteTransaction(id);
-    setDeleteConfirmId(null);
-  };
-
-  const handleBulkDelete = async () => {
-    if (selectedIds.length === 0) return;
-    setIsBulkUpdating(true);
-    await bulkDeleteTransactions(selectedIds);
-    setSelectedIds([]);
-    setIsBulkDeleteConfirmOpen(false);
-    setIsBulkUpdating(false);
-  };
-
-  const exportCSV = () => {
-    const headers = ['Date', 'Merchant', 'Category', 'Amount', 'Type', 'Account', 'Status'];
-    const csvContent = [
-      headers.join(','),
-      ...sortedTransactions.map(t => [
-        t.date,
-        `"${t.merchant.replace(/"/g, '""')}"`,
-        t.category,
-        t.amount,
-        t.type,
-        t.account,
-        t.status
-      ].join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `transactions_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const filteredTransactions = transactions.filter(tx => {
-    const matchesSearch = tx.merchant.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         tx.category.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    if (filter === 'All Time') return matchesSearch;
-    if (filter === 'Food') return matchesSearch && tx.category === 'Food & Drink';
-    if (filter === 'Transport') return matchesSearch && tx.category === 'Transport';
-    if (filter === 'Entertainment') return matchesSearch && tx.category === 'Entertainment';
-    
-    if (filter === 'Custom Range') {
-      if (!startDate || !endDate) return matchesSearch;
-      const txDate = new Date(tx.date);
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999); // Include the end day
-      return matchesSearch && txDate >= start && txDate <= end;
-    }
-
-    // Simple date filtering for demo
-    const txDate = new Date(tx.date);
-    const now = new Date();
-    if (filter === 'This Month') {
-      return matchesSearch && txDate.getMonth() === now.getMonth() && txDate.getFullYear() === now.getFullYear();
-    }
-    if (filter === 'Last Month') {
-      const lastMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
-      const year = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
-      return matchesSearch && txDate.getMonth() === lastMonth && txDate.getFullYear() === year;
-    }
-    
-    return matchesSearch;
-  });
-
-  const sortedTransactions = [...filteredTransactions].sort((a, b) => {
-    let comparison = 0;
-    if (sortField === 'date') {
-      comparison = new Date(a.date).getTime() - new Date(b.date).getTime();
-    } else if (sortField === 'merchant') {
-      comparison = a.merchant.localeCompare(b.merchant);
-    } else if (sortField === 'amount') {
-      comparison = a.amount - b.amount;
-    }
-    return sortOrder === 'asc' ? comparison : -comparison;
-  });
+    return Array.from(map.entries());
+  }, [filtered]);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="max-w-7xl mx-auto relative min-h-[calc(100vh-100px)]"
-    >
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 gap-6">
+    <div className="p-4 md:p-8 max-w-[1400px] mx-auto space-y-6">
+      {/* Header */}
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-5xl font-bold tracking-tighter mb-3 font-display">Transactions</h1>
-          <p className="text-white/40 font-medium">Manage and categorize your financial activity with AI precision</p>
+          <h1 className="text-2xl md:text-3xl font-black text-slate-900">Transactions</h1>
+          <p className="text-slate-400 font-medium">Track every rupee in and out</p>
         </div>
-        
-        <div className="flex gap-3">
-          <button 
-            onClick={() => setIsAddTransactionModalOpen(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent text-white text-sm font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Transaction</span>
-          </button>
-          <button 
-            onClick={categorizeTransactions}
-            disabled={isCategorizing || transactions.filter(t => t.category === 'Uncategorized' || (t.confidence && t.confidence < 0.8)).length === 0}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent/10 border border-accent/30 text-sm font-bold text-accent hover:bg-accent/20 transition-all disabled:opacity-50"
-          >
-            {isCategorizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            <span>Auto-Categorize</span>
-          </button>
-          <button 
-            onClick={() => setFilter('All Time')}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm font-bold text-white/60 hover:text-white hover:bg-white/10 transition-all"
-          >
-            <Filter className="w-4 h-4" />
-            <span>Reset Filters</span>
-          </button>
-          <div className="relative">
-            <button 
-              onClick={() => setShowSearch(!showSearch)}
-              className={cn(
-                "flex items-center gap-2 px-5 py-2.5 rounded-xl border text-sm font-bold transition-all",
-                showSearch ? "bg-accent/10 border-accent/30 text-accent" : "bg-white/5 border-white/10 text-white/60 hover:text-white hover:bg-white/10"
-              )}
-            >
-              <Search className="w-4 h-4" />
-              <span>Search</span>
-            </button>
-            <AnimatePresence>
-              {showSearch && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  className="absolute top-full right-0 mt-2 w-64 z-50"
-                >
-                  <input 
-                    autoFocus
-                    type="text"
-                    placeholder="Search merchant or category..."
-                    className="w-full bg-card border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent shadow-2xl"
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                  />
-                </motion.div>
-              )}
-            </AnimatePresence>
+        <div className="flex items-center gap-2">
+          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+            onClick={() => setShowSmartAdd(true)}
+            className="inline-flex items-center gap-2 rounded-2xl animated-gradient px-5 py-3 text-sm font-bold text-white shadow-xl shadow-emerald-200/50">
+            <Plus className="h-4 w-4" /> Add Smart
+          </motion.button>
+        </div>
+      </motion.div>
+
+      {/* Smart Input Banner */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+        className="rounded-3xl bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-900 p-5 text-white shadow-xl relative overflow-hidden">
+        <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-emerald-500/10 blur-xl" />
+        <div className="relative flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Sparkles className="h-4 w-4 text-emerald-400" />
+              <span className="text-sm font-bold">Smart Transaction Entry</span>
+            </div>
+            <p className="text-xs text-slate-400 max-w-md">
+              Type naturally, use voice, or upload receipts. Add multiple transactions at once — the AI understands context.
+            </p>
           </div>
-          <button 
-            onClick={exportCSV}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm font-bold text-white/60 hover:text-white hover:bg-white/10 transition-all"
-          >
-            <Download className="w-4 h-4" />
-            <span>Export</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {[
+              { icon: Keyboard, label: 'Type', color: 'bg-blue-500/20 text-blue-400' },
+              { icon: Mic, label: 'Voice', color: 'bg-emerald-500/20 text-emerald-400' },
+              { icon: Upload, label: 'Receipt', color: 'bg-violet-500/20 text-violet-400' },
+            ].map(m => (
+              <button key={m.label} onClick={() => setShowSmartAdd(true)}
+                className={cn('flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition-all hover:scale-105', m.color)}>
+                <m.icon className="h-3.5 w-3.5" /> {m.label}
+              </button>
+            ))}
+          </div>
         </div>
+      </motion.div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[
+          { label: 'Transactions', value: filtered.length.toString(), sub: `of ${transactions.length} total`, icon: Tag, color: 'text-blue-600 bg-blue-50' },
+          { label: 'Total Income', value: formatCurrency(totalIncome), sub: `${filtered.filter(t => t.type === 'income').length} entries`, icon: ArrowUpRight, color: 'text-emerald-600 bg-emerald-50' },
+          { label: 'Total Expenses', value: formatCurrency(totalExpenses), sub: `${filtered.filter(t => t.type === 'expense').length} entries`, icon: ArrowDownRight, color: 'text-rose-500 bg-rose-50' },
+        ].map((s, i) => (
+          <motion.div key={i} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 + i * 0.05 }}
+            className="rounded-2xl bg-white p-5 shadow-sm border border-slate-100">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">{s.label}</p>
+              <div className={cn('flex h-8 w-8 items-center justify-center rounded-xl', s.color)}><s.icon className="h-4 w-4" /></div>
+            </div>
+            <p className="text-2xl font-black text-slate-900">{s.value}</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">{s.sub}</p>
+          </motion.div>
+        ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 mb-10">
-        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar items-center flex-1">
-          {['All Time', 'This Month', 'Last Month', 'Food', 'Transport', 'Entertainment'].map((chip) => (
-            <button 
-              key={chip} 
-              onClick={() => {
-                setFilter(chip);
-                setShowDatePicker(false);
-              }}
-              className={cn(
-                "px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all border",
-                filter === chip ? "bg-accent/10 border-accent/30 text-accent" : "bg-white/5 border-white/5 text-white/40 hover:bg-white/10 hover:text-white"
-              )}
-            >
-              {chip}
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search transactions..."
+            className="w-full rounded-2xl border-2 border-slate-100 bg-white py-3 pl-11 pr-4 text-sm font-medium focus:border-emerald-400 focus:outline-none focus:ring-4 focus:ring-emerald-50 transition-all" />
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <SlidersHorizontal className="h-4 w-4 text-slate-300" />
+          {(['all', 'income', 'expense'] as const).map(t => (
+            <button key={t} onClick={() => setFilterType(t)}
+              className={cn('rounded-xl px-3.5 py-2 text-xs font-bold transition-all',
+                filterType === t ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:bg-slate-50')}>
+              {t === 'all' ? 'All' : t === 'income' ? '↑ Income' : '↓ Expense'}
             </button>
           ))}
-        </div>
-        
-        <div className="relative shrink-0">
-          <button 
-            onClick={() => setShowDatePicker(!showDatePicker)}
-            className={cn(
-              "px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all border flex items-center gap-2",
-              filter === 'Custom Range' 
-                ? "bg-accent text-white border-accent shadow-[0_0_20px_rgba(124,110,250,0.3)]" 
-                : "bg-white/5 border-white/5 text-white/40 hover:bg-white/10 hover:text-white"
-            )}
-          >
-            <Calendar className="w-3.5 h-3.5" />
-            <span>Custom Range</span>
-            {filter === 'Custom Range' && startDate && endDate && (
-              <span className="text-[10px] opacity-80 font-mono">({startDate} - {endDate})</span>
-            )}
+          <div className="relative">
+            <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}
+              className="rounded-xl border border-slate-100 bg-white px-3 py-2 text-xs font-bold text-slate-500 appearance-none pr-7 focus:outline-none">
+              <option value="all">All Categories</option>
+              {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-300 pointer-events-none" />
+          </div>
+          <button onClick={() => { setSortBy(sortBy === 'date' ? 'amount' : 'date'); }}
+            className="rounded-xl border border-slate-100 bg-white px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50">
+            Sort: {sortBy === 'date' ? 'Date' : 'Amount'}
           </button>
-          
-          <AnimatePresence>
-            {showDatePicker && (
-              <motion.div 
-                initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                className="absolute top-full right-0 mt-3 p-6 glass-card z-[100] w-80 border-accent/30 shadow-2xl bg-card/95 backdrop-blur-xl"
-              >
-                <div className="flex justify-between items-center mb-6">
-                  <h4 className="text-xs font-bold uppercase tracking-widest text-accent">Select Range</h4>
-                  <button 
-                    title="Close date picker"
-                    onClick={() => setShowDatePicker(false)}
-                    className="p-1 hover:bg-white/5 rounded-lg transition-colors"
-                  >
-                    <X className="w-4 h-4 text-white/20" />
-                  </button>
-                </div>
+          <button onClick={() => setSortDir(sortDir === 'desc' ? 'asc' : 'desc')}
+            className="rounded-xl border border-slate-100 bg-white px-3 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50">
+            {sortDir === 'desc' ? '↓ New' : '↑ Old'}
+          </button>
+        </div>
+      </div>
 
-                <div className="space-y-5">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Start Date *</label>
-                    <div className="relative">
-                      <input 
-                        type="date" 
-                        required
-                        title="Start date"
-                        placeholder="Start date"
-                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-all text-white"
-                        value={startDate}
-                        onChange={e => setStartDate(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">End Date *</label>
-                    <div className="relative">
-                      <input 
-                        type="date" 
-                        required
-                        title="End date"
-                        placeholder="End date"
-                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-all text-white"
-                        value={endDate}
-                        onChange={e => setEndDate(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="flex gap-3 pt-2">
-                    <button 
-                      onClick={() => {
-                        setStartDate('');
-                        setEndDate('');
-                        setFilter('All Time');
-                        setShowDatePicker(false);
-                      }}
-                      className="flex-1 py-3 rounded-xl bg-white/5 text-[10px] font-bold uppercase tracking-widest text-white/40 hover:bg-white/10 hover:text-white transition-all"
-                    >
-                      Clear
-                    </button>
-                    <button 
-                      onClick={() => {
-                        if (startDate && endDate) {
-                          setFilter('Custom Range');
-                          setShowDatePicker(false);
-                        }
-                      }}
-                      disabled={!startDate || !endDate}
-                      className="flex-[2] py-3 bg-accent text-white rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-accent/80 transition-all disabled:opacity-50 shadow-lg violet-glow"
-                    >
-                      Apply Range
-                    </button>
-                  </div>
+      {/* Transactions List — Grouped by Date */}
+      <div className="space-y-4">
+        <AnimatePresence>
+          {grouped.length === 0 ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              className="rounded-3xl bg-white p-16 text-center shadow-sm border border-slate-100">
+              <div className="text-4xl mb-3">🔍</div>
+              <p className="text-slate-400 font-medium">No transactions found</p>
+              <p className="text-xs text-slate-300 mt-1">Try changing your filters or add a new transaction</p>
+            </motion.div>
+          ) : (
+            grouped.map(([date, txs], gi) => (
+              <motion.div key={date} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: gi * 0.03 }}>
+                <div className="flex items-center gap-3 mb-2 px-1">
+                  <Calendar className="h-3.5 w-3.5 text-slate-300" />
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{formatDate(date)}</span>
+                  <div className="h-px flex-1 bg-slate-100" />
+                  <span className="text-xs font-bold text-slate-300">{txs.length} txn{txs.length > 1 ? 's' : ''}</span>
+                </div>
+                <div className="rounded-2xl bg-white shadow-sm border border-slate-100 overflow-hidden">
+                  {txs.map((t, ti) => (
+                    <motion.div key={t.id}
+                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, height: 0 }}
+                      transition={{ delay: ti * 0.02 }}
+                      className="flex items-center justify-between px-5 py-3.5 hover:bg-slate-50/80 transition-colors border-b border-slate-50 last:border-0 group">
+                      <div className="flex items-center gap-4">
+                        <div className={cn('flex h-10 w-10 items-center justify-center rounded-xl',
+                          t.type === 'income' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-500')}>
+                          {t.type === 'income' ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">{t.merchant}</p>
+                          <span className="text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md font-medium inline-block mt-0.5">{t.category}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={cn('text-base font-black tabular-nums', t.type === 'income' ? 'text-emerald-600' : 'text-rose-500')}>
+                          {t.type === 'income' ? '+' : '−'}{formatCurrency(t.amount)}
+                        </span>
+                        <button onClick={() => { deleteTransaction(t.id); toast('info', 'Transaction deleted', t.merchant); }}
+                          className="opacity-0 group-hover:opacity-100 rounded-lg p-1.5 text-slate-300 hover:bg-rose-50 hover:text-rose-500 transition-all">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </motion.div>
+                  ))}
                 </div>
               </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+            ))
+          )}
+        </AnimatePresence>
       </div>
 
-      <div className="glass-card overflow-hidden border-white/5">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-white/5 bg-white/[0.02]">
-                <th className="px-8 py-5 w-10">
-                  <button 
-                    onClick={toggleSelectAll}
-                    className={cn(
-                      "w-5 h-5 rounded border flex items-center justify-center transition-all",
-                      selectedIds.length === sortedTransactions.length && sortedTransactions.length > 0
-                        ? "bg-accent border-accent text-white" 
-                        : "border-white/20 hover:border-white/40"
-                    )}
-                  >
-                    {selectedIds.length === sortedTransactions.length && sortedTransactions.length > 0 && <Check className="w-3 h-3" />}
-                  </button>
-                </th>
-                <th 
-                  className="px-8 py-5 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] cursor-pointer hover:text-white transition-colors"
-                  onClick={() => handleSort('date')}
-                >
-                  <div className="flex items-center gap-2">
-                    Date
-                    {sortField === 'date' && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
-                  </div>
-                </th>
-                <th 
-                  className="px-8 py-5 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] cursor-pointer hover:text-white transition-colors"
-                  onClick={() => handleSort('merchant')}
-                >
-                  <div className="flex items-center gap-2">
-                    Merchant
-                    {sortField === 'merchant' && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
-                  </div>
-                </th>
-                <th className="px-8 py-5 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Category</th>
-                <th className="px-8 py-5 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Bank Account</th>
-                <th 
-                  className="px-8 py-5 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] text-right cursor-pointer hover:text-white transition-colors"
-                  onClick={() => handleSort('amount')}
-                >
-                  <div className="flex items-center justify-end gap-2">
-                    Amount
-                    {sortField === 'amount' && (sortOrder === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
-                  </div>
-                </th>
-                <th className="px-8 py-5 text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">AI Intelligence</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {sortedTransactions.map((tx, i) => (
-                <React.Fragment key={tx.id}>
-                <motion.tr 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.03 }}
-                  onClick={() => {
-                    if (editingId !== tx.id) {
-                      setExpandedId(expandedId === tx.id ? null : tx.id);
-                    }
-                  }}
-                  className={cn(
-                    "group hover:bg-white/[0.03] transition-all cursor-pointer",
-                    editingId === tx.id && "bg-accent/5",
-                    expandedId === tx.id && "bg-white/[0.02]",
-                    selectedIds.includes(tx.id) && "bg-accent/5"
-                  )}
-                >
-                  <td className="px-8 py-5" onClick={(e) => e.stopPropagation()}>
-                    <button 
-                      onClick={() => toggleSelect(tx.id)}
-                      className={cn(
-                        "w-5 h-5 rounded border flex items-center justify-center transition-all",
-                        selectedIds.includes(tx.id) ? "bg-accent border-accent text-white" : "border-white/20 hover:border-white/40"
-                      )}
-                    >
-                      {selectedIds.includes(tx.id) && <Check className="w-3 h-3" />}
-                    </button>
-                  </td>
-                  <td className="px-8 py-5 text-sm text-white/40 font-mono font-medium">
-                    {editingId === tx.id ? (
-                      <input 
-                        type="date" 
-                        title="Transaction date"
-                        placeholder="Transaction date"
-                        onClick={e => e.stopPropagation()}
-                        className="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs outline-none focus:border-accent"
-                        value={editForm.date}
-                        onChange={e => setEditForm({...editForm, date: e.target.value})}
-                      />
-                    ) : tx.date}
-                  </td>
-                  <td className="px-8 py-5">
-                    <div className="flex items-center gap-4">
-                      <div className="relative">
-                        <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-sm font-bold border border-white/5 group-hover:border-accent/30 transition-all group-hover:scale-105">
-                          {tx.merchant.charAt(0)}
-                        </div>
-                        <div className={cn(
-                          "absolute -bottom-1 -right-1 w-4 h-4 rounded-md flex items-center justify-center border border-background",
-                          tx.amount > 0 ? "bg-positive text-background" : "bg-negative text-white"
-                        )}>
-                          {tx.amount > 0 ? <ArrowUpRight className="w-2.5 h-2.5" /> : <ArrowDownRight className="w-2.5 h-2.5" />}
-                        </div>
-                      </div>
-                      {editingId === tx.id ? (
-                        <input 
-                          type="text" 
-                          title="Merchant"
-                          placeholder="Merchant"
-                          onClick={e => e.stopPropagation()}
-                          className="bg-white/5 border border-white/10 rounded px-2 py-1 text-sm outline-none focus:border-accent font-bold"
-                          value={editForm.merchant}
-                          onChange={e => setEditForm({...editForm, merchant: e.target.value})}
-                        />
-                      ) : (
-                        <span className="font-bold text-white group-hover:text-accent transition-colors">{tx.merchant}</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-8 py-5">
-                    {editingId === tx.id ? (
-                      <div className="relative">
-                        <select 
-                          title="Category"
-                          onClick={e => e.stopPropagation()}
-                          className="appearance-none bg-white/5 border border-white/10 rounded px-3 py-1.5 text-xs outline-none focus:border-accent pr-8 w-full font-medium"
-                          value={editForm.category}
-                          onChange={e => setEditForm({...editForm, category: e.target.value})}
-                        >
-                          {['Housing', 'Food & Drink', 'Transport', 'Entertainment', 'Shopping', 'Electronics', 'Utilities', 'Health', 'Education', 'Others', 'Uncategorized'].map(c => (
-                            <option key={c} value={c} className="bg-[#050508] text-white">{c}</option>
-                          ))}
-                        </select>
-                        <ChevronDown className="w-3 h-3 absolute right-2.5 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className={cn(
-                            "px-3 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-widest transition-all",
-                            tx.category === 'Uncategorized' ? "bg-white/5 border-white/5 text-white/20" : 
-                            (tx.confidence && tx.confidence < 0.8) ? "bg-negative/10 border-negative/30 text-negative" :
-                            "bg-accent/10 border-accent/20 text-accent"
-                          )}>
-                            {tx.category}
-                          </span>
-                          {tx.confidence && (
-                            <span className={cn(
-                              "text-[9px] font-mono font-bold",
-                              tx.confidence < 0.8 ? "text-negative" : "text-white/20"
-                            )}>
-                              {Math.round(tx.confidence * 100)}%
-                            </span>
-                          )}
-                        </div>
-
-                        {suggestions[tx.id] && (
-                          <div className="flex flex-col gap-2">
-                            {suggestions[tx.id].map((suggestion, idx) => (
-                              <motion.div 
-                                key={idx}
-                                initial={{ opacity: 0, x: -10 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: idx * 0.1 }}
-                                className={cn(
-                                  "flex items-center gap-2 border px-2 py-1.5 rounded-lg",
-                                  suggestion.confidence < 0.8 ? "bg-negative/10 border-negative/20" : "bg-accent/10 border-accent/20"
-                                )}
-                              >
-                                <div className="flex flex-col">
-                                  <span className={cn(
-                                    "text-[9px] font-bold uppercase tracking-widest",
-                                    suggestion.confidence < 0.8 ? "text-negative" : "text-accent"
-                                  )}>
-                                    {suggestion.category}
-                                  </span>
-                                  <span className="text-[8px] font-mono opacity-60">
-                                    {Math.round(suggestion.confidence * 100)}%
-                                  </span>
-                                </div>
-                                <div className="flex gap-1 ml-auto">
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      confirmCategory(tx.id, suggestion.category);
-                                    }}
-                                    className="p-1 hover:bg-white/10 rounded transition-colors"
-                                    title="Confirm"
-                                  >
-                                    <Check className="w-3 h-3 text-positive" />
-                                  </button>
-                                </div>
-                              </motion.div>
-                            ))}
-                            <div className="flex items-center gap-2 ml-1">
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleEdit(tx);
-                                }}
-                                className="flex items-center gap-1.5 text-[8px] font-bold uppercase tracking-widest text-white/40 hover:text-white transition-all"
-                              >
-                                <Pencil className="w-2.5 h-2.5" />
-                                <span>Edit Manually</span>
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-8 py-5">
-                    {editingId === tx.id ? (
-                      <div className="relative">
-                        <select 
-                          title="Account"
-                          onClick={e => e.stopPropagation()}
-                          className="appearance-none bg-white/5 border border-white/10 rounded px-3 py-1.5 text-xs outline-none focus:border-accent pr-8 w-full font-medium"
-                          value={editForm.account || ''}
-                          onChange={e => setEditForm({...editForm, account: e.target.value})}
-                        >
-                          <option value="" className="bg-[#050508] text-white">Select Account</option>
-                          {accounts.map(a => (
-                            <option key={a.id} value={a.name} className="bg-[#050508] text-white">{a.name}</option>
-                          ))}
-                        </select>
-                        <ChevronDown className="w-3 h-3 absolute right-2.5 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
-                      </div>
-                    ) : (
-                      <span className="text-sm font-medium text-white/60">{tx.account || 'Unknown'}</span>
-                    )}
-                  </td>
-                  <td className={cn(
-                    "px-8 py-5 font-mono font-bold text-right text-lg tracking-tighter",
-                    tx.amount > 0 ? "text-positive" : "text-white"
-                  )}>
-                    {editingId === tx.id ? (
-                      <input 
-                        type="number" 
-                        title="Amount"
-                        placeholder="0.00"
-                        onClick={e => e.stopPropagation()}
-                        className="bg-white/5 border border-white/10 rounded px-2 py-1 text-right text-sm outline-none focus:border-accent font-bold w-24"
-                        value={editForm.amount}
-                        onChange={e => setEditForm({...editForm, amount: parseFloat(e.target.value)})}
-                      />
-                    ) : (
-                      <>{tx.amount > 0 ? '+' : ''}{tx.amount.toLocaleString(undefined, { style: 'currency', currency: tx.currency || 'INR' })}</>
-                    )}
-                  </td>
-                  <td className="px-8 py-5">
-                    <div className="flex items-center gap-3">
-                      {editingId === tx.id ? (
-                        <div className="flex flex-col gap-2">
-                          <div className="relative">
-                            <input 
-                              type="text"
-                              onClick={e => e.stopPropagation()}
-                              placeholder="AI Tag"
-                              className="bg-white/5 border border-white/10 rounded px-2 py-1 text-[10px] outline-none focus:border-accent font-bold uppercase tracking-widest w-24"
-                              value={editForm.aiTag || ''}
-                              onChange={e => setEditForm({...editForm, aiTag: e.target.value})}
-                            />
-                            <Sparkles className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 text-accent opacity-50 pointer-events-none" />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <input 
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              max="1"
-                              title="Confidence score"
-                              placeholder="0.00"
-                              onClick={e => e.stopPropagation()}
-                              className="bg-white/5 border border-white/10 rounded px-2 py-1 text-[10px] outline-none focus:border-accent font-mono w-16"
-                              value={editForm.confidence || 0}
-                              onChange={e => setEditForm({...editForm, confidence: parseFloat(e.target.value)})}
-                            />
-                            <span className="text-[8px] text-white/30 font-bold uppercase">Conf.</span>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          {tx.aiTag && (
-                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-accent/5 border border-accent/20 text-accent text-[10px] font-bold uppercase tracking-widest violet-glow">
-                              <Sparkles className="w-3.5 h-3.5" />
-                              <span>{tx.aiTag}</span>
-                            </div>
-                          )}
-                          {tx.confidence && (
-                            <span className="text-[10px] font-mono font-bold text-white/20">
-                              {Math.round(tx.confidence * 100)}%
-                            </span>
-                          )}
-                        </>
-                      )}
-                      <div className={cn(
-                        "flex gap-2 transition-all ml-auto",
-                        editingId === tx.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                      )}>
-                        {editingId === tx.id ? (
-                          <>
-                            <button title="Save changes" onClick={(e) => { e.stopPropagation(); handleSave(); }} className="p-1.5 rounded-lg bg-positive/20 text-positive hover:bg-positive/30 transition-all"><Save className="w-4 h-4" /></button>
-                            <button title="Cancel editing" onClick={(e) => { e.stopPropagation(); setEditingId(null); }} className="p-1.5 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 transition-all"><X className="w-4 h-4" /></button>
-                          </>
-                        ) : (
-                          <>
-                            <button title="Edit transaction" onClick={(e) => { e.stopPropagation(); handleEdit(tx); }} className="p-1.5 rounded-lg hover:bg-accent/10 hover:text-accent transition-all"><Pencil className="w-4 h-4" /></button>
-                            <button title="Delete transaction" onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(tx.id); }} className="p-1.5 rounded-lg hover:bg-negative/10 hover:text-negative transition-all"><Trash2 className="w-4 h-4" /></button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-
-                </motion.tr>
-                <AnimatePresence>
-                  {expandedId === tx.id && (
-                    <motion.tr 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="bg-white/[0.01] border-b border-white/5"
-                    >
-                      <td colSpan={7} className="p-0">
-                        <motion.div
-                          initial={{ height: 0 }}
-                          animate={{ height: 'auto' }}
-                          exit={{ height: 0 }}
-                          className="overflow-hidden"
-                        >
-                          <div className="px-8 py-6 flex flex-wrap gap-8 text-sm border-t border-white/5">
-                            <div className="flex flex-col gap-1.5">
-                              <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Account</span>
-                              <span className="text-white/80 font-medium">{tx.account || 'Not specified'}</span>
-                            </div>
-                            <div className="flex flex-col gap-1.5">
-                              <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">AI Tag</span>
-                              <span className="text-white/80 font-medium">{tx.aiTag || 'None'}</span>
-                            </div>
-                            <div className="flex flex-col gap-1.5">
-                              <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Confidence</span>
-                              <span className="text-white/80 font-medium">{tx.confidence ? `${Math.round(tx.confidence * 100)}%` : 'N/A'}</span>
-                            </div>
-                            {tx.savingsGoalId && (
-                              <div className="flex flex-col gap-1.5">
-                                <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Savings Goal ID</span>
-                                <span className="text-white/80 font-medium font-mono text-xs">{tx.savingsGoalId}</span>
-                              </div>
-                            )}
-                          </div>
-                        </motion.div>
-                      </td>
-                    </motion.tr>
-                  )}
-                </AnimatePresence>
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Bulk Actions Bar */}
-      <AnimatePresence>
-        {selectedIds.length > 0 && (
-          <motion.div 
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[150] w-full max-w-4xl px-6"
-          >
-            <div className="glass-card p-4 flex flex-wrap md:flex-nowrap items-center justify-between gap-4 shadow-2xl border-accent/30 bg-card/90 backdrop-blur-2xl">
-
-              <div className="flex items-center gap-4">
-                <div className="bg-accent text-white w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm shadow-lg violet-glow">
-                  {selectedIds.length}
-                </div>
-                <span className="text-sm font-bold text-white/80">Transactions Selected</span>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <select 
-                    title="Bulk categorize"
-                    value={bulkCategory}
-                    onChange={(e) => setBulkCategory(e.target.value)}
-                    className="appearance-none bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs font-bold outline-none focus:border-accent pr-10 text-white/70"
-                  >
-                    <option value="" className="bg-[#050508]">Bulk Categorize...</option>
-                    {['Housing', 'Food & Drink', 'Transport', 'Entertainment', 'Shopping', 'Electronics', 'Utilities', 'Health', 'Education', 'Others'].map(c => (
-                      <option key={c} value={c} className="bg-[#050508]">{c}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="w-3 h-3 absolute right-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
-                </div>
-
-                <button 
-                  onClick={handleBulkCategorize}
-                  disabled={!bulkCategory || isBulkUpdating}
-                  className="px-4 py-2 bg-accent text-white rounded-xl text-xs font-bold hover:bg-accent/80 transition-all disabled:opacity-50"
-                >
-                  Apply
-                </button>
-
-                <div className="w-px h-6 bg-white/10 mx-1" />
-
-                <button 
-                  onClick={handleBulkMarkReviewed}
-                  disabled={isBulkUpdating}
-                  className="px-4 py-2 bg-white/5 border border-white/10 text-white/60 rounded-xl text-xs font-bold hover:bg-white/10 hover:text-white transition-all disabled:opacity-50 flex items-center gap-2"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Mark Reviewed</span>
-                </button>
-
-                <button 
-                  onClick={() => setIsBulkDeleteConfirmOpen(true)}
-                  disabled={isBulkUpdating}
-                  title="Delete selected transactions"
-                  className="px-4 py-2 bg-negative/10 border border-negative/30 text-negative rounded-xl text-xs font-bold hover:bg-negative/20 transition-all disabled:opacity-50 flex items-center gap-2"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Delete</span>
-                </button>
-
-                <div className="w-px h-6 bg-white/10 mx-1" />
-
-                <button 
-                  title="Deselect all"
-                  onClick={() => setSelectedIds([])}
-                  className="p-2 text-white/20 hover:text-negative transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <DeleteModal 
-        isOpen={!!deleteConfirmId}
-        onClose={() => setDeleteConfirmId(null)}
-        onConfirm={() => { if (deleteConfirmId) handleDelete(deleteConfirmId); }}
-        title="Delete Transaction?"
-        description="This action cannot be undone. Are you sure you want to remove this transaction from your history? Your account balance will be updated accordingly."
-      />
-
-      <DeleteModal 
-        isOpen={isBulkDeleteConfirmOpen}
-        onClose={() => setIsBulkDeleteConfirmOpen(false)}
-        onConfirm={handleBulkDelete}
-        title={`Delete ${selectedIds.length} Transactions?`}
-        description={`You are about to delete ${selectedIds.length} transactions permanently. Your bank account balances and net worth will be updated automatically to remain synced. This action is irreversible.`}
-        confirmLabel="Yes, Delete All"
-      />
-
-      {/* Add Transaction Modal */}
-      <AnimatePresence>
-        {isAddTransactionModalOpen && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsAddTransactionModalOpen(false)}
-              className="absolute inset-0 bg-black/80 backdrop-blur-md"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 40 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 40 }}
-              className="relative glass-card max-w-lg w-full overflow-hidden border-white/10 shadow-2xl"
-            >
-              <div className="p-8 border-b border-white/5 flex justify-between items-center">
-                <div>
-                  <h3 className="text-2xl font-bold tracking-tight">Add Transaction</h3>
-                  <p className="text-xs text-white/40 font-bold uppercase tracking-widest mt-1">Manual Entry</p>
-                </div>
-                <button 
-                  title="Close"
-                  onClick={() => setIsAddTransactionModalOpen(false)}
-                  className="p-2 hover:bg-white/5 rounded-xl transition-colors"
-                >
-                  <X className="w-5 h-5 text-white/20" />
-                </button>
-              </div>
-
-              <div className="p-8 space-y-6">
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Type</label>
-                    <div className="flex p-1 bg-white/5 rounded-xl border border-white/5">
-                      <button 
-                        onClick={() => setNewTransactionForm({ ...newTransactionForm, type: 'expense' })}
-                        className={cn(
-                          "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
-                          newTransactionForm.type === 'expense' ? "bg-negative text-white shadow-lg" : "text-white/40 hover:text-white"
-                        )}
-                      >
-                        Expense
-                      </button>
-                      <button 
-                        onClick={() => setNewTransactionForm({ ...newTransactionForm, type: 'income' })}
-                        className={cn(
-                          "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all",
-                          newTransactionForm.type === 'income' ? "bg-positive text-white shadow-lg" : "text-white/40 hover:text-white"
-                        )}
-                      >
-                        Income
-                      </button>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Date *</label>
-                    <input 
-                      type="date"
-                      required
-                      title="Date"
-                      placeholder="Date"
-                      max={today}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-all text-white"
-                      value={newTransactionForm.date}
-                      onChange={e => {
-                        setAddTransactionError('');
-                        setNewTransactionForm({ ...newTransactionForm, date: e.target.value });
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {addTransactionError && (
-                  <div className="flex items-center gap-3 rounded-xl border border-negative/20 bg-negative/10 px-4 py-3 text-xs font-bold text-negative">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    <span>{addTransactionError}</span>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Merchant / Description *</label>
-                  <input 
-                    type="text"
-                    required
-                    maxLength={255}
-                    placeholder="e.g. Starbucks, Amazon, Salary"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-all text-white"
-                    value={newTransactionForm.merchant}
-                    onChange={e => {
-                      setAddTransactionError('');
-                      setNewTransactionForm({ ...newTransactionForm, merchant: e.target.value.slice(0, 255) });
-                    }}
-                  />
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-white/20">Maximum 255 characters. Saved as plain text.</p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Amount *</label>
-                    <div className="relative">
-                      <input 
-                        type="number"
-                        required
-                        min="0.01"
-                        max={MAX_TRANSACTION_AMOUNT}
-                        step="0.01"
-                        inputMode="decimal"
-                        placeholder="0.00"
-                        className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-sm outline-none focus:border-accent transition-all font-mono text-white"
-                        value={newTransactionForm.amount || ''}
-                        onChange={e => {
-                          setAddTransactionError('');
-                          const amountValue = e.target.value === '' ? undefined : Number.parseFloat(e.target.value);
-                          setNewTransactionForm({ ...newTransactionForm, amount: amountValue });
-                        }}
-                      />
-                    </div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-white/20">Up to {MAX_TRANSACTION_AMOUNT.toLocaleString()} per transaction.</p>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Category</label>
-                    <div className="relative">
-                      <select 
-                        title="Category"
-                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-all appearance-none text-white"
-                        value={newTransactionForm.category}
-                        onChange={e => setNewTransactionForm({ ...newTransactionForm, category: e.target.value })}
-                      >
-                        {['Housing', 'Food & Drink', 'Transport', 'Entertainment', 'Shopping', 'Electronics', 'Utilities', 'Health', 'Education', 'Salary', 'Freelance', 'Investment', 'Gift', 'Refund', 'Others'].map(c => (
-                          <option key={c} value={c} className="bg-[#050508]">{c}</option>
-                        ))}
-                      </select>
-                      <ChevronDown className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-white/20 pointer-events-none" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Account</label>
-                  <div className="relative">
-                    <select 
-                      title="Account"
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-all appearance-none text-white"
-                      value={newTransactionForm.account}
-                      onChange={e => setNewTransactionForm({ ...newTransactionForm, account: e.target.value })}
-                    >
-                      {accounts.map(a => (
-                        <option key={a.id} value={a.name} className="bg-[#050508]">{a.name}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-white/20 pointer-events-none" />
-                  </div>
-                </div>
-
-                <div className="pt-4 flex gap-4">
-                  <button 
-                    onClick={() => setIsAddTransactionModalOpen(false)}
-                    className="flex-1 py-4 rounded-2xl bg-white/5 text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-white/10 transition-all border border-white/5 text-white/40 hover:text-white"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    onClick={handleAddTransaction}
-                    disabled={isAddTransactionDisabled}
-                    className="flex-[2] py-4 rounded-2xl bg-accent text-white text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-accent/80 transition-all shadow-lg violet-glow disabled:opacity-50"
-                  >
-                    {isSavingTransaction ? 'Saving...' : 'Add Transaction'}
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-    </motion.div>
+      {/* Smart Add Modal */}
+      <SmartAddModal open={showSmartAdd} onClose={() => setShowSmartAdd(false)} />
+    </div>
   );
-};
+}

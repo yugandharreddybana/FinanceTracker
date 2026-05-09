@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import { Sidebar } from './components/Sidebar';
-import { SmartAdd } from './components/SmartAdd';
+import { TopBar } from './components/TopBar';
+import { SmartAddModal } from './components/SmartAddModal';
 import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { SignupPage } from './components/SignupPage';
@@ -36,7 +37,7 @@ import { cn, safeStorage } from './lib/utils';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { CommandPalette } from './components/CommandPalette';
 import { NotificationCenter, Notification as AppNotification } from './components/NotificationCenter';
-import { LayoutDashboard, Wallet, Receipt, CreditCard, PieChart, TrendingUp, Settings, LogOut, Bell, Sparkles, X, Command, Search, WifiOff, Activity, Leaf, Shield, History, Globe2, FileText, BarChart3, Calculator, UserCircle, Briefcase, HeartPulse, HelpCircle, AlertCircle, Calendar, CheckCircle2, AlertTriangle, TrendingDown } from 'lucide-react';
+import { LayoutDashboard, Wallet, Receipt, CreditCard, PieChart, TrendingUp, Settings, LogOut, Bell, Sparkles, X, Command, Search, WifiOff, Activity, Leaf, Shield, History, Globe2, FileText, BarChart3, Calculator, UserCircle, Briefcase, HeartPulse, HelpCircle, AlertCircle, Calendar, CheckCircle2, AlertTriangle, TrendingDown, Plus } from 'lucide-react';
 import { aiService, AIInsight } from './services/aiService';
 import { authApi, MIDDLEWARE_BASE } from './services/api';
 
@@ -88,6 +89,8 @@ function MainApp() {
     } catch { return []; }
   });
   const [isAIProcessing, setIsAIProcessing] = useState(false);
+  const [isSmartAddOpen, setIsSmartAddOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Handle refresh and initial load
   useEffect(() => {
@@ -317,15 +320,15 @@ function MainApp() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard': return <Dashboard key="dashboard" setActiveTab={handleNavigate} />;
+      case 'dashboard': return <Dashboard key="dashboard" />;
       case 'transactions': return <TransactionsPage key="transactions" />;
       case 'accounts': return <BankAccountsPage key="accounts" />;
-      case 'budgets': return <BudgetsPage key="budgets" setActiveTab={handleNavigate} />;
-      case 'savings': return <SavingsPage key="savings" onNavigate={handleNavigate} />;
+      case 'budgets': return <BudgetsPage key="budgets" />;
+      case 'savings': return <SavingsPage key="savings" />;
       case 'recurring': return <RecurringPage key="recurring" />;
       case 'loans': return <LoansPage key="loans" />;
-      case 'networth': return <NetWorthPage key="networth" onNavigate={handleNavigate} />;
-      case 'health': return <HealthScorePage key="health" onNavigate={handleNavigate} />;
+      case 'networth': return <NetWorthPage key="networth" />;
+      case 'health': return <HealthScorePage key="health" />;
       case 'carbon': return <CarbonFootprintPage key="carbon" />;
       case 'categories': return <CategoriesPage key="categories" />;
       case 'insights': return <AIInsightsPage key="insights" />;
@@ -340,7 +343,7 @@ function MainApp() {
       case 'settings': return <SettingsPage key="settings" />;
       default:
         // U12: Known empty/undefined tabs default to dashboard; truly unknown tabs show 404
-        if (!activeTab || activeTab === 'dashboard') return <Dashboard key="dashboard" setActiveTab={handleNavigate} />;
+        if (!activeTab || activeTab === 'dashboard') return <Dashboard key="dashboard" />;
         return (
           <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
             <div className="text-6xl">🔍</div>
@@ -359,36 +362,19 @@ function MainApp() {
         <Route path="/" element={
           authChecking ? null :
           !isLoggedIn ? (
-            <LandingPage
-              key="landing"
-              onGetStarted={() => navigate('/signup')}
-              onLogin={() => navigate('/login')}
-              onWatchDemo={() => setShowDemo(true)}
-            />
+            <LandingPage key="landing" />
           ) : <Navigate to="/dashboard" replace />
         } />
         <Route path="/login" element={
           authChecking ? null :
           !isLoggedIn ? (
-            <LoginPage
-              key="login"
-              onLogin={handleLogin}
-              onSwitchToSignup={() => navigate('/signup')}
-              onForgotPassword={() => navigate('/forgot-password')}
-              onBackToHome={() => navigate('/')}
-              sessionMessage={typeof location.state?.authMessage === 'string' ? location.state.authMessage : undefined}
-            />
+            <LoginPage key="login" />
           ) : <Navigate to="/dashboard" replace />
         } />
         <Route path="/signup" element={
           authChecking ? null :
           !isLoggedIn ? (
-            <SignupPage
-              key="signup"
-              onSignup={handleSignup}
-              onSwitchToLogin={() => navigate('/login')}
-              onBackToHome={() => navigate('/')}
-            />
+            <SignupPage key="signup" />
           ) : <Navigate to="/dashboard" replace />
         } />
         <Route path="/forgot-password" element={
@@ -411,122 +397,70 @@ function MainApp() {
         <Route path="/security" element={<InfoPage variant="security" />} />
         <Route path="/contact" element={<InfoPage variant="contact" />} />
 
-        {/* Protected App Routes */}
         <Route path="/dashboard/*" element={
           authChecking ? null :
           isLoggedIn ? (
-            <div key="app-main" className="min-h-screen">
-              <Sidebar activeTab={activeTab} setActiveTab={handleNavigate} onLogout={handleLogout} />
+            <div key="app-main" className="flex h-screen overflow-hidden bg-slate-50/80 text-slate-800">
+              <Sidebar mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
 
-              <main className="pl-[80px] min-h-screen relative z-10 transition-all duration-500 ease-in-out">
-                {/* Fixed Header Bar */}
-                <header className="fixed top-0 left-[80px] right-0 h-20 flex items-center justify-between px-10 border-b border-white/5 bg-background/80 backdrop-blur-xl z-[90]">
-                  <div className="flex items-center gap-4">
-                    <button
-                      onClick={() => setIsCommandPaletteOpen(true)}
-                      className="flex items-center gap-3 px-4 py-2 rounded-2xl bg-white/5 border border-white/10 text-white/40 hover:text-white hover:bg-white/10 transition-all group"
-                    >
-                      <Search className="w-4 h-4" />
-                      <span className="text-xs font-bold uppercase tracking-widest">Search anything...</span>
-                      <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] opacity-40 group-hover:opacity-100">
-                        <Command className="w-2.5 h-2.5" />
-                        <span>K</span>
-                      </div>
-                    </button>
-                  </div>
+              <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+                <TopBar onSmartAdd={() => setIsSmartAddOpen(true)} onMenuToggle={() => setMobileMenuOpen(true)} />
 
-                  <div className="flex items-center gap-6">
-                    {isOffline && (
-                      <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-negative/10 border border-negative/20 text-negative">
-                        <WifiOff className="w-4 h-4" />
-                        <span className="text-[10px] font-bold uppercase tracking-widest">Offline Mode</span>
-                      </div>
-                    )}
-                    <button
-                      onClick={() => setIsNotificationsOpen(true)}
-                      className="relative p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group"
-                    >
-                      <Bell className={cn("w-5 h-5 transition-colors",
-                        isAIProcessing ? "text-accent animate-pulse" : "text-white/40 group-hover:text-white"
-                      )} />
-                      {notifications.some(n => !n.read) && (
-                        <span className="absolute top-3 right-3 w-2.5 h-2.5 bg-accent rounded-full border-2 border-[#0F0F19] animate-pulse" />
-                      )}
-                    </button>
-                    <div className="flex items-center gap-3 pl-6 border-l border-white/5">
-                      <div className="text-right">
-                        <p className="text-xs font-bold">{userProfile.name}</p>
-                        <p className="text-[10px] font-bold text-accent uppercase tracking-widest">{userProfile.role}</p>
-                      </div>
-                      <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-accent to-positive p-[1px]">
-                        <div className="w-full h-full rounded-[15px] bg-background flex items-center justify-center text-xs font-bold">
-                          {(userProfile.name || 'Guest').trim().split(' ').filter(Boolean).map(n => n[0]).join('')}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </header>
-
-                <div className="p-6 md:p-10 lg:p-12 pt-28 md:pt-32 lg:pt-36 pb-40">
+                <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-slate-50/50">
                   <Suspense fallback={
                     <div className="flex items-center justify-center min-h-[60vh]">
-                      <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+                      <div className="w-8 h-8 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
                     </div>
                   }>
                     <AnimatePresence mode="wait">
                       {renderContent()}
                     </AnimatePresence>
                   </Suspense>
-                </div>
+                </main>
+              </div>
 
-                <CommandPalette
-                  isOpen={isCommandPaletteOpen}
-                  onClose={() => setIsCommandPaletteOpen(false)}
-                  onNavigate={handleNavigate}
-                />
+              {/* Mobile FAB */}
+              <motion.button onClick={() => setIsSmartAddOpen(true)}
+                whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
+                className="lg:hidden fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full animated-gradient text-white shadow-2xl shadow-emerald-300/40">
+                <Plus className="h-6 w-6" />
+              </motion.button>
 
-                <NotificationCenter
-                  isOpen={isNotificationsOpen}
-                  onClose={() => setIsNotificationsOpen(false)}
-                  notifications={notifications}
-                  onMarkAsRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))}
-                  onClearAll={() => setNotifications([])}
-                />
+              <SmartAddModal open={isSmartAddOpen} onClose={() => setIsSmartAddOpen(false)} />
 
-                <SmartAdd setActiveTab={handleNavigate} />
+              <NotificationCenter
+                isOpen={isNotificationsOpen}
+                onClose={() => setIsNotificationsOpen(false)}
+                notifications={notifications}
+                onMarkAsRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))}
+                onClearAll={() => setNotifications([])}
+              />
 
-                {/* Floating AI Insights Button */}
-                <motion.button
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => setIsChatOpen(true)}
-                  className="fixed bottom-[104px] right-8 w-14 h-14 rounded-2xl bg-card border border-white/10 hover:border-accent/30 flex items-center justify-center transition-all z-[80] shadow-2xl"
-                >
-                  <Sparkles className="w-5 h-5 text-accent animate-pulse" />
-                </motion.button>
+              {/* Floating AI Insights Button */}
+              <motion.button
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setIsChatOpen(true)}
+                className="fixed bottom-20 right-8 w-14 h-14 rounded-2xl bg-white border border-slate-200 hover:border-emerald-300 flex items-center justify-center transition-all z-[80] shadow-2xl"
+              >
+                <Sparkles className="w-5 h-5 text-emerald-500 animate-pulse" />
+              </motion.button>
 
-                {/* Floating Chatbot Window */}
-                <AnimatePresence>
-                  {isChatOpen && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.9, y: 20, x: 20 }}
-                      animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
-                      exit={{ opacity: 0, scale: 0.9, y: 20, x: 20 }}
-                      className="fixed bottom-[104px] right-8 w-[450px] h-[600px] z-[150] shadow-[0_0_50px_rgba(0,0,0,0.5)]"
-                    >
-                      <AIInsightsPage compact onClose={() => setIsChatOpen(false)} />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Premium Background Effects */}
-                <div className="noise-bg" />
-                <div className="fixed top-0 left-1/4 w-[800px] h-[800px] bg-accent/10 rounded-full blur-[160px] pointer-events-none -z-10 animate-pulse" />
-                <div className="fixed bottom-0 right-1/4 w-[600px] h-[600px] bg-positive/5 rounded-full blur-[140px] pointer-events-none -z-10" />
-                <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full premium-gradient pointer-events-none -z-20" />
-              </main>
+              {/* Floating Chatbot Window */}
+              <AnimatePresence>
+                {isChatOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9, y: 20, x: 20 }}
+                    animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
+                    exit={{ opacity: 0, scale: 0.9, y: 20, x: 20 }}
+                    className="fixed bottom-20 right-8 w-[450px] h-[600px] z-[150] shadow-[0_0_50px_rgba(0,0,0,0.15)] bg-white rounded-3xl overflow-hidden border border-slate-100"
+                  >
+                    <AIInsightsPage compact onClose={() => setIsChatOpen(false)} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           ) : <Navigate to="/login" replace state={{ authMessage: 'Your session has expired. Please sign in again.' }} />
         } />

@@ -52,6 +52,14 @@ export interface BankAccount {
   isPrimary?: boolean;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  type: 'income' | 'expense';
+}
+
 
 export interface Budget {
   id: string;

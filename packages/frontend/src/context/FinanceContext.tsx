@@ -9,6 +9,7 @@ import {
   Loan, 
   Budget, 
   BankAccount, 
+  Category,
   IncomeSource, 
   UserProfile, 
   Investment, 
@@ -18,22 +19,29 @@ import {
   TaxReport, 
   ForecastResult 
 } from '../types';
-import { financeApi, familyApi, auditApi, MIDDLEWARE_BASE } from '../services/api';
+import { financeApi, familyApi, auditApi, authApi, MIDDLEWARE_BASE } from '../services/api';
 import { safeStorage } from '../lib/utils';
 
 interface FinanceContextType {
   transactions: Transaction[];
   savingsGoals: SavingsGoal[];
   recurringPayments: RecurringPayment[];
+  recurringTransactions: RecurringPayment[];
   loans: Loan[];
   budgets: Budget[];
   accounts: BankAccount[];
+  bankAccounts: BankAccount[];
+  categories: Category[];
   incomeSources: IncomeSource[];
   investments: Investment[];
   auditLogs: AuditLog[];
   familyAccount: FamilyAccount | null;
   userProfile: UserProfile;
+  isLoggedIn: boolean;
   updateUserProfile: (updates: Partial<UserProfile>) => void;
+  login: (email: string, password: string) => Promise<boolean>;
+  signup: (name: string, email: string, password: string) => Promise<boolean>;
+  logout: () => Promise<void>;
   clearDataForNewUser: (email?: string) => void;
   refreshData: () => Promise<void>;
   spendingDataByCurrency: Record<string, { name: string; value: number; color: string }[]>;
@@ -110,6 +118,10 @@ interface FinanceContextType {
   // Forecasts
   forecasts: ForecastResult[];
   addForecast: (forecast: ForecastResult) => void;
+  getTotalBalance: () => number;
+  getMonthlyIncome: () => number;
+  getMonthlyExpenses: () => number;
+  getNetWorth: () => number;
 }
 
 const FinanceContext = createContext<FinanceContextType | undefined>(undefined);
@@ -168,10 +180,63 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
   const isLoading = useSelector((state: RootState) => state.finance.isLoading);
   const isDataLoaded = useSelector((state: RootState) => state.finance.isDataLoaded);
 
+  const categories = (() => {
+    const categoryMap = new Map<string, Category>();
+
+    customCategories.forEach((category) => {
+      categoryMap.set(category.name.toLowerCase(), {
+        id: `custom-${category.name.toLowerCase()}`,
+        name: category.name,
+        icon: category.icon || '*',
+        color: category.color || '#6B7280',
+        type: 'expense',
+      });
+    });
+
+    budgets.forEach((budget) => {
+      const key = budget.category.toLowerCase();
+      if (!categoryMap.has(key)) {
+        categoryMap.set(key, {
+          id: `budget-${key}`,
+          name: budget.category,
+          icon: budget.emoji || '*',
+          color: budget.color || CATEGORY_COLORS[budget.category] || '#6B7280',
+          type: 'expense',
+        });
+      }
+    });
+
+    transactions.forEach((transaction) => {
+      const key = transaction.category.toLowerCase();
+      const existing = categoryMap.get(key);
+
+      if (!existing) {
+        categoryMap.set(key, {
+          id: `transaction-${key}`,
+          name: transaction.category,
+          icon: '*',
+          color: CATEGORY_COLORS[transaction.category] || '#6B7280',
+          type: transaction.type,
+        });
+        return;
+      }
+
+      if (existing.type !== transaction.type) {
+        categoryMap.set(key, {
+          ...existing,
+          type: transaction.type,
+        });
+      }
+    });
+
+    return Array.from(categoryMap.values());
+  })();
+
   // Local React States
   const [suggestions, setSuggestions] = useState<Record<string, { category: string; confidence: number }[]>>({});
   const [isCategorizing, setIsCategorizing] = useState(false);
   const [isAddTransactionModalOpen, setIsAddTransactionModalOpen] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   // Refs to maintain latest states for async functions
   const transactionsRef = useRef(transactions);
@@ -259,6 +324,44 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
     dispatch(financeActions.setFamilyAccount(typeof p === 'function' ? p(familyAccountRef.current) : p));
   }, [dispatch]);
 
+  const getTotalBalance = useCallback(() => {
+    return accounts.reduce((sum, account) => {
+      return account.type === 'Credit' ? sum : sum + account.balance;
+    }, 0);
+  }, [accounts]);
+
+  const getMonthlyIncome = useCallback(() => {
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    return transactions.reduce((sum, transaction) => {
+      if (transaction.type !== 'income' || !transaction.date.startsWith(currentMonth)) {
+        return sum;
+      }
+
+      return sum + transaction.amount;
+    }, 0);
+  }, [transactions]);
+
+  const getMonthlyExpenses = useCallback(() => {
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    return transactions.reduce((sum, transaction) => {
+      if (transaction.type !== 'expense' || !transaction.date.startsWith(currentMonth)) {
+        return sum;
+      }
+
+      return sum + transaction.amount;
+    }, 0);
+  }, [transactions]);
+
+  const getNetWorth = useCallback(() => {
+    const accountTotal = accounts.reduce((sum, account) => sum + account.balance, 0);
+    const investmentTotal = investments.reduce((sum, investment) => {
+      return sum + investment.quantity * investment.currentPrice;
+    }, 0);
+    const debtTotal = loans.reduce((sum, loan) => sum + loan.remainingAmount, 0);
+
+    return accountTotal + investmentTotal - debtTotal;
+  }, [accounts, investments, loans]);
+
   const setCarbonEntries = useCallback((p: CarbonEntry[] | ((prev: CarbonEntry[]) => CarbonEntry[])) => {
     dispatch(financeActions.setCarbonEntries(typeof p === 'function' ? p(carbonEntriesRef.current) : p));
   }, [dispatch]);
@@ -307,6 +410,50 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
     dispatch(financeActions.clearAllData());
   }, [clearPersistedFinanceData, userProfile.email, dispatch]);
 
+  useEffect(() => {
+    let isActive = true;
+
+    authApi.me()
+      .then((session) => {
+        if (!isActive) {
+          return;
+        }
+
+        const nextLoggedIn = Boolean(session?.user?.email);
+        setIsLoggedIn(nextLoggedIn);
+
+        if (session?.user?.email) {
+          setUserProfile((prev) => ({
+            ...prev,
+            name: session.user.name || prev.name,
+            email: session.user.email,
+          }));
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setIsLoggedIn(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [setUserProfile]);
+
+  useEffect(() => {
+    const handleAuthExpired = () => setIsLoggedIn(false);
+
+    window.addEventListener('auth:expired', handleAuthExpired);
+    return () => window.removeEventListener('auth:expired', handleAuthExpired);
+  }, []);
+
+  useEffect(() => {
+    if (!userProfile.email || userProfile.email === financeActions.DEFAULT_USER_PROFILE.email) {
+      setIsLoggedIn(false);
+    }
+  }, [userProfile.email]);
+
   const dispatchToastError = (error: any) => {
     const message = error?.message || String(error);
     window.dispatchEvent(new CustomEvent('finance-toast-error', { detail: { message } }));
@@ -330,7 +477,7 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     if (userProfile.email === 'guest@example.com') return;
     const storageKey = `yugi_finance_data_${userProfile.email}`;
-    const savedData = safeStorage.get(storageKey);
+    const savedData = safeStorage.getItem(storageKey);
     if (savedData) {
       try {
         const parsed = JSON.parse(savedData);
@@ -359,7 +506,7 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
         customCategories,
       };
       const storageKey = `yugi_finance_data_${userProfile.email}`;
-      safeStorage.set(storageKey, JSON.stringify(dataToSave));
+      safeStorage.setItem(storageKey, JSON.stringify(dataToSave));
     }, 750);
     return () => window.clearTimeout(handle);
   }, [customCategories, isDataLoaded, userProfile.email, userProfile.preferences]);
@@ -419,6 +566,45 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
       setIsLoading(false);
     }
   }, [userProfile.email, setTransactions, setSavingsGoals, setRecurringPayments, setLoans, setBudgets, setAccounts, setIncomeSources, setInvestments, setAuditLogs, setUserProfile, setIsLoading]);
+
+  const login = useCallback(async (email: string, password: string) => {
+    const response = await authApi.login(email, password);
+    const sessionUser = response?.user;
+
+    setUserProfile((prev) => ({
+      ...prev,
+      name: sessionUser?.name || prev.name || email.split('@')[0],
+      email: sessionUser?.email || email,
+    }));
+    setIsLoggedIn(true);
+
+    return true;
+  }, [setUserProfile]);
+
+  const signup = useCallback(async (name: string, email: string, password: string) => {
+    const response = await authApi.register(name, email, password);
+    const sessionUser = response?.user;
+
+    setUserProfile((prev) => ({
+      ...prev,
+      name: sessionUser?.name || name,
+      email: sessionUser?.email || email,
+    }));
+    setIsLoggedIn(true);
+
+    return true;
+  }, [setUserProfile]);
+
+  const logout = useCallback(async () => {
+    const email = userProfileRef.current.email;
+
+    try {
+      await authApi.logout();
+    } finally {
+      setIsLoggedIn(false);
+      clearDataForNewUser(email);
+    }
+  }, [clearDataForNewUser]);
 
   useEffect(() => {
     if (userProfile.email !== 'guest@example.com') {
@@ -1507,14 +1693,21 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
       transactions,
       savingsGoals,
       recurringPayments,
+      recurringTransactions: recurringPayments,
       loans,
       budgets,
       accounts,
+      bankAccounts: accounts,
+      categories,
       incomeSources,
       investments,
       auditLogs,
       familyAccount,
       userProfile,
+      isLoggedIn,
+      login,
+      signup,
+      logout,
       updateUserProfile,
       clearDataForNewUser,
       refreshData,
@@ -1578,6 +1771,10 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
       deleteTaxReport,
       forecasts,
       addForecast,
+      getTotalBalance,
+      getMonthlyIncome,
+      getMonthlyExpenses,
+      getNetWorth,
     }}>
       {children}
     </FinanceContext.Provider>

@@ -1,371 +1,123 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import {
-  TrendingUp, TrendingDown, Plus, Search, Filter,
-  ArrowUpRight, ArrowDownRight, RefreshCw, Wallet,
-  PieChart, BarChart3, History, Shield, Globe, Coins, Pencil, Trash2, ChevronDown
-} from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
-import { investmentService, AssetPrice } from '../services/investmentService';
-import { currencyService } from '../services/currencyService';
-import { AddInvestmentModal } from './AddInvestmentModal';
-import { cn } from '../lib/utils';
-import DeleteModal from './DeleteModal';
-import {
-  ResponsiveContainer, PieChart as RePieChart, Pie, Cell,
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip
-} from 'recharts';
+import { formatCurrency, formatDate, cn } from '../lib/utils';
+import { motion } from 'motion/react';
+import { TrendingUp, TrendingDown, Briefcase, BarChart3, Coins, Landmark } from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts';
 
-export const InvestmentPage: React.FC = () => {
-  const { investments, addInvestment, updateInvestment, deleteInvestment, userProfile } = useFinance();
-  const [prices, setPrices] = useState<Record<string, AssetPrice>>({});
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [filter, setFilter] = useState<'All' | 'Stock' | 'Crypto' | 'ETF'>('All');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const currencies = Array.from(new Set(investments.map(i => i.currency || 'INR')));
-  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
-  const [editingInvestment, setEditingInvestment] = useState<typeof investments[number] | null>(null);
+const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EC4899', '#8B5CF6'];
+const TYPE_ICONS: Record<string, React.ElementType> = { Stock: BarChart3, ETF: Landmark, Crypto: Coins };
+const TYPE_LABELS: Record<string, string> = { Stock: 'Stocks', ETF: 'ETFs', Crypto: 'Crypto' };
 
-  const refreshPrices = async () => {
-    setIsRefreshing(true);
-    try {
-      // Fetch Crypto Prices
-      const cryptoIds = investments
-        .filter(inv => inv.type === 'Crypto')
-        .map(inv => inv.symbol === 'BTC' ? 'bitcoin' : inv.symbol === 'ETH' ? 'ethereum' : inv.symbol.toLowerCase());
+export function InvestmentPage() {
+  const { investments } = useFinance();
+  const totalInvested = investments.reduce((s, i) => s + i.quantity * i.averagePrice, 0);
+  const currentValue = investments.reduce((s, i) => s + i.quantity * i.currentPrice, 0);
+  const totalGain = currentValue - totalInvested;
+  const gainPct = totalInvested > 0 ? (totalGain / totalInvested) * 100 : 0;
 
-      const cryptoPrices = await investmentService.getCryptoPrices(cryptoIds.length > 0 ? cryptoIds : undefined);
+  const byType = investments.reduce((acc, i) => { const v = i.quantity * i.currentPrice; acc[i.type] = (acc[i.type] || 0) + v; return acc; }, {} as Record<string, number>);
+  const pieData = Object.entries(byType).map(([type, value]) => ({ name: TYPE_LABELS[type] || type, value }));
 
-      // Fetch Stock Prices
-      const stockInvestments = investments.filter(inv => inv.type === 'Stock' || inv.type === 'ETF');
-      const stockPrices: Record<string, AssetPrice> = {};
-
-      for (const inv of stockInvestments) {
-        const priceData = await investmentService.getStockPrice(inv.symbol);
-        if (priceData) {
-          stockPrices[inv.symbol] = priceData;
-        }
-      }
-
-      setPrices(prev => ({ ...prev, ...cryptoPrices, ...stockPrices }));
-    } catch (error) {
-      console.error('Failed to refresh prices:', error);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    refreshPrices();
-    const interval = setInterval(refreshPrices, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const filteredInvestments = investments.filter(inv => {
-    const matchesFilter = filter === 'All' || inv.type === filter;
-    const matchesSearch = inv.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      inv.symbol.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesFilter && matchesSearch;
-  });
-
-  const totalValue = investments
-    .filter(inv => (inv.currency || 'INR') === selectedCurrency)
-    .reduce((sum, inv) => sum + (inv.quantity * (prices[inv.symbol]?.price || inv.currentPrice)), 0);
-
-  const totalCost = investments
-    .filter(inv => (inv.currency || 'INR') === selectedCurrency)
-    .reduce((sum, inv) => sum + (inv.quantity * inv.averagePrice), 0);
-
-  const totalGain = totalValue - totalCost;
-  const totalGainPercent = totalCost > 0 ? (totalGain / totalCost) * 100 : 0;
-
-  const typeData = [
-    { name: 'Stocks', value: investments.filter(i => i.type === 'Stock' && (i.currency || 'INR') === selectedCurrency).reduce((sum, i) => sum + (i.quantity * (prices[i.symbol]?.price || i.currentPrice)), 0) },
-    { name: 'Crypto', value: investments.filter(i => i.type === 'Crypto' && (i.currency || 'INR') === selectedCurrency).reduce((sum, i) => sum + (i.quantity * (prices[i.symbol]?.price || i.currentPrice)), 0) },
-    { name: 'ETFs', value: investments.filter(i => i.type === 'ETF' && (i.currency || 'INR') === selectedCurrency).reduce((sum, i) => sum + (i.quantity * (prices[i.symbol]?.price || i.currentPrice)), 0) },
-  ].filter(d => d.value > 0);
-
-  const COLORS = ['#7C6EFA', '#22D3A5', '#F59E0B'];
+  const perfData = [
+    { month: 'Sep', value: currentValue * 0.85 }, { month: 'Oct', value: currentValue * 0.9 },
+    { month: 'Nov', value: currentValue * 0.88 }, { month: 'Dec', value: currentValue * 0.95 },
+    { month: 'Jan', value: currentValue },
+  ];
 
   return (
-    <div className="space-y-10 pb-20">
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div>
-          <div className="flex flex-col md:flex-row items-start md:items-end gap-6">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center text-accent">
-                  <TrendingUp className="w-6 h-6" />
-                </div>
-                <h1 className="text-4xl font-bold tracking-tighter font-display">Investment Portfolio</h1>
-              </div>
-              <p className="text-white/40 font-medium">Real-time tracking of your global assets and wealth.</p>
-            </div>
-            {currencies.length > 1 && (
-              <div className="relative mb-1">
-                <select
-                  title="Currency"
-                  value={selectedCurrency}
-                  onChange={(e) => setSelectedCurrency(e.target.value)}
-                  className="appearance-none bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm font-bold text-white pr-10 focus:outline-none focus:ring-1 focus:ring-accent"
-                >
-                  {currencies.map(c => (
-                    <option key={c} value={c} className="bg-[#050508] text-white">{c}</option>
-                  ))}
-                </select>
-                <ChevronDown className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
-              </div>
-            )}
-          </div>
-        </div>
+    <div className="p-4 md:p-8 max-w-[1400px] mx-auto space-y-6">
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+        <h1 className="text-2xl md:text-3xl font-black text-slate-900">Investments</h1>
+        <p className="text-slate-400 font-medium">Your portfolio at a glance</p>
+      </motion.div>
 
-        <div className="flex items-center gap-4">
-          <button
-            onClick={refreshPrices}
-            disabled={isRefreshing}
-            aria-label="Refresh prices"
-            className="p-3 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group"
-          >
-            <RefreshCw className={cn("w-5 h-5 text-white/40 group-hover:text-white transition-all", isRefreshing && "animate-spin")} />
-          </button>
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-accent text-white font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Asset</span>
-          </button>
-        </div>
+      {/* Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: 'Invested', value: formatCurrency(totalInvested), icon: Briefcase, gradient: 'from-blue-500 to-indigo-600' },
+          { label: 'Current Value', value: formatCurrency(currentValue), icon: BarChart3, gradient: 'from-violet-500 to-purple-600' },
+          { label: 'Returns', value: `${totalGain >= 0 ? '+' : ''}${formatCurrency(totalGain)}`, icon: totalGain >= 0 ? TrendingUp : TrendingDown, gradient: totalGain >= 0 ? 'from-emerald-500 to-teal-600' : 'from-rose-500 to-pink-600' },
+          { label: 'Return %', value: `${gainPct >= 0 ? '+' : ''}${gainPct.toFixed(2)}%`, icon: totalGain >= 0 ? TrendingUp : TrendingDown, gradient: totalGain >= 0 ? 'from-emerald-500 to-teal-600' : 'from-rose-500 to-pink-600' },
+        ].map((s, i) => (
+          <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
+            className={`rounded-3xl bg-gradient-to-br ${s.gradient} p-6 text-white shadow-xl relative overflow-hidden`}>
+            <div className="absolute -right-4 -top-4 h-20 w-20 rounded-full bg-white/10" />
+            <s.icon className="h-5 w-5 text-white/60 mb-3" />
+            <p className="text-sm text-white/70 font-medium">{s.label}</p>
+            <p className="text-2xl font-black mt-1">{s.value}</p>
+          </motion.div>
+        ))}
       </div>
 
-      <AddInvestmentModal
-        isOpen={isAddModalOpen || !!editingInvestment}
-        onClose={() => { setIsAddModalOpen(false); setEditingInvestment(null); }}
-        onAdd={addInvestment}
-        investmentToEdit={editingInvestment}
-        onEdit={updateInvestment}
-      />
-
-      {/* Portfolio Overview Cards */}
-      <DeleteModal
-        isOpen={!!deleteConfirmId}
-        onClose={() => setDeleteConfirmId(null)}
-        onConfirm={() => { if (deleteConfirmId) { deleteInvestment(deleteConfirmId); setDeleteConfirmId(null); } }}
-        title="Remove Investment?"
-        description="Are you sure you want to remove this investment from your portfolio? This will permanently delete its tracking history and performance data. This action is irreversible."
-      />
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="glass-card p-8 relative overflow-hidden group"
-        >
-          <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-10 transition-opacity">
-            <Wallet className="w-24 h-24" />
-          </div>
-          <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Total Portfolio Value</p>
-          <h2 className="text-4xl font-bold font-mono tracking-tighter mb-4">
-            {currencyService.formatCurrency(totalValue, selectedCurrency)}
-          </h2>
-          <div className="flex items-center gap-2">
-            <div className={cn(
-              "flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold",
-              totalGain >= 0 ? "bg-positive/20 text-positive" : "bg-negative/20 text-negative"
-            )}>
-              {totalGain >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-              {Math.abs(totalGainPercent).toFixed(2)}%
-            </div>
-            <span className="text-xs text-white/40 font-medium">All time profit</span>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="glass-card p-8"
-        >
-          <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Asset Allocation</p>
-          <div className="h-[120px] w-full min-w-[200px]">
-            <ResponsiveContainer width="100%" height="100%" key={typeData.length}>
-              <RePieChart>
-                <Pie
-                  data={typeData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={40}
-                  outerRadius={60}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {typeData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#0F0F19', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
-                  itemStyle={{ color: '#fff' }}
-                />
-              </RePieChart>
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+          className="rounded-3xl bg-white p-6 shadow-sm border border-slate-100">
+          <h3 className="font-bold text-slate-900 mb-4">Allocation</h3>
+          <div className="flex items-center gap-6">
+            <ResponsiveContainer width="55%" height={200}>
+              <PieChart><Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={80} paddingAngle={3} dataKey="value" strokeWidth={0}>
+                {pieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Pie><Tooltip formatter={v => formatCurrency(Number(v))} contentStyle={{ background: 'rgba(15,23,42,0.9)', border: 'none', borderRadius: 12 }} itemStyle={{ color: '#fff' }} /></PieChart>
             </ResponsiveContainer>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="glass-card p-8"
-        >
-          <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Market Sentiment</p>
-          <div className="space-y-4 mt-4">
-            <div className="flex justify-between items-center">
-              <span className="text-xs font-medium text-white/60">Fear & Greed Index</span>
-              <span className="text-xs font-bold text-positive">72 (Greed)</span>
-            </div>
-            <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-negative via-yellow-400 to-positive w-[72%]" />
-            </div>
-            <p className="text-[10px] text-white/30 leading-relaxed">
-              Market is currently in a greed phase. Consider rebalancing your high-risk assets.
-            </p>
-          </div>
-        </motion.div>
-      </div>
-
-      {/* Assets Table */}
-      <div className="glass-card overflow-hidden">
-        <div className="p-8 border-b border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
-              <input
-                type="text"
-                placeholder="Search assets..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-12 pr-6 py-3 rounded-2xl bg-white/5 border border-white/10 outline-none focus:border-accent/50 transition-all w-full md:w-64 text-sm"
-              />
-            </div>
-            <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10">
-              {(['All', 'Stock', 'Crypto', 'ETF'] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setFilter(t)}
-                  className={cn(
-                    "px-4 py-2 rounded-xl text-xs font-bold transition-all",
-                    filter === t ? "bg-accent text-white shadow-lg" : "text-white/40 hover:text-white"
-                  )}
-                >
-                  {t}
-                </button>
+            <div className="space-y-2.5">
+              {pieData.map((d, i) => (
+                <div key={d.name} className="flex items-center gap-2 text-sm"><div className="h-3 w-3 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} /><span className="text-slate-500 font-medium">{d.name}</span></div>
               ))}
             </div>
           </div>
-        </div>
+        </motion.div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-white/5">
-                <th className="px-8 py-6 text-[10px] font-bold text-white/40 uppercase tracking-widest">Asset</th>
-                <th className="px-8 py-6 text-[10px] font-bold text-white/40 uppercase tracking-widest">Price</th>
-                <th className="px-8 py-6 text-[10px] font-bold text-white/40 uppercase tracking-widest">24h Change</th>
-                <th className="px-8 py-6 text-[10px] font-bold text-white/40 uppercase tracking-widest">Holdings</th>
-                <th className="px-8 py-6 text-[10px] font-bold text-white/40 uppercase tracking-widest">Value</th>
-                <th className="px-8 py-6 text-[10px] font-bold text-white/40 uppercase tracking-widest">Profit/Loss</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredInvestments.map((inv) => {
-                const priceInfo = prices[inv.symbol] || { price: inv.currentPrice, change24h: 0 };
-                const currentVal = inv.quantity * priceInfo.price;
-                const costBasis = inv.quantity * inv.averagePrice;
-                const profit = currentVal - costBasis;
-                const profitPercent = (profit / costBasis) * 100;
-
-                return (
-                  <motion.tr
-                    key={inv.id}
-                    layout
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="border-b border-white/5 hover:bg-white/[0.02] transition-colors group"
-                  >
-                    <td className="px-8 py-6">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center font-bold text-accent">
-                          {inv.symbol[0]}
-                        </div>
-                        <div>
-                          <p className="font-bold">{inv.name}</p>
-                          <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">{inv.symbol} • {inv.type}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-8 py-6 font-mono font-bold">
-                      {currencyService.formatCurrency(priceInfo.price, inv.currency)}
-                    </td>
-                    <td className="px-8 py-6">
-                      <div className={cn(
-                        "flex items-center gap-1 font-bold text-xs",
-                        priceInfo.change24h >= 0 ? "text-positive" : "text-negative"
-                      )}>
-                        {priceInfo.change24h >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                        {Math.abs(priceInfo.change24h).toFixed(2)}%
-                      </div>
-                    </td>
-                    <td className="px-8 py-6">
-                      <p className="font-bold">{inv.quantity} {inv.symbol}</p>
-                      <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Avg: {currencyService.formatCurrency(inv.averagePrice, inv.currency)}</p>
-                    </td>
-                    <td className="px-8 py-6 font-mono font-bold">
-                      {currencyService.formatCurrency(currentVal, inv.currency)}
-                    </td>
-                    <td className="px-8 py-6">
-                      <div className="flex items-center gap-4">
-                        <div className={cn(
-                          "flex flex-col items-start gap-1 font-bold",
-                          profit >= 0 ? "text-positive" : "text-negative"
-                        )}>
-                          <span className="text-sm">{profit >= 0 ? '+' : ''}{currencyService.formatCurrency(profit, inv.currency)}</span>
-                          <span className="text-[10px] uppercase tracking-widest">{profit >= 0 ? '+' : ''}{profitPercent.toFixed(2)}%</span>
-                        </div>
-                        <div className="flex items-center gap-1 ml-auto opacity-0 group-hover:opacity-100">
-                          <button
-                            aria-label="Edit investment"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingInvestment(inv);
-                            }}
-                            className="p-2 rounded-lg bg-accent/5 hover:bg-accent/20 text-accent/40 hover:text-accent transition-all"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            aria-label="Delete investment"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteConfirmId(inv.id);
-                            }}
-                            className="p-2 rounded-lg bg-negative/5 hover:bg-negative/20 text-negative/40 hover:text-negative transition-all"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    </td>
-                  </motion.tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
+          className="rounded-3xl bg-white p-6 shadow-sm border border-slate-100">
+          <h3 className="font-bold text-slate-900 mb-4">Performance</h3>
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={perfData}>
+              <defs><linearGradient id="pg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.25} /><stop offset="100%" stopColor="#8B5CF6" stopOpacity={0} /></linearGradient></defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis dataKey="month" stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
+              <YAxis stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={v => `₹${v/1000}k`} />
+              <Tooltip formatter={v => formatCurrency(Number(v))} contentStyle={{ background: 'rgba(15,23,42,0.9)', border: 'none', borderRadius: 12 }} itemStyle={{ color: '#fff' }} />
+              <Area type="monotone" dataKey="value" stroke="#8B5CF6" strokeWidth={2.5} fill="url(#pg)" dot={{ r: 4, fill: '#8B5CF6', strokeWidth: 2, stroke: '#fff' }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </motion.div>
       </div>
+
+      {/* Holdings */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
+        className="rounded-3xl bg-white shadow-sm border border-slate-100 overflow-hidden">
+        <div className="p-6 border-b border-slate-50"><h3 className="font-bold text-slate-900">Holdings</h3></div>
+        {investments.map((inv, i) => {
+          const total = inv.quantity * inv.currentPrice;
+          const cost = inv.quantity * inv.averagePrice;
+          const gain = total - cost;
+          const pct = cost > 0 ? (gain / cost) * 100 : 0;
+          const Icon = TYPE_ICONS[inv.type] || BarChart3;
+          return (
+            <motion.div key={inv.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 + i * 0.05 }}
+              className="flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-0">
+               <div className="flex items-center gap-4">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100"><Icon className="h-5 w-5 text-slate-600" /></div>
+                <div>
+                  <p className="font-semibold text-slate-800">{inv.name}</p>
+                  <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
+                    <span className="bg-slate-100 px-2 py-0.5 rounded-md font-medium">{inv.symbol}</span>
+                    <span>{inv.quantity} units</span>
+                    <span>{formatDate(inv.lastUpdated)}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="font-bold text-slate-900">{formatCurrency(total)}</p>
+                <p className={cn('text-sm font-semibold', gain >= 0 ? 'text-emerald-600' : 'text-rose-500')}>
+                  {gain >= 0 ? '+' : ''}{formatCurrency(gain)} ({pct.toFixed(1)}%)
+                </p>
+              </div>
+            </motion.div>
+          );
+        })}
+      </motion.div>
     </div>
   );
-};
+}

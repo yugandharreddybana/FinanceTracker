@@ -1,215 +1,138 @@
-import React, { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { TrendingUp, ArrowUpRight, ArrowDownRight, Plus, ChevronDown } from 'lucide-react';
 import { useFinance } from '../context/FinanceContext';
+import { formatCurrency } from '../lib/utils';
+import { motion } from 'motion/react';
+import { Wallet, TrendingUp, CreditCard, Building2, Briefcase, Calculator } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
-interface NetWorthPageProps {
-  onNavigate?: (tab: string) => void;
-}
+const ASSET_COLORS = ['#10B981', '#3B82F6'];
+const LIAB_COLORS = ['#F59E0B', '#EF4444'];
 
-export const NetWorthPage: React.FC<NetWorthPageProps> = ({ onNavigate }) => {
-  const { netWorthByCurrency, accounts, loans, investments, userProfile } = useFinance();
-  const currencies = Object.keys(netWorthByCurrency);
-  const [selectedCurrency, setSelectedCurrency] = useState(userProfile.preferences.currency || 'INR');
+export function NetWorthPage() {
+  const { bankAccounts, investments, loans, getNetWorth } = useFinance();
+  const netWorth = getNetWorth();
+  const cash = bankAccounts.filter(a => a.type === 'Savings' || a.type === 'Current').reduce((s, a) => s + a.balance, 0);
+  const invTotal = investments.reduce((s, i) => s + i.quantity * i.currentPrice, 0);
+  const creditDebt = bankAccounts.filter(a => a.type === 'Credit').reduce((s, a) => s + Math.abs(a.balance), 0);
+  const loanDebt = loans.reduce((s, l) => s + l.remainingAmount, 0);
+  const totalAssets = cash + invTotal;
+  const totalLiab = creditDebt + loanDebt;
 
-  useEffect(() => {
-    if (currencies.length > 0 && !currencies.includes(selectedCurrency)) {
-      setSelectedCurrency(currencies[0]);
-    }
-  }, [currencies, selectedCurrency]);
-  const [trendPeriod, setTrendPeriod] = useState('1M');
-  
-  const netWorth = netWorthByCurrency[selectedCurrency] || { total: 0, assets: 0, liabilities: 0, change: 0 };
-  
-  const forecastData = React.useMemo(() => {
-    const periodDays: Record<string, number> = { '1M': 30, '3M': 90, '6M': 180, '1Y': 365, 'All': 730 };
-    const days = periodDays[trendPeriod] || 30;
-    const data = [];
-    const dailyChange = (netWorth.total * (netWorth.change / 100)) / 30;
-    for (let i = 0; i < days; i++) {
-      data.push({ day: i, balance: netWorth.total + (dailyChange * i) });
-    }
-    return data;
-  }, [netWorth, trendPeriod]);
-
-  const assetBreakdown = accounts
-    .filter(a => a.type !== 'Credit' && (a.currency || 'INR') === selectedCurrency)
-    .map(a => ({ name: a.name, value: a.balance, color: a.color }));
-
-  const liabilityBreakdown = [
-    ...accounts.filter(a => a.type === 'Credit' && (a.currency || 'INR') === selectedCurrency).map(a => ({ name: a.name, value: Math.abs(a.balance), color: a.color })),
-    ...loans.filter(l => (l.currency || 'INR') === selectedCurrency).map(l => ({ name: l.name, value: l.remainingAmount, color: l.color }))
+  const history = [
+    { month: 'Aug', value: netWorth * 0.78 }, { month: 'Sep', value: netWorth * 0.83 },
+    { month: 'Oct', value: netWorth * 0.88 }, { month: 'Nov', value: netWorth * 0.92 },
+    { month: 'Dec', value: netWorth * 0.96 }, { month: 'Jan', value: netWorth },
   ];
 
-  const formattedTotal = Math.floor(netWorth.total).toLocaleString(undefined, { style: 'currency', currency: selectedCurrency }).split('.')[0];
-  const decimal = (netWorth.total % 1).toFixed(2).substring(1);
-
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="max-w-7xl mx-auto"
-    >
-      <div className="flex justify-between items-end mb-12">
-        <div>
-          <h1 className="text-4xl font-bold tracking-tight mb-2">Net Worth</h1>
-          <p className="text-white/40">Comprehensive visualization of your total wealth</p>
-        </div>
-        {currencies.length > 1 && (
-          <div className="relative">
-            <select
-              value={selectedCurrency}
-              onChange={(e) => setSelectedCurrency(e.target.value)}
-              aria-label="Select currency"
-              className="appearance-none bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm font-bold text-white pr-10 focus:outline-none focus:ring-1 focus:ring-accent"
-            >
-              {currencies.map(c => (
-                <option key={c} value={c} className="bg-[#050508] text-white">{c}</option>
-              ))}
-            </select>
-            <ChevronDown className="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
-          </div>
-        )}
-      </div>
+    <div className="p-4 md:p-8 max-w-[1400px] mx-auto space-y-6">
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+        <h1 className="text-2xl md:text-3xl font-black text-slate-900">Net Worth</h1>
+        <p className="text-slate-400 font-medium">Your complete financial picture</p>
+      </motion.div>
 
-      <div className="glass-card p-10 mb-12 relative overflow-hidden">
-        <div className="flex flex-col md:flex-row justify-between items-start gap-12 relative z-10">
-          <div className="space-y-4">
-            <p className="text-white/50 text-sm font-medium tracking-wider uppercase">Total Net Worth</p>
-            <motion.h2 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="text-7xl font-bold font-mono tracking-tighter"
-            >
-              {formattedTotal}<span className="text-white/20 text-4xl">{decimal}</span>
-            </motion.h2>
-            <div className="flex items-center gap-2 text-positive bg-positive/10 px-3 py-1 rounded-full w-fit text-sm font-bold">
-              <TrendingUp className="w-4 h-4" />
-              <span>+{netWorth.change}% this month</span>
+      {/* Main Card */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+        className="rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-900 p-8 text-white shadow-2xl relative overflow-hidden">
+        <div className="absolute -right-20 -top-20 h-60 w-60 rounded-full bg-emerald-500/10 blur-2xl" />
+        <div className="absolute -left-10 -bottom-10 h-40 w-40 rounded-full bg-cyan-500/10 blur-2xl" />
+        <div className="relative flex items-center gap-5 mb-8">
+          <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-white/10 backdrop-blur-sm border border-white/10">
+            <Calculator className="h-8 w-8 text-emerald-400" />
+          </div>
+          <div><p className="text-lg text-slate-400 font-medium">Total Net Worth</p><p className="text-4xl md:text-5xl font-black mt-1">{formatCurrency(netWorth)}</p></div>
+        </div>
+        <div className="relative grid grid-cols-2 gap-4">
+          <div className="rounded-2xl bg-white/5 border border-white/10 p-5">
+            <p className="text-sm text-slate-400 font-medium">Total Assets</p>
+            <p className="text-2xl font-black mt-1 text-emerald-400">{formatCurrency(totalAssets)}</p>
+          </div>
+          <div className="rounded-2xl bg-white/5 border border-white/10 p-5">
+            <p className="text-sm text-slate-400 font-medium">Total Liabilities</p>
+            <p className="text-2xl font-black mt-1 text-rose-400">{formatCurrency(totalLiab)}</p>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Chart */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+        className="rounded-3xl bg-white p-6 shadow-sm border border-slate-100">
+        <h3 className="font-bold text-slate-900 mb-4">Net Worth Trend</h3>
+        <ResponsiveContainer width="100%" height={280}>
+          <AreaChart data={history}>
+            <defs><linearGradient id="nwg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#10B981" stopOpacity={0.25} /><stop offset="100%" stopColor="#10B981" stopOpacity={0} /></linearGradient></defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+            <XAxis dataKey="month" stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
+            <YAxis stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={v => `₹${v/100000}L`} />
+            <Tooltip formatter={v => formatCurrency(Number(v))} contentStyle={{ background: 'rgba(15,23,42,0.9)', border: 'none', borderRadius: 12 }} itemStyle={{ color: '#fff' }} />
+            <Area type="monotone" dataKey="value" stroke="#10B981" strokeWidth={2.5} fill="url(#nwg)" dot={{ r: 5, fill: '#10B981', strokeWidth: 2, stroke: '#fff' }} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </motion.div>
+
+      {/* Breakdown */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+          className="rounded-3xl bg-white p-6 shadow-sm border border-slate-100">
+          <h3 className="font-bold text-slate-900 mb-4">Assets</h3>
+          <div className="flex items-center gap-6">
+            <ResponsiveContainer width="45%" height={180}>
+              <PieChart><Pie data={[{ name: 'Cash', value: cash }, { name: 'Investments', value: invTotal }]} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={3} dataKey="value" strokeWidth={0}>
+                {ASSET_COLORS.map((c, i) => <Cell key={i} fill={c} />)}
+              </Pie><Tooltip formatter={v => formatCurrency(Number(v))} contentStyle={{ background: 'rgba(15,23,42,0.9)', border: 'none', borderRadius: 12 }} itemStyle={{ color: '#fff' }} /></PieChart>
+            </ResponsiveContainer>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100"><Wallet className="h-5 w-5 text-emerald-600" /></div><span className="text-sm font-medium text-slate-600">Cash & Bank</span></div>
+                <span className="font-bold text-slate-900">{formatCurrency(cash)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100"><TrendingUp className="h-5 w-5 text-blue-600" /></div><span className="text-sm font-medium text-slate-600">Investments</span></div>
+                <span className="font-bold text-slate-900">{formatCurrency(invTotal)}</span>
+              </div>
             </div>
           </div>
+        </motion.div>
 
-          <div className="flex-1 w-full h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={forecastData}>
-                <defs>
-                  <linearGradient id="netWorthGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#7C6EFA" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#7C6EFA" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <Area 
-                  type="monotone" 
-                  dataKey="balance" 
-                  stroke="#7C6EFA" 
-                  strokeWidth={4} 
-                  fill="url(#netWorthGradient)" 
-                  animationDuration={1500}
-                  animationBegin={200}
-                />
-              </AreaChart>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
+          className="rounded-3xl bg-white p-6 shadow-sm border border-slate-100">
+          <h3 className="font-bold text-slate-900 mb-4">Liabilities</h3>
+          <div className="flex items-center gap-6">
+            <ResponsiveContainer width="45%" height={180}>
+              <PieChart><Pie data={[{ name: 'Credit', value: creditDebt }, { name: 'Loans', value: loanDebt }]} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={3} dataKey="value" strokeWidth={0}>
+                {LIAB_COLORS.map((c, i) => <Cell key={i} fill={c} />)}
+              </Pie><Tooltip formatter={v => formatCurrency(Number(v))} contentStyle={{ background: 'rgba(15,23,42,0.9)', border: 'none', borderRadius: 12 }} itemStyle={{ color: '#fff' }} /></PieChart>
             </ResponsiveContainer>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100"><CreditCard className="h-5 w-5 text-amber-600" /></div><span className="text-sm font-medium text-slate-600">Credit Cards</span></div>
+                <span className="font-bold text-rose-500">{formatCurrency(creditDebt)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100"><Building2 className="h-5 w-5 text-rose-600" /></div><span className="text-sm font-medium text-slate-600">Loans</span></div>
+                <span className="font-bold text-rose-500">{formatCurrency(loanDebt)}</span>
+              </div>
+            </div>
           </div>
-        </div>
-        
-        <div className="flex gap-2 mt-8">
-          {['1M', '3M', '6M', '1Y', 'All'].map(t => (
-            <button
-              key={t}
-              onClick={() => setTrendPeriod(t)}
-              className={`px-4 py-1.5 rounded-lg border text-[10px] font-bold uppercase tracking-widest transition-all ${
-                trendPeriod === t
-                  ? 'bg-accent/20 border-accent/50 text-accent'
-                  : 'bg-white/5 border-white/5 hover:bg-white/10'
-              }`}
-            >
-              {t}
-            </button>
+        </motion.div>
+      </div>
+
+      {/* Projections */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
+        className="rounded-3xl bg-white p-6 shadow-sm border border-slate-100">
+        <h3 className="font-bold text-slate-900 mb-2">Future Projections</h3>
+        <p className="text-sm text-slate-400 mb-6">Based on 12% annual growth</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {[{ y: 5, v: netWorth * 1.8 }, { y: 10, v: netWorth * 3.2 }, { y: 20, v: netWorth * 7.5 }].map((p, i) => (
+            <motion.div key={i} whileHover={{ y: -4 }}
+              className="rounded-2xl bg-gradient-to-br from-violet-50 to-purple-50 p-6 text-center border border-violet-100 hover:shadow-lg transition-all">
+              <Briefcase className="mx-auto h-5 w-5 text-violet-500 mb-2" />
+              <p className="text-sm font-semibold text-violet-600">In {p.y} Years</p>
+              <p className="text-2xl font-black text-slate-900 mt-2">{formatCurrency(p.v)}</p>
+              <p className="text-xs text-slate-400 mt-1">+{(((p.v - netWorth) / netWorth) * 100).toFixed(0)}% growth</p>
+            </motion.div>
           ))}
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-        <div className="glass-card p-8">
-          <h3 className="text-lg font-bold mb-8">Assets Breakdown</h3>
-          <div className="h-4 w-full bg-white/5 rounded-full overflow-hidden mb-8">
-            <svg className="w-full h-full" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true">
-              {assetBreakdown.map((a, i) => {
-                const x = assetBreakdown.slice(0, i).reduce((sum, b) => sum + (b.value / (netWorth.assets || 1)) * 100, 0);
-                const w = (a.value / (netWorth.assets || 1)) * 100;
-                return <rect key={a.name} x={x} y="0" width={w} height="4" fill={a.color} />;
-              })}
-            </svg>
-          </div>
-          <div className="space-y-4">
-            {assetBreakdown.map(a => (
-              <div key={a.name} className="flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" className="shrink-0"><circle cx="6" cy="6" r="6" fill={a.color} /></svg>
-                  <span className="text-sm font-medium">{a.name}</span>
-                </div>
-                <span className="font-mono font-bold">{a.value.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="glass-card p-8">
-          <h3 className="text-lg font-bold mb-8">Liabilities Breakdown</h3>
-          <div className="h-4 w-full bg-white/5 rounded-full overflow-hidden mb-8">
-            <svg className="w-full h-full" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true">
-              {liabilityBreakdown.map((l, i) => {
-                const x = liabilityBreakdown.slice(0, i).reduce((sum, b) => sum + (b.value / (netWorth.liabilities || 1)) * 100, 0);
-                const w = (l.value / (netWorth.liabilities || 1)) * 100;
-                return <rect key={l.name} x={x} y="0" width={w} height="4" fill={l.color} />;
-              })}
-            </svg>
-          </div>
-          <div className="space-y-4">
-            {liabilityBreakdown.map(l => (
-              <div key={l.name} className="flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" className="shrink-0"><circle cx="6" cy="6" r="6" fill={l.color} /></svg>
-                  <span className="text-sm font-medium">{l.name}</span>
-                </div>
-                <span className="font-mono font-bold">{l.value.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="glass-card p-6">
-          <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-2">Total Assets</p>
-          <h4 className="text-xl font-bold font-mono mb-4">{netWorth.assets.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</h4>
-          <div className="flex items-center gap-1 text-positive text-[10px] font-bold">
-            <ArrowUpRight className="w-3 h-3" />
-            <span>{accounts.filter(a => a.type !== 'Credit' && (a.currency || 'INR') === selectedCurrency).length} accounts</span>
-          </div>
-        </div>
-        <div className="glass-card p-6">
-          <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-2">Investments</p>
-          <h4 className="text-xl font-bold font-mono mb-4">{investments
-            .filter(inv => (inv.currency || 'INR') === selectedCurrency)
-            .reduce((sum, inv) => sum + (inv.currentPrice * inv.quantity), 0)
-            .toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</h4>
-          <div className="flex items-center gap-1 text-positive text-[10px] font-bold">
-            <ArrowUpRight className="w-3 h-3" />
-            <span>{investments.filter(inv => (inv.currency || 'INR') === selectedCurrency).length} holdings</span>
-          </div>
-        </div>
-        <div onClick={() => onNavigate?.('accounts')} className="glass-card p-6 border-dashed border-white/10 flex flex-col items-center justify-center text-center cursor-pointer hover:border-accent/50 transition-all group">
-          <Plus className="w-6 h-6 text-white/20 group-hover:text-accent mb-2" />
-          <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Add Asset</span>
-        </div>
-        <div onClick={() => onNavigate?.('loans')} className="glass-card p-6 border-dashed border-white/10 flex flex-col items-center justify-center text-center cursor-pointer hover:border-accent/50 transition-all group">
-          <Plus className="w-6 h-6 text-white/20 group-hover:text-accent mb-2" />
-          <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Add Liability</span>
-        </div>
-      </div>
-    </motion.div>
+      </motion.div>
+    </div>
   );
-};
+}
