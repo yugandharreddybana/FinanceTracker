@@ -29,7 +29,7 @@ public class LoanController {
     public ResponseEntity<Loan> create(@Valid @RequestBody Loan loan, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         loan.setUserId(userId);
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(loan));
+        return ResponseEntity.ok(service.create(loan));
     }
 
     @PutMapping("/{id}")

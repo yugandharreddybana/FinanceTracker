@@ -1,13 +1,29 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Layout, Plus, Download, Share2, Trash2, 
+  Layout, Plus, Download, Trash2, 
   BarChart3, PieChart, LineChart, Table,
-  Settings2, GripVertical, ChevronRight,
+  Settings2, GripVertical,
   FileText, Calendar, Filter, Save, Printer
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  BarChart as RechartsBarChart,
+  Bar,
+  PieChart as RechartsPieChart,
+  Pie,
+  Cell,
+  LineChart as RechartsLineChart,
+  Line,
+  CartesianGrid,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { useFinance } from '../context/FinanceContext';
 import { cn } from '../lib/utils';
+import { currencyService } from '../services/currencyService';
+import { Transaction } from '../types';
 
 interface ReportWidget {
   id: string;
@@ -18,6 +34,74 @@ interface ReportWidget {
 }
 
 const STORAGE_KEY = 'ft_report_template';
+const CHART_COLORS = ['#7C6EFA', '#22D3A5', '#F59E0B', '#FF4E00', '#3B82F6', '#EC4899'];
+const CHART_COLOR_CLASSES = ['bg-accent', 'bg-positive', 'bg-yellow-400', 'bg-orange-500', 'bg-blue-500', 'bg-pink-500'];
+
+function filterTransactionsByPeriod(transactions: Transaction[], period: string) {
+  const now = new Date();
+
+  if (period === 'Current Month') {
+    return transactions.filter((transaction) => {
+      const date = new Date(transaction.date);
+      return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+    });
+  }
+
+  if (period === 'Last 6 Months') {
+    const cutoff = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    return transactions.filter((transaction) => new Date(transaction.date) >= cutoff);
+  }
+
+  return transactions;
+}
+
+function buildMonthlyExpenseSeries(transactions: Transaction[]) {
+  const buckets = new Map<string, number>();
+
+  transactions
+    .filter((transaction) => transaction.type === 'expense')
+    .forEach((transaction) => {
+      const date = new Date(transaction.date);
+      const label = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+      buckets.set(label, (buckets.get(label) || 0) + Math.abs(transaction.amount));
+    });
+
+  return Array.from(buckets.entries()).map(([label, total]) => ({ label, total }));
+}
+
+function buildCategorySeries(transactions: Transaction[]) {
+  const buckets = new Map<string, number>();
+
+  transactions
+    .filter((transaction) => transaction.type === 'expense')
+    .forEach((transaction) => {
+      const category = transaction.category || 'Others';
+      buckets.set(category, (buckets.get(category) || 0) + Math.abs(transaction.amount));
+    });
+
+  return Array.from(buckets.entries())
+    .map(([label, total]) => ({ label, total }))
+    .sort((left, right) => right.total - left.total)
+    .slice(0, 6);
+}
+
+function buildCashflowSeries(transactions: Transaction[]) {
+  const buckets = new Map<string, number>();
+
+  transactions.forEach((transaction) => {
+    const date = new Date(transaction.date);
+    const label = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    buckets.set(label, (buckets.get(label) || 0) + transaction.amount);
+  });
+
+  return Array.from(buckets.entries()).map(([label, total]) => ({ label, total }));
+}
+
+function buildRecentTransactionRows(transactions: Transaction[]) {
+  return [...transactions]
+    .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime())
+    .slice(0, 6);
+}
 
 // U7: Generate a CSV Blob and trigger browser download
 function generateCSV(data: Record<string, unknown>[], filename: string) {
@@ -48,7 +132,7 @@ function generateJSON(data: unknown, filename: string) {
 }
 
 export const ReportBuilderPage: React.FC = () => {
-  const { transactions, budgets, accounts } = useFinance();
+  const { transactions, budgets, accounts, userProfile } = useFinance();
   const [widgets, setWidgets] = useState<ReportWidget[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -61,8 +145,15 @@ export const ReportBuilderPage: React.FC = () => {
       { id: '2', type: 'pie', title: 'Category Distribution', metric: 'Categories', period: 'Current Month' }
     ]; }
   });
-  const [isAdding, setIsAdding] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
+  const reportCurrency = userProfile.preferences.currency || 'INR';
+
+  const formatCompactCurrency = (value: number) => new Intl.NumberFormat(undefined, {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+    style: 'currency',
+    currency: reportCurrency,
+  }).format(value);
 
   const addWidget = (type: ReportWidget['type']) => {
     const newWidget: ReportWidget = {
@@ -73,7 +164,6 @@ export const ReportBuilderPage: React.FC = () => {
       period: 'Current Month'
     };
     setWidgets([...widgets, newWidget]);
-    setIsAdding(false);
   };
 
   const removeWidget = (id: string) => {
@@ -101,6 +191,109 @@ export const ReportBuilderPage: React.FC = () => {
   // U7: Print using browser's print dialog (CSS handles hiding sidebar)
   const exportPrint = () => {
     window.print();
+  };
+
+  const renderWidgetContent = (widget: ReportWidget) => {
+    const scopedTransactions = filterTransactionsByPeriod(transactions, widget.period);
+
+    if (scopedTransactions.length === 0) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-6 text-center">
+          <p className="text-sm font-bold text-white/70">No transactions match this widget yet.</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-white/25">Add data or change the reporting period.</p>
+        </div>
+      );
+    }
+
+    if (widget.type === 'bar') {
+      const data = buildMonthlyExpenseSeries(scopedTransactions);
+      return (
+        <ResponsiveContainer width="100%" height="100%">
+          <RechartsBarChart data={data}>
+            <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
+            <XAxis dataKey="label" tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={formatCompactCurrency} />
+            <Tooltip
+              formatter={(value: number) => [currencyService.formatCurrency(value, reportCurrency), 'Expenses']}
+              contentStyle={{ backgroundColor: '#0F0F19', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px' }}
+            />
+            <Bar dataKey="total" radius={[10, 10, 0, 0]} fill="#7C6EFA" />
+          </RechartsBarChart>
+        </ResponsiveContainer>
+      );
+    }
+
+    if (widget.type === 'pie') {
+      const data = buildCategorySeries(scopedTransactions);
+      return (
+        <div className="grid h-full gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+          <ResponsiveContainer width="100%" height="100%">
+            <RechartsPieChart>
+              <Tooltip
+                formatter={(value: number) => [currencyService.formatCurrency(value, reportCurrency), 'Spend']}
+                contentStyle={{ backgroundColor: '#0F0F19', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px' }}
+              />
+              <Pie data={data} dataKey="total" nameKey="label" innerRadius={55} outerRadius={82} paddingAngle={3}>
+                {data.map((entry, index) => (
+                  <Cell key={entry.label} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                ))}
+              </Pie>
+            </RechartsPieChart>
+          </ResponsiveContainer>
+          <div className="space-y-3">
+            {data.map((entry, index) => (
+              <div key={entry.label} className="flex items-center justify-between rounded-xl bg-white/[0.03] px-4 py-3">
+                <div className="flex items-center gap-3">
+                      <span className={cn('h-2.5 w-2.5 rounded-full', CHART_COLOR_CLASSES[index % CHART_COLOR_CLASSES.length])} />
+                  <span className="text-xs font-bold text-white/70">{entry.label}</span>
+                </div>
+                <span className="text-xs font-bold text-white">{currencyService.formatCurrency(entry.total, reportCurrency)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (widget.type === 'line') {
+      const data = buildCashflowSeries(scopedTransactions);
+      return (
+        <ResponsiveContainer width="100%" height="100%">
+          <RechartsLineChart data={data}>
+            <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
+            <XAxis dataKey="label" tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={formatCompactCurrency} />
+            <Tooltip
+              formatter={(value: number) => [currencyService.formatCurrency(value, reportCurrency), 'Net flow']}
+              contentStyle={{ backgroundColor: '#0F0F19', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px' }}
+            />
+            <Line dataKey="total" type="monotone" stroke="#22D3A5" strokeWidth={3} dot={{ r: 4, fill: '#22D3A5' }} activeDot={{ r: 6 }} />
+          </RechartsLineChart>
+        </ResponsiveContainer>
+      );
+    }
+
+    const rows = buildRecentTransactionRows(scopedTransactions);
+    return (
+      <div className="h-full overflow-hidden rounded-2xl border border-white/5 bg-white/[0.02]">
+        <div className="grid grid-cols-[1.1fr_0.8fr_0.7fr] border-b border-white/5 px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white/30">
+          <span>Merchant</span>
+          <span>Category</span>
+          <span className="text-right">Amount</span>
+        </div>
+        <div className="divide-y divide-white/5">
+          {rows.map((transaction) => (
+            <div key={transaction.id} className="grid grid-cols-[1.1fr_0.8fr_0.7fr] px-4 py-3 text-sm font-medium text-white/70">
+              <span className="truncate pr-4">{transaction.merchant}</span>
+              <span className="truncate pr-4">{transaction.category || 'Others'}</span>
+              <span className={cn('text-right font-bold', transaction.amount >= 0 ? 'text-positive' : 'text-white')}>
+                {currencyService.formatCurrency(transaction.amount, transaction.currency || reportCurrency)}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -240,15 +433,12 @@ export const ReportBuilderPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="h-64 w-full bg-white/[0.02] rounded-2xl border border-dashed border-white/10 flex flex-col items-center justify-center gap-4">
-                    {widget.type === 'bar' && <BarChart3 className="w-12 h-12 text-accent/20" />}
-                    {widget.type === 'pie' && <PieChart className="w-12 h-12 text-positive/20" />}
-                    {widget.type === 'line' && <LineChart className="w-12 h-12 text-accent/20" />}
-                    {widget.type === 'table' && <Table className="w-12 h-12 text-white/10" />}
-                    <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">
-                      {widget.metric} • {widget.period}
-                    </p>
+                  <div className="h-64 w-full rounded-2xl border border-white/5 bg-white/[0.02] p-4">
+                    {renderWidgetContent(widget)}
                   </div>
+                  <p className="mt-4 text-[10px] font-bold uppercase tracking-widest text-white/20">
+                    {widget.metric} • {widget.period}
+                  </p>
                 </motion.div>
               ))}
             </AnimatePresence>

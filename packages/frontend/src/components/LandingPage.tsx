@@ -371,16 +371,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted, onLogin,
             <span className="font-display font-bold text-xl tracking-tighter">Yugi Finance Tracker</span>
           </div>
           <div className="flex gap-10 text-sm font-bold text-white/20">
-            <a href="#" className="hover:text-white transition-colors">Privacy</a>
-            <a href="#" className="hover:text-white transition-colors">Terms</a>
-            <a href="#" className="hover:text-white transition-colors">Security</a>
-            <a href="#" className="hover:text-white transition-colors">Contact</a>
+            <Link to="/privacy" className="hover:text-white transition-colors">Privacy</Link>
+            <Link to="/terms" className="hover:text-white transition-colors">Terms</Link>
+            <Link to="/security" className="hover:text-white transition-colors">Security</Link>
+            <Link to="/contact" className="hover:text-white transition-colors">Contact</Link>
           </div>
-          <p className="text-xs font-bold text-white/10 uppercase tracking-widest">© 2025 Yugi Finance Tracker Neural Engine</p>
+          <p className="text-xs font-bold text-white/10 uppercase tracking-widest">© 2026 Yugi Finance Tracker Neural Engine</p>
         </div>
       </footer>
     </div>
   );
 };
+
 
 

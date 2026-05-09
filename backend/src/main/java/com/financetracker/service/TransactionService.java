@@ -296,17 +296,19 @@ public class TransactionService {
         if (optBank.isEmpty()) {
             optBank = bankRepo.findFirstByBankIgnoreCaseAndUserId(tx.getAccount(), tx.getUserId());
         }
-        optBank.ifPresent(bank -> {
-            BigDecimal abs = tx.getAmount().abs();
-            BigDecimal cur = bank.getBalance() != null ? bank.getBalance() : BigDecimal.ZERO;
-            BigDecimal delta = abs.multiply(BigDecimal.valueOf(sign));
-            if ("EXPENSE".equalsIgnoreCase(tx.getType())) {
-                bank.setBalance(cur.subtract(delta));
-            } else if ("INCOME".equalsIgnoreCase(tx.getType())) {
-                bank.setBalance(cur.add(delta));
-            }
-            bankRepo.save(bank);
-        });
+        BankAccount bank = optBank.orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+            org.springframework.http.HttpStatus.BAD_REQUEST,
+            "account not found"
+        ));
+        BigDecimal abs = tx.getAmount().abs();
+        BigDecimal cur = bank.getBalance() != null ? bank.getBalance() : BigDecimal.ZERO;
+        BigDecimal delta = abs.multiply(BigDecimal.valueOf(sign));
+        if ("EXPENSE".equalsIgnoreCase(tx.getType())) {
+            bank.setBalance(cur.subtract(delta));
+        } else if ("INCOME".equalsIgnoreCase(tx.getType())) {
+            bank.setBalance(cur.add(delta));
+        }
+        bankRepo.save(bank);
     }
 
     // FLAW #4 + FLAW #13 FIX: Budget 'spent' is computed from transactions within the budget period.

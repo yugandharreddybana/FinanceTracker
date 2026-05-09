@@ -25,7 +25,7 @@ public class IncomeSourceController {
     public ResponseEntity<IncomeSource> create(@RequestBody IncomeSource source, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         source.setUserId(userId);
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(source));
+        return ResponseEntity.ok(service.create(source));
     }
 
     @PutMapping("/{id}")

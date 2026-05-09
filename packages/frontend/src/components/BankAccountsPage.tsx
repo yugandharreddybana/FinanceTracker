@@ -10,6 +10,21 @@ import DeleteModal from './DeleteModal';
 
 const sparklineData = Array.from({ length: 20 }, (_, i) => ({ value: Math.random() * 100 }));
 
+const formatLastSynced = (dateStr: string) => {
+  if (!dateStr) return 'Never';
+  if (dateStr === 'Just now') return 'Just now';
+  const parsed = Date.parse(dateStr);
+  if (isNaN(parsed)) return dateStr;
+  
+  const diffMs = Date.now() - parsed;
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return new Date(parsed).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
 export const BankAccountsPage: React.FC = () => {
   const { accounts, addAccount, updateAccount, deleteAccount, transactions, netWorthByCurrency, userProfile } = useFinance();
   const [isConnecting, setIsConnecting] = useState(false);
@@ -64,7 +79,7 @@ export const BankAccountsPage: React.FC = () => {
       type: manualForm.type,
       currency: manualForm.currency || 'INR',
       color: manualForm.type === 'Credit' ? '#F43F5E' : (manualForm.type === 'Savings' ? '#22D3A5' : '#7C6EFA'),
-      lastSynced: 'Just now',
+      lastSynced: new Date().toISOString(),
       isJoint: manualForm.isJoint,
       creditLimit: manualForm.type === 'Credit' ? Number(manualForm.creditLimit) : undefined,
       dueDate: manualForm.type === 'Credit' ? manualForm.dueDate : undefined,
@@ -298,7 +313,7 @@ export const BankAccountsPage: React.FC = () => {
               <div className="flex justify-between items-center pt-6 border-t border-white/5 relative z-10">
                 <div className="flex items-center gap-2 text-[10px] text-white/20 uppercase font-bold tracking-widest">
                   <RefreshCw className="w-3.5 h-3.5 animate-spin-slow" />
-                  <span>{account.lastSynced}</span>
+                  <span>{formatLastSynced(account.lastSynced)}</span>
                 </div>
                 <button
                   onClick={() => setSelectedAccount(account)}
@@ -426,7 +441,7 @@ export const BankAccountsPage: React.FC = () => {
               <div className="flex justify-between items-center pt-6 border-t border-white/5 relative z-10">
                 <div className="flex items-center gap-2 text-[10px] text-white/20 uppercase font-bold tracking-widest">
                   <RefreshCw className="w-3.5 h-3.5 animate-spin-slow" />
-                  <span>{card.lastSynced}</span>
+                  <span>{formatLastSynced(card.lastSynced)}</span>
                 </div>
                 <button
                   onClick={() => setSelectedAccount(card)}

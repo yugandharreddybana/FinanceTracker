@@ -91,7 +91,8 @@ export interface IncomeSource {
   id: string;
   source: string;
   amount: number;
-  date: string;
+  lastReceivedDate: string;
+  nextPaymentDate?: string;
   frequency: string;
   color: string;
   currency?: string;

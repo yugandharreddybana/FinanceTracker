@@ -32,6 +32,14 @@ if (!process.env.KEY_ENCRYPTION_SECRET) {
 // Eagerly initialise the server keypair at module load — fail fast if config is missing
 getServerKeyPair();
 
+const IS_PROD = process.env.NODE_ENV === 'production';
+const ALLOW_INSECURE_FILE_AUTH_STORE = process.env.ALLOW_INSECURE_FILE_AUTH_STORE === 'true';
+if (IS_PROD && !ALLOW_INSECURE_FILE_AUTH_STORE) {
+  throw new Error(
+    "Refusing to start with file-based auth storage in production. Configure a persistent auth store or set ALLOW_INSECURE_FILE_AUTH_STORE=true only for temporary emergency use."
+  );
+}
+
 const USERS_FILE = path.join(process.cwd(), "data", "users.json");
 
 // PBKDF2 strength — OWASP 2023 minimum for SHA-512 is 210k; we use 600k for headroom.

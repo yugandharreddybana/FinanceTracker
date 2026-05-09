@@ -4,12 +4,17 @@ import { Sparkles, Send, X, MessageSquare, Loader2, Mic, MicOff, Trash2 } from '
 import { cn } from '../lib/utils';
 import { MCPClient } from '../services/mcpClient';
 import { MIDDLEWARE_BASE, financeApi } from '../services/api';
+import { useFinance } from '../context/FinanceContext';
 
 import DeleteModal from './DeleteModal';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 export const AIOracle: React.FC = () => {
+  const { userProfile } = useFinance();
+  const oracleStorageKey = userProfile.email && userProfile.email !== 'guest@example.com'
+    ? `ft_oracle_messages_${userProfile.email}`
+    : null;
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -19,23 +24,34 @@ export const AIOracle: React.FC = () => {
     title: '',
     message: ''
   });
-  const [messages, setMessages] = useState<{ role: 'user' | 'ai', content: string }[]>(() => {
-    const saved = localStorage.getItem('ft_oracle_messages');
+  const defaultMessages = [
+    { role: 'ai', content: "Greetings. I am the Yugi Oracle. I've connected to your real-time transaction stream via MCP. How may I assist your journey today?" }
+  ] as { role: 'user' | 'ai', content: string }[];
+  const [messages, setMessages] = useState<{ role: 'user' | 'ai', content: string }[]>(defaultMessages);
+
+  useEffect(() => {
+    if (!oracleStorageKey) {
+      setMessages(defaultMessages);
+      return;
+    }
+
+    const saved = localStorage.getItem(oracleStorageKey);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        setMessages(JSON.parse(saved));
+        return;
       } catch (e) {
         console.error("Failed to parse saved messages:", e);
       }
     }
-    return [
-      { role: 'ai', content: "Greetings. I am the Yugi Oracle. I've connected to your real-time transaction stream via MCP. How may I assist your journey today?" }
-    ];
-  });
+
+    setMessages(defaultMessages);
+  }, [oracleStorageKey]);
 
   useEffect(() => {
-    localStorage.setItem('ft_oracle_messages', JSON.stringify(messages));
-  }, [messages]);
+    if (!oracleStorageKey) return;
+    localStorage.setItem(oracleStorageKey, JSON.stringify(messages));
+  }, [messages, oracleStorageKey]);
 
   const mcpClientRef = useRef<MCPClient | null>(null);
   const isInitializingRef = useRef(false);
@@ -167,7 +183,9 @@ export const AIOracle: React.FC = () => {
       { role: 'ai', content: "Greetings. I am the Yugi Oracle. I've connected to your real-time transaction stream via MCP. How may I assist your journey today?" }
     ] as const;
     setMessages([...initialMessage]);
-    localStorage.removeItem('ft_oracle_messages');
+    if (oracleStorageKey) {
+      localStorage.removeItem(oracleStorageKey);
+    }
   };
 
 

@@ -10,16 +10,82 @@ const getMiddlewareBase = () => {
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       url = `https://${url}`;
     }
-    return url;
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      throw new Error('VITE_MIDDLEWARE_URL is invalid');
+    }
+
+    if (!import.meta.env.DEV && parsedUrl.protocol !== 'https:') {
+      throw new Error('VITE_MIDDLEWARE_URL must use https in production');
+    }
+
+    return parsedUrl.toString().replace(/\/$/, '');
   }
   if (import.meta.env.DEV) return 'http://localhost:4000';
-  return window.location.origin;
+  throw new Error('VITE_MIDDLEWARE_URL is required in production');
 };
 
 const MIDDLEWARE_BASE = getMiddlewareBase();
 const API_BASE = `${MIDDLEWARE_BASE}/api/finance`;
+const PENDING_TX_KEY_STORAGE = 'ft_pending_tx_keys';
 
 export { MIDDLEWARE_BASE };
+
+type PendingTransactionKeys = Record<string, { key: string; createdAt: number }>;
+
+function getPendingTransactionKeys(): PendingTransactionKeys {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const raw = window.localStorage.getItem(PENDING_TX_KEY_STORAGE);
+    if (!raw) return {};
+
+    const parsed = JSON.parse(raw) as PendingTransactionKeys;
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const next = Object.fromEntries(
+      Object.entries(parsed).filter(([, entry]) =>
+        typeof entry?.key === 'string' && typeof entry?.createdAt === 'number' && entry.createdAt >= cutoff
+      )
+    );
+
+    if (Object.keys(next).length !== Object.keys(parsed).length) {
+      window.localStorage.setItem(PENDING_TX_KEY_STORAGE, JSON.stringify(next));
+    }
+
+    return next;
+  } catch {
+    return {};
+  }
+}
+
+function setPendingTransactionKeys(keys: PendingTransactionKeys): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    if (Object.keys(keys).length === 0) {
+      window.localStorage.removeItem(PENDING_TX_KEY_STORAGE);
+      return;
+    }
+
+    window.localStorage.setItem(PENDING_TX_KEY_STORAGE, JSON.stringify(keys));
+  } catch {
+    // Ignore storage failures; idempotency still works best-effort for the current request.
+  }
+}
+
+function buildTransactionFingerprint(transaction: Partial<Transaction>): string {
+  return JSON.stringify({
+    merchant: transaction.merchant || '',
+    amount: transaction.amount || 0,
+    date: transaction.date || '',
+    category: transaction.category || '',
+    type: transaction.type || '',
+    account: transaction.account || '',
+    currency: transaction.currency || '',
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Generic fetch wrapper — always sends cookies for cookie-based auth
@@ -35,6 +101,11 @@ async function apiFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
       ...(options.headers || {}),
     },
   });
+  if (res.status === 401 && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('auth:expired', {
+      detail: { message: 'Your session expired. Please sign in again.' },
+    }));
+  }
   if (!res.ok) {
     let errorMessage = `Request failed (${res.status})`;
     try {
@@ -62,9 +133,29 @@ export const financeApi = {
     if (!transaction.amount || !transaction.date || !transaction.merchant) {
       throw new Error('Transaction must have amount, date, and merchant');
     }
-    return apiFetch(`${API_BASE}/transactions`, {
+
+    const fingerprint = buildTransactionFingerprint(transaction);
+    const pendingKeys = getPendingTransactionKeys();
+    const existing = pendingKeys[fingerprint];
+    const idempotencyKey = existing?.key || crypto.randomUUID();
+
+    pendingKeys[fingerprint] = {
+      key: idempotencyKey,
+      createdAt: existing?.createdAt || Date.now(),
+    };
+    setPendingTransactionKeys(pendingKeys);
+
+    return apiFetch<Transaction>(`${API_BASE}/transactions`, {
       method: 'POST',
+      headers: {
+        'X-Idempotency-Key': idempotencyKey,
+      },
       body: JSON.stringify(transaction),
+    }).then((created) => {
+      const next = getPendingTransactionKeys();
+      delete next[fingerprint];
+      setPendingTransactionKeys(next);
+      return created;
     });
   },
 

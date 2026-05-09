@@ -6,6 +6,7 @@ import { LoginPage } from './components/LoginPage';
 import { SignupPage } from './components/SignupPage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
 import { ResetPasswordPage } from './components/ResetPasswordPage';
+import { InfoPage } from './components/InfoPage';
 // Lazy-loaded page components — reduces initial bundle size
 const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
 const TransactionsPage = lazy(() => import('./components/TransactionsPage').then(m => ({ default: m.TransactionsPage })));
@@ -31,7 +32,7 @@ const FamilyPage = lazy(() => import('./components/FamilyPage').then(m => ({ def
 import { FinanceProvider, useFinance } from './context/FinanceContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AnimatePresence, motion } from 'motion/react';
-import { cn } from './lib/utils';
+import { cn, safeStorage } from './lib/utils';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { CommandPalette } from './components/CommandPalette';
 import { NotificationCenter, Notification as AppNotification } from './components/NotificationCenter';
@@ -52,7 +53,7 @@ export default function App() {
 }
 
 function MainApp() {
-  const { userProfile, transactions, isOffline, updateUserProfile, clearDataForNewUser, refreshData } = useFinance();
+  const { userProfile, transactions, budgets, isOffline, updateUserProfile, clearDataForNewUser, refreshData } = useFinance();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -150,6 +151,44 @@ function MainApp() {
     localStorage.setItem('yugi_finance_notifications', JSON.stringify(notifications.slice(0, 50)));
   }, [notifications]);
 
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const budgetNotifications = budgets
+      .map((budget) => {
+        const effectiveLimit = budget.limit + (budget.rolloverAmount || 0);
+        if (effectiveLimit <= 0) return null;
+
+        const progress = budget.spent / effectiveLimit;
+        if (progress < 0.85) return null;
+
+        const overBy = Math.max(0, budget.spent - effectiveLimit);
+        const title = `Budget alert: ${budget.category}`;
+        const message = progress >= 1
+          ? `${budget.category} is over budget by ${overBy.toLocaleString(undefined, { style: 'currency', currency: budget.currency || 'INR' })}.`
+          : `${budget.category} has reached ${Math.round(progress * 100)}% of its budget.`;
+
+        return {
+          id: `budget-${budget.id}-${progress >= 1 ? 'over' : 'warning'}`,
+          title,
+          message,
+          type: 'warning' as const,
+          time: 'Just now',
+          read: false,
+          icon: AlertTriangle,
+        };
+      })
+      .filter(Boolean) as AppNotification[];
+
+    if (budgetNotifications.length === 0) return;
+
+    setNotifications((prev) => {
+      const existing = new Set(prev.map((notification) => notification.id));
+      const incoming = budgetNotifications.filter((notification) => !existing.has(notification.id));
+      return incoming.length > 0 ? [...incoming, ...prev].slice(0, 50) : prev;
+    });
+  }, [budgets, isLoggedIn]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -181,15 +220,20 @@ function MainApp() {
   };
 
   const handleLogout = useCallback(async () => {
+    const email = userProfile.email;
     try {
       await authApi.logout();
     } catch {
       // Proceed with client-side cleanup even if server call fails
     }
-    clearDataForNewUser();
+    clearDataForNewUser(email);
+    safeStorage.remove('yugi_finance_notifications');
+    safeStorage.remove('yugi_ai_chat_history');
+    safeStorage.remove('ft_oracle_messages');
+    setNotifications([]);
     setIsLoggedIn(false);
     navigate('/');
-  }, [clearDataForNewUser, navigate]);
+  }, [clearDataForNewUser, navigate, userProfile.email]);
 
   // A5: Keep a stable ref to handleLogout so the inactivity timer doesn't recreate on every render
   const handleLogoutRef = useRef(handleLogout);
@@ -246,6 +290,25 @@ function MainApp() {
     window.addEventListener('finance-toast-error', handleToastError);
     return () => window.removeEventListener('finance-toast-error', handleToastError);
   }, []);
+
+  useEffect(() => {
+    const handleAuthExpired = (event: Event) => {
+      if (!isLoggedIn) return;
+
+      const message = (event as CustomEvent<{ message?: string }>).detail?.message || 'Your session expired. Please sign in again.';
+      const email = userProfile.email;
+
+      clearDataForNewUser(email);
+      safeStorage.remove('yugi_finance_notifications');
+      safeStorage.remove('ft_oracle_messages');
+      setNotifications([]);
+      setIsLoggedIn(false);
+      navigate('/login', { replace: true, state: { authMessage: message } });
+    };
+
+    window.addEventListener('auth:expired', handleAuthExpired);
+    return () => window.removeEventListener('auth:expired', handleAuthExpired);
+  }, [clearDataForNewUser, isLoggedIn, navigate, userProfile.email]);
 
   // Navigate to a tab — URL is the source of truth; activeTab derives automatically
   const handleNavigate = useCallback((tab: string) => {
@@ -313,6 +376,7 @@ function MainApp() {
               onSwitchToSignup={() => navigate('/signup')}
               onForgotPassword={() => navigate('/forgot-password')}
               onBackToHome={() => navigate('/')}
+              sessionMessage={typeof location.state?.authMessage === 'string' ? location.state.authMessage : undefined}
             />
           ) : <Navigate to="/dashboard" replace />
         } />
@@ -342,6 +406,10 @@ function MainApp() {
             <ResetPasswordPage key="reset-password" />
           ) : <Navigate to="/dashboard" replace />
         } />
+        <Route path="/privacy" element={<InfoPage variant="privacy" />} />
+        <Route path="/terms" element={<InfoPage variant="terms" />} />
+        <Route path="/security" element={<InfoPage variant="security" />} />
+        <Route path="/contact" element={<InfoPage variant="contact" />} />
 
         {/* Protected App Routes */}
         <Route path="/dashboard/*" element={
@@ -399,7 +467,7 @@ function MainApp() {
                   </div>
                 </header>
 
-                <div className="pt-24 p-6 md:p-10 lg:p-12 pb-40" style={{ paddingTop: '96px' }}>
+                <div className="p-6 md:p-10 lg:p-12 pt-28 md:pt-32 lg:pt-36 pb-40">
                   <Suspense fallback={
                     <div className="flex items-center justify-center min-h-[60vh]">
                       <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin" />
@@ -434,9 +502,9 @@ function MainApp() {
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
                   onClick={() => setIsChatOpen(true)}
-                  className="fixed bottom-48 right-8 w-16 h-16 rounded-2xl bg-accent flex items-center justify-center violet-glow z-[80] shadow-2xl border border-white/10"
+                  className="fixed bottom-[104px] right-8 w-14 h-14 rounded-2xl bg-card border border-white/10 hover:border-accent/30 flex items-center justify-center transition-all z-[80] shadow-2xl"
                 >
-                  <Sparkles className="w-8 h-8 text-white animate-pulse" />
+                  <Sparkles className="w-5 h-5 text-accent animate-pulse" />
                 </motion.button>
 
                 {/* Floating Chatbot Window */}
@@ -446,7 +514,7 @@ function MainApp() {
                       initial={{ opacity: 0, scale: 0.9, y: 20, x: 20 }}
                       animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
                       exit={{ opacity: 0, scale: 0.9, y: 20, x: 20 }}
-                      className="fixed bottom-48 right-8 w-[450px] h-[600px] z-[150] shadow-[0_0_50px_rgba(0,0,0,0.5)]"
+                      className="fixed bottom-[104px] right-8 w-[450px] h-[600px] z-[150] shadow-[0_0_50px_rgba(0,0,0,0.5)]"
                     >
                       <AIInsightsPage compact onClose={() => setIsChatOpen(false)} />
                     </motion.div>
@@ -460,7 +528,7 @@ function MainApp() {
                 <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full premium-gradient pointer-events-none -z-20" />
               </main>
             </div>
-          ) : <Navigate to="/login" replace />
+          ) : <Navigate to="/login" replace state={{ authMessage: 'Your session has expired. Please sign in again.' }} />
         } />
       </Routes>
 

@@ -17,8 +17,20 @@ export const SavingsPage: React.FC<SavingsPageProps> = ({ onNavigate }) => {
   const [fundAmount, setFundAmount] = React.useState('');
   const [selectedAccountId, setSelectedAccountId] = React.useState('');
   const currencies = Array.from(new Set(savingsGoals.map(g => g.currency || 'INR')));
-  const [selectedCurrency, setSelectedCurrency] = useState(currencies[0] || 'INR');
-  const [newGoal, setNewGoal] = React.useState({ name: '', target: '', emoji: '🎯', deadline: '', currency: selectedCurrency });
+  const [selectedCurrency, setSelectedCurrency] = useState('INR');
+
+  React.useEffect(() => {
+    if (currencies.length > 0 && !currencies.includes(selectedCurrency)) {
+      setSelectedCurrency(currencies[0]);
+    }
+  }, [currencies, selectedCurrency]);
+
+  const [newGoal, setNewGoal] = React.useState({ name: '', target: '', emoji: '🎯', deadline: '', currency: 'INR' });
+
+  React.useEffect(() => {
+    setNewGoal(prev => ({ ...prev, currency: selectedCurrency }));
+  }, [selectedCurrency]);
+
   const [isSaving, setIsSaving] = React.useState(false);
 
 

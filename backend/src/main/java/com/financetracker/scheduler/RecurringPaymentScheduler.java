@@ -2,6 +2,7 @@ package com.financetracker.scheduler;
 
 import com.financetracker.model.RecurringPayment;
 import com.financetracker.model.Transaction;
+import com.financetracker.repository.BankAccountRepository;
 import com.financetracker.repository.RecurringPaymentRepository;
 import com.financetracker.service.TransactionService;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class RecurringPaymentScheduler {
     private final RecurringPaymentRepository repo;
+    private final BankAccountRepository bankRepo;
     private final TransactionService txService;
 
     @Scheduled(cron = "0 1 0 * * *", zone = "UTC")
@@ -35,6 +37,24 @@ public class RecurringPaymentScheduler {
         log.info("[RecurringPaymentScheduler] {} payments due on {}", due.size(), today);
         for (RecurringPayment rp : due) {
             try {
+                if (rp.getPaymentMethod() != null && !rp.getPaymentMethod().isBlank()) {
+                    var linkedAccount = bankRepo.findByNameIgnoreCaseAndUserId(rp.getPaymentMethod(), rp.getUserId());
+                    if (linkedAccount.isPresent() && linkedAccount.get().getBalance() != null
+                            && linkedAccount.get().getBalance().compareTo(rp.getAmount()) < 0) {
+                        java.util.List<RecurringPayment.PaymentHistory> history =
+                            new java.util.ArrayList<>(rp.getHistory() != null ? rp.getHistory() : List.of());
+                        history.add(new RecurringPayment.PaymentHistory(
+                            today.toString(), rp.getAmount(), "FAILED_INSUFFICIENT_FUNDS"
+                        ));
+                        rp.setHistory(history);
+                        rp.setStatus("FAILED_INSUFFICIENT_FUNDS");
+                        repo.save(rp);
+                        log.warn("[RecurringPaymentScheduler] Skipping {} due to insufficient funds",
+                            rp.getId());
+                        continue;
+                    }
+                }
+
                 String generatedId = "tx-" + UUID.randomUUID();
                 Transaction tx = Transaction.builder()
                     .id(generatedId)

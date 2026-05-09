@@ -25,7 +25,7 @@ public class SavingsGoalController {
     public ResponseEntity<SavingsGoal> create(@RequestBody SavingsGoal goal, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         goal.setUserId(userId);
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(goal));
+        return ResponseEntity.ok(service.create(goal));
     }
 
     @PutMapping("/{id}")

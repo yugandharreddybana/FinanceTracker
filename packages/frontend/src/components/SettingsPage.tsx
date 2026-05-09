@@ -7,7 +7,7 @@ import {
   Camera, CheckCircle2, AlertCircle, SmartphoneNfc, Hash, Fingerprint,
   History, Sparkles, FileText, BarChart3, KeyRound, XCircle
 } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn, safeStorage } from '../lib/utils';
 import { useFinance } from '../context/FinanceContext';
 import { MIDDLEWARE_BASE } from '../services/api';
 import DeleteModal from './DeleteModal';
@@ -331,15 +331,15 @@ export const SettingsPage: React.FC = () => {
           alert('Failed to delete account on the server. Please try again.');
           return;
         }
-        clearDataForNewUser();
-        // Remove all keys associated with this user
-        localStorage.removeItem(`yugi_finance_data_${userProfile.email}`);
-        localStorage.removeItem('yugi_finance_data');
-        localStorage.removeItem('yugi_finance_session');
-        localStorage.removeItem('yugi_finance_active_tab');
-        localStorage.removeItem('ft_audit_trash');
-        localStorage.removeItem('yugi_finance_report_widgets');
-        localStorage.clear();
+        clearDataForNewUser(userProfile.email);
+        safeStorage.remove('yugi_finance_notifications');
+        safeStorage.remove('yugi_ai_chat_history');
+        safeStorage.remove('ft_oracle_messages');
+        safeStorage.remove('yugi_finance_data');
+        safeStorage.remove('yugi_finance_session');
+        safeStorage.remove('yugi_finance_active_tab');
+        safeStorage.remove('ft_audit_trash');
+        safeStorage.remove('yugi_finance_report_widgets');
         window.location.href = '/';
       }
     });

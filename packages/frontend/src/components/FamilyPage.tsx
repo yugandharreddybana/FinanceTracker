@@ -130,12 +130,13 @@ export const FamilyPage: React.FC = () => {
                     type="text"
                     placeholder="Enter Family Name (e.g. The Smiths)"
                     value={familyName}
-                    onChange={(e) => setFamilyName(e.target.value)}
+                    maxLength={80}
+                    onChange={(e) => setFamilyName(e.target.value.slice(0, 80))}
                     className="flex-1 bg-white/5 border border-white/10 rounded-2xl py-4 px-6 outline-none focus:border-accent/50 transition-all font-bold"
                   />
                   <button 
-                    onClick={() => { createFamily(familyName); setFamilyName(''); setIsCreating(false); }}
-                    disabled={!familyName}
+                    onClick={() => { createFamily(familyName.trim()); setFamilyName(''); setIsCreating(false); }}
+                    disabled={!familyName.trim()}
                     className="px-8 py-4 rounded-2xl bg-accent text-white font-bold hover:bg-accent/80 transition-all shadow-lg violet-glow disabled:opacity-50"
                   >
                     Create Now
@@ -155,12 +156,13 @@ export const FamilyPage: React.FC = () => {
                     type="text"
                     placeholder="Enter invitation code (e.g. FAM-XXXXX)"
                     value={joinCode}
-                    onChange={(e) => setJoinCode(e.target.value)}
+                    maxLength={10}
+                    onChange={(e) => setJoinCode(e.target.value.toUpperCase().slice(0, 10))}
                     className="flex-1 bg-white/5 border border-white/10 rounded-2xl py-4 px-6 outline-none focus:border-positive/50 transition-all font-bold font-mono tracking-wider"
                   />
                   <button 
-                    onClick={() => { joinFamily(joinCode); setJoinCode(''); setIsJoining(false); }}
-                    disabled={!joinCode}
+                    onClick={() => { joinFamily(joinCode.trim()); setJoinCode(''); setIsJoining(false); }}
+                    disabled={!joinCode.trim()}
                     className="px-8 py-4 rounded-2xl bg-positive text-white font-bold hover:bg-positive/80 transition-all shadow-lg disabled:opacity-50"
                   >
                     Join Now
@@ -258,7 +260,7 @@ export const FamilyPage: React.FC = () => {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Member Name *</label>
-                  <input type="text" value={inviteName} onChange={(e) => setInviteName(e.target.value)} placeholder="e.g. Jane Smith" className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all font-bold" />
+                  <input type="text" value={inviteName} maxLength={80} onChange={(e) => setInviteName(e.target.value.slice(0, 80))} placeholder="e.g. Jane Smith" className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all font-bold" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Role</label>
@@ -317,11 +319,11 @@ export const FamilyPage: React.FC = () => {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Account Name *</label>
-                  <input type="text" value={jointAccountForm.name} onChange={(e) => setJointAccountForm(prev => ({ ...prev, name: e.target.value }))} placeholder="e.g. Family Savings" className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all font-bold" />
+                  <input type="text" value={jointAccountForm.name} maxLength={80} onChange={(e) => setJointAccountForm(prev => ({ ...prev, name: e.target.value.slice(0, 80) }))} placeholder="e.g. Family Savings" className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all font-bold" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Bank *</label>
-                  <input type="text" value={jointAccountForm.bank} onChange={(e) => setJointAccountForm(prev => ({ ...prev, bank: e.target.value }))} placeholder="e.g. SBI" className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all" />
+                  <input type="text" value={jointAccountForm.bank} maxLength={80} onChange={(e) => setJointAccountForm(prev => ({ ...prev, bank: e.target.value.slice(0, 80) }))} placeholder="e.g. SBI" className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 outline-none focus:border-accent/50 transition-all" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-1">Opening Balance *</label>
@@ -386,7 +388,7 @@ export const FamilyPage: React.FC = () => {
                   You are currently saving for "{savingsGoals[0].name}" together. You've reached {sharedGoalProgress}% of your goal!
                 </p>
                 <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
-                  <div className="h-full bg-positive" style={{ width: `${sharedGoalProgress}%` }} />
+                  <motion.div initial={{ width: 0 }} animate={{ width: `${sharedGoalProgress}%` }} className="h-full bg-positive" />
                 </div>
               </>
             ) : (

@@ -9,9 +9,10 @@ interface LoginPageProps {
   onSwitchToSignup: () => void;
   onForgotPassword: () => void;
   onBackToHome: () => void;
+  sessionMessage?: string;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup, onForgotPassword, onBackToHome }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup, onForgotPassword, onBackToHome, sessionMessage }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isReady, setIsReady] = useState(false);
@@ -47,10 +48,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
       });
 
       if (!verifyRes.ok) throw new Error('Biometric verification failed');
-      const userProfile = await verifyRes.json();
+      const verifyResult = await verifyRes.json();
+      const { authApi } = await import('../services/api');
+      const me = await authApi.me();
+      const authenticatedUser = me.user || verifyResult.user;
+
+      if (!authenticatedUser?.email) {
+        throw new Error('Biometric login server-side incomplete');
+      }
 
       setIsBiometricLoading(false);
-      onLogin(userProfile.email);
+      onLogin(authenticatedUser.email, undefined, authenticatedUser.name);
     } catch (err: any) {
       console.error('Biometric Login Error:', err);
       setError(err.message || 'Biometric authentication failed');
@@ -112,11 +120,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
         <div className="glass-card p-8 border-white/5 shadow-2xl">
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Browser Autofill Honeypot */}
-            <input type="text" style={{ display: 'none' }} aria-hidden="true" />
-            <input type="password" style={{ display: 'none' }} aria-hidden="true" />
+            <input type="text" className="hidden" aria-hidden="true" />
+            <input type="password" className="hidden" aria-hidden="true" />
             {/* Browser Autofill Honeypot */}
-            <input type="text" style={{ display: 'none' }} aria-hidden="true" />
-            <input type="password" style={{ display: 'none' }} aria-hidden="true" />
+            <input type="text" className="hidden" aria-hidden="true" />
+            <input type="password" className="hidden" aria-hidden="true" />
             {error && (
               <motion.div
                 initial={{ opacity: 0, x: -10 }}
@@ -125,6 +133,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
               >
                 <AlertCircle className="w-4 h-4" />
                 <span>{error}</span>
+              </motion.div>
+            )}
+
+            {!error && sessionMessage && (
+              <motion.div
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="p-4 rounded-xl bg-amber-500/10 border border-amber-400/20 flex items-center gap-3 text-amber-200 text-xs font-bold"
+              >
+                <AlertCircle className="w-4 h-4" />
+                <span>{sessionMessage}</span>
               </motion.div>
             )}
 
@@ -186,6 +205,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onSwitchToSignup,
                 </>
               )}
             </button>
+
+            <div className="rounded-xl border border-white/5 bg-white/[0.03] px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white/40">
+              Sessions stay active for up to 24 hours on this device, or until you sign out.
+            </div>
 
             <div className="relative py-4">
               <div className="absolute inset-0 flex items-center">

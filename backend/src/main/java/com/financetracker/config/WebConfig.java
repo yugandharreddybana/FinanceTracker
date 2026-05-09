@@ -16,7 +16,7 @@ import java.util.List;
 @Configuration
 public class WebConfig {
 
-    @Value("${ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}")
+    @Value("${app.allowed-origins}")
     private String allowedOrigins;
 
     // Phase4.0003: only the Express middleware should ever appear in this list.

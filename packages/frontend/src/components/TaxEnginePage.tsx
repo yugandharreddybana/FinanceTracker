@@ -145,10 +145,12 @@ export const TaxEnginePage: React.FC = () => {
                 ))}
               </div>
               <button
-                onClick={() => { setShowVaultModal(false); showNotice('Upload feature coming soon — export your documents via Settings for now.'); }}
-                className="w-full py-3 rounded-xl bg-accent/20 border border-accent/30 text-accent font-bold hover:bg-accent/30 transition-all"
+                type="button"
+                disabled
+                aria-disabled="true"
+                className="w-full py-3 rounded-xl bg-white/5 border border-white/10 text-white/40 font-bold cursor-not-allowed"
               >
-                + Upload Document
+                Upload Unavailable
               </button>
             </motion.div>
           </div>
