@@ -46,7 +46,7 @@ public class UserProfileController {
             @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         profile.setId(userId);
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(profile));
+        return ResponseEntity.ok(service.create(profile));
     }
 
     @PutMapping("/{id}")

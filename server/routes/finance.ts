@@ -1,18 +1,19 @@
 import { Router, Request, Response } from "express";
 import { rateLimit } from "express-rate-limit";
-import { authMiddleware } from "../routes/auth.js";
-import Redis from "ioredis";
+import { authMiddleware, verifiedEmailMiddleware } from "../routes/auth.js";
+import { Redis } from "ioredis";
 import crypto from "crypto";
 
 const router = Router();
 
 // Auth guard — applied ONCE only (fix for FLAW #11: was applied twice)
 router.use(authMiddleware);
+router.use(verifiedEmailMiddleware);
 
 // General rate limit: 200 requests per 15 minutes per IP
 const financeLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: process.env.NODE_ENV === "production" ? 200 : 5000,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests, please try again later" },

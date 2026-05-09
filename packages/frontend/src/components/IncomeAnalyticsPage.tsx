@@ -5,7 +5,6 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { TrendingUp, ArrowUpRight, Calendar, DollarSign, Briefcase, ChevronDown, Pencil, Trash2, Plus, X, Palette } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { IncomeSource } from '../types';
-import { MOCK_INCOME_TRENDS } from '../constants';
 import DeleteModal from './DeleteModal';
 
 const CustomTooltip = ({ active, payload, currency }: any) => {
@@ -34,7 +33,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
     frequency: 'Monthly',
     color: '#7C6EFA',
     currency: 'INR',
-    date: new Date().toISOString().split('T')[0]
+    lastReceivedDate: new Date().toISOString().split('T')[0]
   });
 
   const filteredIncome = incomeSources.filter(i => (i.currency || 'INR') === selectedCurrency);
@@ -82,7 +81,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
         frequency: 'Monthly',
         color: '#7C6EFA',
         currency: 'INR',
-        date: new Date().toISOString().split('T')[0]
+        lastReceivedDate: new Date().toISOString().split('T')[0]
       });
     }
   };
@@ -206,7 +205,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
                   <Tooltip content={<CustomTooltip currency={selectedCurrency} />} />
                   <Area 
                     type="monotone" 
-                    dataKey="amount" 
+                    dataKey="income" 
                     stroke="var(--color-accent)" 
                     fillOpacity={1} 
                     fill="url(#incomeGradient)" 

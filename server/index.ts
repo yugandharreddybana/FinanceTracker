@@ -1,4 +1,5 @@
 import express from "express";
+import { randomUUID } from "crypto";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import fs from "fs";
@@ -168,8 +169,9 @@ async function startServer() {
   });
 
   // ── Global error handler ──────────────────────────────────────────────────
-  app.use((err: any, req: any, res: any, _next: any) => {
-    console.error("[SERVER ERROR]", err.message);
+  app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    const correlationId = randomUUID();
+    console.error(`[SERVER ERROR][${correlationId}]`, err);
     if (!res.headersSent) {
       const errOrigin = req.headers.origin;
       const matched = errOrigin ? ALLOWED_ORIGINS.find(o => o === errOrigin) : undefined;
@@ -178,7 +180,17 @@ async function startServer() {
         res.setHeader("Access-Control-Allow-Credentials", "true");
       }
     }
-    res.status(500).json({ error: "Server Error", message: err.message });
+
+    const payload: Record<string, string> = {
+      error: "Server Error",
+      correlationId,
+    };
+
+    if (!IS_PROD) {
+      payload.message = err instanceof Error ? err.message : 'Server Error';
+    }
+
+    res.status(500).json(payload);
   });
 
   // ── Start ─────────────────────────────────────────────────────────────────

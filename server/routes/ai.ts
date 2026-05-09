@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { rateLimit } from "express-rate-limit";
-import { verifyToken } from "../lib/auth.js";
+import { findUserByEmail, verifyToken } from "../lib/auth.js";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -11,7 +11,7 @@ const router = Router();
 // trivial to bypass with rotating proxies; bucketing by JWT uid bounds spend.
 const aiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: process.env.NODE_ENV === "production" ? 30 : 1000,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: Request) => (req as any).user?.uid || req.ip || "anon",
@@ -145,6 +145,10 @@ const authMiddleware = (req: Request, res: Response, next: () => void) => {
   if (!token) return res.status(401).json({ error: "Missing authorization token" });
   const decoded = verifyToken(token);
   if (!decoded) return res.status(401).json({ error: "Invalid or expired token" });
+  const stored = findUserByEmail(decoded.email);
+  if (stored?.emailVerified === false) {
+    return res.status(403).json({ error: "Email verification required" });
+  }
   (req as any).user = decoded;
   next();
 };
@@ -176,8 +180,7 @@ async function callBackend(path: string, method: string, body: any, userId: stri
 
 router.post("/process-input", authMiddleware, async (req, res) => {
   try {
-    const { input, savingsGoals } = req.body;
-    // Input validation: prevent empty or excessively long inputs
+    const { input, savingsGoals, accounts } = req.body;
     if (!input || typeof input !== 'string') {
       return res.status(400).json({ error: "Input is required and must be a string" });
     }
@@ -187,32 +190,76 @@ router.post("/process-input", authMiddleware, async (req, res) => {
     if (input.length > 2000) {
       return res.status(400).json({ error: "Input too long (max 2000 characters)" });
     }
-    // Phase3.0007: never silently fabricate ledger entries when the LLM is not
-    // configured. Frontend handles 503 by surfacing a clear "AI is offline" state.
     if (!NVIDIA_API_KEY) {
       return res.status(503).json({ error: "AI service not configured" });
     }
 
+    const today = new Date().toISOString().split("T")[0];
+
+    const systemPrompt = `You are an expert financial data extraction AI. Your job is to parse ANY natural language input — typed, voice-transcribed, messy, or shorthand — into precise structured JSON.
+
+Today's date: ${today}
+
+CONTEXT:
+- User's savings goals: ${JSON.stringify(savingsGoals || [])}
+- User's bank accounts: ${JSON.stringify(accounts || [])}
+
+RULES:
+1. Return ONLY a valid JSON object with a "results" key containing an array of parsed items.
+2. Each item MUST have an "intent" field. Supported intents:
+   TRANSACTION, SAVINGS_GOAL, RECURRING_PAYMENT, LOAN, SAVINGS_TRANSFER, BUDGET, LOAN_PAYMENT, DELETE_TRANSACTION
+3. Be smart about voice transcription errors (e.g. "coffee for dollars" = "coffee $4", "fifty pounds" = £50).
+4. When no date is specified, use today: ${today}.
+5. When no currency is specified, infer from account context or default to the first account's currency.
+6. Amount is ALWAYS a positive number. The "type" field determines if it's income or expense.
+7. For ambiguous inputs, pick the most likely intent with high confidence.
+
+INTENT SCHEMAS:
+
+TRANSACTION (buying, spending, earning, paying, receiving money):
+  { "intent": "TRANSACTION", "merchant": string, "amount": number, "date": "YYYY-MM-DD", "category": string, "type": "income"|"expense", "currency": string, "account": string, "confidence": 0.0-1.0 }
+  Examples: "coffee 5 euros", "paid rent 1200", "salary 5000 to HDFC", "got 200 from mom", "uber 12 dollars on Chase"
+
+SAVINGS_GOAL (creating a new savings target):
+  { "intent": "SAVINGS_GOAL", "name": string, "target": number, "emoji": string, "deadline": "YYYY-MM-DD"|"No deadline", "currency": string }
+  Examples: "save for vacation 5000 by december", "new goal emergency fund 10000", "create savings goal for laptop 2000 euros"
+
+BUDGET (setting a spending limit for a category):
+  { "intent": "BUDGET", "category": string, "limit": number, "currency": string, "color": string }
+  Examples: "set food budget to 500", "budget 200 for entertainment", "create a transport budget of 150 euros", "limit shopping to 300"
+
+RECURRING_PAYMENT (subscriptions, bills, regular payments):
+  { "intent": "RECURRING_PAYMENT", "name": string, "amount": number, "frequency": "Monthly"|"Weekly"|"Annual", "category": string, "currency": string, "dayOfMonth": number }
+  Examples: "netflix 15.99 monthly", "add subscription spotify 9.99", "gym membership 50 per month", "insurance 200 annual"
+
+LOAN (creating a new loan/debt):
+  { "intent": "LOAN", "name": string, "totalAmount": number, "monthlyEMI": number, "interestRate": number, "startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD", "category": string, "currency": string }
+  Examples: "car loan 25000 at 5% interest EMI 500", "home loan 200000 for 20 years at 7%", "took a personal loan of 10000"
+
+SAVINGS_TRANSFER (adding money to an existing savings goal):
+  { "intent": "SAVINGS_TRANSFER", "goalId": string, "goalName": string, "amount": number }
+  Examples: "add 500 to vacation fund", "transfer 1000 to emergency fund", "put 200 in laptop savings"
+
+LOAN_PAYMENT (making a payment towards an existing loan):
+  { "intent": "LOAN_PAYMENT", "loanName": string, "amount": number }
+  Examples: "pay 500 towards car loan", "loan payment 1000 for home loan", "paid EMI for personal loan"
+
+DELETE_TRANSACTION (removing an existing transaction):
+  { "intent": "DELETE_TRANSACTION", "merchant": string, "amount": number, "date": "YYYY-MM-DD" }
+  Examples: "delete the starbucks transaction", "remove the 50 dollar uber charge", "undo last coffee purchase"
+
+CATEGORY MAPPING: Use these standard categories when possible:
+Housing, Food, Food & Drink, Transport, Entertainment, Shopping, Electronics, Utilities, Health, Education, Travel, Gifts, Insurance, Investments, Salary, Freelance, Others
+
+MULTI-ENTRY: The user may specify multiple items separated by semicolons, commas, "and", or line breaks. Parse each one separately.
+Example: "coffee 5; uber 12; salary 5000" → 3 separate TRANSACTION items.`;
+
     const { text } = await nvidiaChat(
       [
-        {
-          role: "system",
-          content:
-            `You are a financial data extraction assistant. Parse natural language input into structured JSON. ` +
-            `Available savings goals: ${JSON.stringify(savingsGoals || [])}. ` +
-            `Return ONLY a valid JSON array. Each object must have an "intent" field: ` +
-            `"TRANSACTION" | "SAVINGS_GOAL" | "RECURRING_PAYMENT" | "LOAN" | "SAVINGS_TRANSFER" | "BUDGET" | "LOAN_PAYMENT". ` +
-            `For TRANSACTION: include merchant (string), amount (number), date (YYYY-MM-DD), category (string), type ("income"|"expense"), confidence (0-1). ` +
-            `For SAVINGS_GOAL: include name, target (number), emoji, deadline (YYYY-MM-DD). ` +
-            `For RECURRING_PAYMENT: include name, amount, frequency ("Monthly"|"Weekly"|"Annual"), dayOfMonth (number). ` +
-            `For LOAN: include name, totalAmount, monthlyEMI, interestRate, startDate, endDate. ` +
-            `For SAVINGS_TRANSFER: include goalId (string), amount (number). ` +
-            `For BUDGET: include category (string), limit (number). ` +
-            `For LOAN_PAYMENT: include loanId (string), amount (number). `,
-        },
+        { role: "system", content: systemPrompt },
         { role: "user", content: input },
       ],
-      { jsonMode: true, temperature: 0.1 }
+      { jsonMode: true, temperature: 0.1, maxTokens: 3000 }
     );
 
     const parsed = safeJson(text);
@@ -220,7 +267,9 @@ router.post("/process-input", authMiddleware, async (req, res) => {
       console.error("[process-input] Failed to parse JSON from model:", text);
       return res.status(500).json({ error: "AI returned invalid JSON" });
     }
-    const result = Array.isArray(parsed) ? parsed : parsed.items || parsed.transactions || [parsed];
+    const result = Array.isArray(parsed)
+      ? parsed
+      : parsed.results || parsed.items || parsed.transactions || [parsed];
     res.json(result);
   } catch (error: any) {
     console.error("AI Process Input Error:", error.message);
@@ -336,7 +385,6 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
     const { uid, name } = (req as any).user;
     const token = req.headers.authorization?.split(" ")[1] ||
       (req as any).cookies?.auth_token || "";
-    // Input validation
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return res.status(400).json({ error: "Message is required" });
     }
@@ -350,7 +398,7 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
         type: "function",
         function: {
           name: "get_transactions",
-          description: "Get all financial transactions for the user",
+          description: "Get all financial transactions for the user including date, merchant, amount, category, type (income/expense), and associated bank account",
           parameters: { type: "object", properties: {} },
         },
       },
@@ -358,7 +406,39 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
         type: "function",
         function: {
           name: "get_accounts",
-          description: "Get all bank accounts and their balances",
+          description: "Get all bank accounts with their names, types (Current/Savings/Credit), balances, currencies, and which is the primary account",
+          parameters: { type: "object", properties: {} },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "get_budgets",
+          description: "Get all budget categories with their spending limits, current spent amounts, remaining amounts, and currency",
+          parameters: { type: "object", properties: {} },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "get_savings_goals",
+          description: "Get all savings goals with their target amounts, current saved amounts, progress percentage, deadlines, and currency",
+          parameters: { type: "object", properties: {} },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "get_loans",
+          description: "Get all loans with their total amount, remaining balance, monthly EMI, interest rate, start/end dates, and payment history",
+          parameters: { type: "object", properties: {} },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "get_recurring_payments",
+          description: "Get all recurring payments/subscriptions with their names, amounts, frequency, status (Active/Paused), and next due dates",
           parameters: { type: "object", properties: {} },
         },
       },
@@ -371,7 +451,7 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
             type: "object",
             properties: {
               merchant: { type: "string", description: "Merchant or income source name" },
-              amount: { type: "number", description: "Transaction amount" },
+              amount: { type: "number", description: "Transaction amount (always positive)" },
               currency: { type: "string", description: "Currency code e.g. EUR, USD, INR" },
               date: { type: "string", description: "Date in YYYY-MM-DD format" },
               category: { type: "string", description: "Category e.g. Food, Transport, Rent" },
@@ -382,33 +462,30 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
           },
         },
       },
-      {
-        type: "function",
-        function: {
-          name: "get_budgets",
-          description: "Get all budget categories and their limits and spending",
-          parameters: { type: "object", properties: {} },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "get_savings_goals",
-          description: "Get all savings goals and their progress",
-          parameters: { type: "object", properties: {} },
-        },
-      },
     ];
+
+    const today = new Date().toISOString().split("T")[0];
 
     const systemMessage: NvidiaMessage = {
       role: "system",
       content:
-        `You are the Yugi Oracle, a premium personal financial AI assistant. ` +
-        `The user's name is ${name}. Today's date is ${new Date().toISOString().split("T")[0]}. ` +
-        `You have access to tools to read the user's real financial data. ` +
-        `Always use tools to get current data before answering questions about balances, transactions, or budgets. ` +
-        `Be concise, insightful, and proactive in spotting financial patterns. ` +
-        `Format currency amounts clearly. Never make up financial data.`,
+        `You are the Yugi Oracle, a premium personal financial AI assistant with deep expertise in personal finance, budgeting, investing, debt management, and tax optimization.\n\n` +
+        `USER: ${name}\nTODAY: ${today}\n\n` +
+        `CAPABILITIES:\n` +
+        `- You have direct access to the user's REAL financial data via tools. ALWAYS call tools before answering data questions.\n` +
+        `- You can view: transactions, bank accounts, budgets, savings goals, loans, and recurring payments.\n` +
+        `- You can draft new transactions (user must confirm).\n\n` +
+        `RESPONSE GUIDELINES:\n` +
+        `1. Be precise with numbers — always show exact amounts with currency symbols (€, $, £, ₹).\n` +
+        `2. Use markdown formatting: **bold** for key figures, bullet points for lists, tables for comparisons.\n` +
+        `3. When analyzing spending, group by category and show percentages.\n` +
+        `4. Proactively spot: overspending, unusual transactions, savings opportunities, budget alerts.\n` +
+        `5. When asked about net worth, sum all account balances minus total loan remaining amounts.\n` +
+        `6. For forecasting questions, use actual data trends rather than assumptions.\n` +
+        `7. Keep responses concise but insightful — aim for 2-4 paragraphs max.\n` +
+        `8. Never fabricate data. If a tool returns empty results, say so clearly.\n` +
+        `9. If the user asks to create/add something, use the appropriate tool or guide them to the right page.\n` +
+        `10. For debt strategy questions, compare avalanche vs snowball methods using their actual loan data.`,
     };
 
     const messages: NvidiaMessage[] = [
@@ -420,7 +497,6 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
       { role: "user", content: message },
     ];
 
-    // Agentic loop — handle tool calls until model gives a final text response
     let loopMessages = [...messages];
     let finalText = "";
     let iterations = 0;
@@ -428,21 +504,19 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
 
     while (iterations < MAX_ITERATIONS) {
       iterations++;
-      const response = await nvidiaChat(loopMessages, { tools, temperature: 0.3 });
+      const response = await nvidiaChat(loopMessages, { tools, temperature: 0.3, maxTokens: 3000 });
 
       if (!response.toolCalls || response.toolCalls.length === 0) {
         finalText = response.text;
         break;
       }
 
-      // Append assistant message with tool calls
       loopMessages.push({
         role: "assistant",
         content: response.text || "",
         ...(response.toolCalls ? { tool_calls: response.toolCalls } : {}),
       } as any);
 
-      // Execute each tool call and append results
       for (const toolCall of response.toolCalls) {
         const fnName = toolCall.function?.name;
         let toolResult: any = null;
@@ -457,9 +531,11 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
             toolResult = await callBackend("/budgets", "GET", null, uid, token);
           } else if (fnName === "get_savings_goals") {
             toolResult = await callBackend("/savings-goals", "GET", null, uid, token);
+          } else if (fnName === "get_loans") {
+            toolResult = await callBackend("/loans", "GET", null, uid, token);
+          } else if (fnName === "get_recurring_payments") {
+            toolResult = await callBackend("/recurring-payments", "GET", null, uid, token);
           } else if (fnName === "create_transaction") {
-            // Phase3.0006: mutating tools never auto-execute. Returning a
-            // pendingAction makes the LLM tell the user to confirm via UI.
             const amount = Number(args?.amount);
             if (!Number.isFinite(amount)) {
               toolResult = { error: "amount must be a number" };
@@ -567,9 +643,18 @@ router.post("/chat", authMiddleware, aiLimiter, async (req, res) => {
       {
         role: "system",
         content:
-          `You are the Yugi Oracle, a premium personal financial AI. The user's name is ${name}. ` +
-          `Today is ${new Date().toISOString().split("T")[0]}. ` +
-          `Here is the user's recent transaction context: ${JSON.stringify(transactions)}.`,
+          `You are the Yugi Oracle, a premium personal financial AI assistant.\n` +
+          `User: ${name}. Today: ${new Date().toISOString().split("T")[0]}.\n\n` +
+          `You have access to the user's recent transaction data below. Use it to provide accurate, data-driven answers.\n` +
+          `Recent transactions: ${JSON.stringify(transactions)}\n\n` +
+          `GUIDELINES:\n` +
+          `- Use markdown formatting: **bold** for numbers, bullet points for lists.\n` +
+          `- Be precise with amounts — always include currency symbols.\n` +
+          `- Provide actionable advice, not generic tips.\n` +
+          `- When analyzing spending, calculate totals by category.\n` +
+          `- Keep responses concise (2-3 paragraphs max) but insightful.\n` +
+          `- If asked about something not in the data, say so honestly.\n` +
+          `- For budgeting advice, suggest specific amounts based on their actual spending patterns.`,
       },
       ...history.map((h: any) => ({
         role: (h.role === "ai" ? "assistant" : "user") as "user" | "assistant",
@@ -578,7 +663,7 @@ router.post("/chat", authMiddleware, aiLimiter, async (req, res) => {
       { role: "user", content: message },
     ];
 
-    const { text } = await nvidiaChat(messages, { temperature: 0.5 });
+    const { text } = await nvidiaChat(messages, { temperature: 0.5, maxTokens: 2500 });
     res.json({ content: text });
   } catch (error: any) {
     console.error("AI Chat Error:", error.message);
@@ -625,6 +710,38 @@ router.post("/forecast", authMiddleware, async (req, res) => {
 // 8. Tax Suggestions
 // ---------------------------------------------------------------------------
 
+function parsePotentialSavings(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.round(value));
+  }
+
+  if (typeof value === 'string') {
+    const digits = value.replace(/[^0-9.-]/g, '');
+    const parsed = Number.parseFloat(digits);
+    return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0;
+  }
+
+  return 0;
+}
+
+function normalizeDifficulty(value: unknown): 'easy' | 'medium' | 'hard' {
+  if (typeof value !== 'string') return 'medium';
+  const normalized = value.toLowerCase();
+  if (normalized === 'easy' || normalized === 'medium' || normalized === 'hard') {
+    return normalized;
+  }
+  return 'medium';
+}
+
+function buildFallbackTaxSteps(title: string, description: string, category?: string): string[] {
+  const subject = category || title || 'this opportunity';
+  return [
+    `Review your records for ${subject.toLowerCase()} and separate any expenses or contributions that may qualify for a deduction or tax advantage.`,
+    `Quantify the eligible amount and document the supporting receipts, statements, or employer paperwork before your next filing cycle.`,
+    `Apply the deduction or contribution change in your tax workflow and confirm the impact with a qualified tax professional if the rule is unclear.`
+  ];
+}
+
 router.post("/tax-suggestions", authMiddleware, async (req, res) => {
   try {
     const { spendingData } = req.body;
@@ -637,7 +754,7 @@ router.post("/tax-suggestions", authMiddleware, async (req, res) => {
           content:
             `You are a tax optimization advisor. Analyze the user's spending and income data and provide actionable tax optimization suggestions. ` +
             `Return ONLY a valid JSON array of suggestion objects with fields: ` +
-            `title (string), description (string, max 200 chars), estimatedSaving (string), category (string), priority ("HIGH"|"MEDIUM"|"LOW").`,
+            `title (string), description (string, max 200 chars), potentialSavings (number), category (string), difficulty ("easy"|"medium"|"hard"), steps (array of exactly 3 short actionable strings).`,
         },
         {
           role: "user",
@@ -650,7 +767,19 @@ router.post("/tax-suggestions", authMiddleware, async (req, res) => {
     const parsed = safeJson(text);
     if (!parsed) return res.status(500).json({ error: "AI returned invalid JSON" });
     const result = Array.isArray(parsed) ? parsed : parsed.suggestions || [];
-    res.json(result);
+    const normalized = result
+      .filter((item: any) => item && typeof item === 'object')
+      .map((item: any) => ({
+        title: typeof item.title === 'string' && item.title.trim() ? item.title.trim() : 'Tax optimization opportunity',
+        description: typeof item.description === 'string' && item.description.trim() ? item.description.trim() : 'Review this item to reduce your potential tax burden.',
+        potentialSavings: parsePotentialSavings(item.potentialSavings ?? item.estimatedSaving),
+        difficulty: normalizeDifficulty(item.difficulty),
+        steps: Array.isArray(item.steps) && item.steps.length > 0
+          ? item.steps.filter((step: unknown) => typeof step === 'string' && step.trim()).slice(0, 3)
+          : buildFallbackTaxSteps(item.title, item.description, item.category),
+      }));
+
+    res.json(normalized);
   } catch (error: any) {
     console.error("AI Tax Suggestions Error:", error.message);
     res.status(500).json({ error: error.message });

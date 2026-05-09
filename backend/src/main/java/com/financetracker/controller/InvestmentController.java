@@ -25,7 +25,7 @@ public class InvestmentController {
     public ResponseEntity<Investment> create(@RequestBody Investment investment, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         investment.setUserId(userId);
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(investment));
+        return ResponseEntity.ok(service.create(investment));
     }
 
     @PutMapping("/{id}")

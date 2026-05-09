@@ -25,7 +25,7 @@ public class RecurringPaymentController {
     public ResponseEntity<RecurringPayment> create(@RequestBody RecurringPayment payment, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         payment.setUserId(userId);
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(payment));
+        return ResponseEntity.ok(service.create(payment));
     }
 
     @PutMapping("/{id}")

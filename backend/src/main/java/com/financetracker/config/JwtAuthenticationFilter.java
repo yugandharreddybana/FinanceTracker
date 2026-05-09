@@ -40,7 +40,7 @@ import java.util.Set;
 @Configuration
 public class JwtAuthenticationFilter {
 
-    @Value("${JWT_SECRET:}")
+    @Value("${jwt.secret}")
     private String jwtSecret;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();

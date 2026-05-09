@@ -12,12 +12,16 @@ export class MCPClient {
     if (this.eventSource) return;
 
     return new Promise((resolve, reject) => {
-      console.log("Connecting to MCP SSE at:", this.sseUrl);
+      if (import.meta.env.DEV) {
+        console.info("Connecting to MCP SSE at:", this.sseUrl);
+      }
       this.eventSource = new EventSource(this.sseUrl, { withCredentials: true });
 
-      const onEndpoint = (event: any) => {
+      const onEndpoint = (event: MessageEvent<string>) => {
         this.messageEndpoint = event.data;
-        console.log("MCP Connected. Message endpoint:", this.messageEndpoint);
+        if (import.meta.env.DEV) {
+          console.info("MCP Connected. Message endpoint:", this.messageEndpoint);
+        }
         this.eventSource?.removeEventListener("endpoint", onEndpoint);
         resolve();
       };
@@ -43,15 +47,25 @@ export class MCPClient {
     return response.tools || [];
   }
 
-  async callTool(name: string, args: any): Promise<any> {
+  async callTool<T = unknown>(name: string, args: Record<string, unknown>): Promise<T> {
     const response = await this.sendRequest("tools/call", {
       name,
       arguments: args
     });
-    return response.content?.[0]?.text || "";
+
+    const text = response.content?.[0]?.text;
+    if (typeof text !== "string") {
+      return response as T;
+    }
+
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return text as T;
+    }
   }
 
-  private async sendRequest(method: string, params: any): Promise<any> {
+  private async sendRequest(method: string, params: Record<string, unknown>): Promise<any> {
     if (!this.messageEndpoint) throw new Error("MCP not connected");
 
     const id = this.nextId++;
@@ -84,5 +98,7 @@ export class MCPClient {
 
   disconnect() {
     this.eventSource?.close();
+    this.eventSource = null;
+    this.messageEndpoint = null;
   }
 }

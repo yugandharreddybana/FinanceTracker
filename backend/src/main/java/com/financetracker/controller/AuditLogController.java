@@ -25,7 +25,7 @@ public class AuditLogController {
     public ResponseEntity<AuditLog> create(@RequestBody AuditLog log, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         log.setUserId(userId);
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(log));
+        return ResponseEntity.ok(service.create(log));
     }
 
     // Phase4.0005: DELETE removed. Audit logs are append-only; the V2 migration

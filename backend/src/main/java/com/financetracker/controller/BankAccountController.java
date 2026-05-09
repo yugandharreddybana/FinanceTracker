@@ -25,7 +25,7 @@ public class BankAccountController {
     public ResponseEntity<BankAccount> create(@RequestBody BankAccount account, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         account.setUserId(userId);
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(account));
+        return ResponseEntity.ok(service.create(account));
     }
 
     @PutMapping("/{id}")

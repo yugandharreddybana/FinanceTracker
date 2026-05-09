@@ -39,7 +39,7 @@ public class FamilyAccountController {
         family.setOwnerId(userId);
         family.setMembers(null);
         family.setId(null);
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(family));
+        return ResponseEntity.ok(service.create(family));
     }
 
     @PutMapping("/{id}")

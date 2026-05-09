@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Filter, Sparkles, Check, Pencil, Trash2, X, Save, Loader2, Calendar, ChevronUp, ChevronDown, ArrowUpRight, ArrowDownRight, Download, Plus } from 'lucide-react';
+import { Search, Filter, Sparkles, Check, Pencil, Trash2, X, Save, Loader2, Calendar, ChevronUp, ChevronDown, ArrowUpRight, ArrowDownRight, Download, Plus, AlertCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useFinance } from '../context/FinanceContext';
 import { Transaction } from '../types';
 import DeleteModal from './DeleteModal';
 
 export const TransactionsPage: React.FC = () => {
+  const today = new Date().toISOString().split('T')[0];
+  const MAX_TRANSACTION_AMOUNT = 1_000_000_000;
   const { 
     transactions, 
     deleteTransaction, 
@@ -52,6 +54,28 @@ export const TransactionsPage: React.FC = () => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [sortField, setSortField] = useState<'date' | 'merchant' | 'amount'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [isSavingTransaction, setIsSavingTransaction] = useState(false);
+  const [addTransactionError, setAddTransactionError] = useState('');
+
+  const normalizeMerchant = (merchant: string) => merchant
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 255);
+
+  const getAddTransactionValidationError = () => {
+    const merchant = normalizeMerchant(newTransactionForm.merchant || '');
+    const amount = Number(newTransactionForm.amount);
+
+    if (!merchant) return 'Enter a merchant or description.';
+    if (!newTransactionForm.date) return 'Choose a transaction date.';
+    if (newTransactionForm.date > today) return 'Future-dated transactions are blocked. Use today or an earlier date.';
+    if (!Number.isFinite(amount) || amount <= 0) return 'Enter an amount greater than zero.';
+    if (amount > MAX_TRANSACTION_AMOUNT) return 'Amount exceeds the supported limit for a single transaction.';
+    return '';
+  };
+
+  const isAddTransactionDisabled = Boolean(getAddTransactionValidationError()) || isSavingTransaction;
 
   const handleSort = (field: 'date' | 'merchant' | 'amount') => {
     if (sortField === field) {
@@ -94,29 +118,45 @@ export const TransactionsPage: React.FC = () => {
   };
 
   const handleAddTransaction = async () => {
-    if (!newTransactionForm.merchant || !newTransactionForm.amount) return;
+    const validationError = getAddTransactionValidationError();
+    if (validationError) {
+      setAddTransactionError(validationError);
+      return;
+    }
+
+    const merchant = normalizeMerchant(newTransactionForm.merchant || '');
+    const numericAmount = Number(newTransactionForm.amount);
+    setIsSavingTransaction(true);
+    setAddTransactionError('');
     
     const amount = newTransactionForm.type === 'expense'
-      ? -Math.abs(newTransactionForm.amount)
-      : Math.abs(newTransactionForm.amount);
+      ? -Math.abs(numericAmount)
+      : Math.abs(numericAmount);
 
     const transaction = {
       ...newTransactionForm,
+      merchant,
       amount,
       id: crypto.randomUUID(),
     } as Transaction;
 
-    await addManualTransaction(transaction);
-    setIsAddTransactionModalOpen(false);
-    setNewTransactionForm({
-      date: new Date().toISOString().split('T')[0],
-      merchant: '',
-      amount: 0,
-      category: 'Others',
-      type: 'expense',
-      account: primaryAccount?.name || '',
-      status: 'pending'
-    });
+    try {
+      await Promise.resolve(addManualTransaction(transaction));
+      setIsAddTransactionModalOpen(false);
+      setNewTransactionForm({
+        date: today,
+        merchant: '',
+        amount: 0,
+        category: 'Others',
+        type: 'expense',
+        account: primaryAccount?.name || '',
+        status: 'pending'
+      });
+    } catch {
+      setAddTransactionError('Unable to save the transaction right now. Please try again.');
+    } finally {
+      setIsSavingTransaction(false);
+    }
   };
 
   const handleEdit = (tx: Transaction) => {
@@ -933,23 +973,39 @@ export const TransactionsPage: React.FC = () => {
                       required
                       title="Date"
                       placeholder="Date"
+                      max={today}
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-all text-white"
                       value={newTransactionForm.date}
-                      onChange={e => setNewTransactionForm({ ...newTransactionForm, date: e.target.value })}
+                      onChange={e => {
+                        setAddTransactionError('');
+                        setNewTransactionForm({ ...newTransactionForm, date: e.target.value });
+                      }}
                     />
                   </div>
                 </div>
+
+                {addTransactionError && (
+                  <div className="flex items-center gap-3 rounded-xl border border-negative/20 bg-negative/10 px-4 py-3 text-xs font-bold text-negative">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span>{addTransactionError}</span>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Merchant / Description *</label>
                   <input 
                     type="text"
                     required
+                    maxLength={255}
                     placeholder="e.g. Starbucks, Amazon, Salary"
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-accent transition-all text-white"
                     value={newTransactionForm.merchant}
-                    onChange={e => setNewTransactionForm({ ...newTransactionForm, merchant: e.target.value })}
+                    onChange={e => {
+                      setAddTransactionError('');
+                      setNewTransactionForm({ ...newTransactionForm, merchant: e.target.value.slice(0, 255) });
+                    }}
                   />
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-white/20">Maximum 255 characters. Saved as plain text.</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-6">
@@ -959,12 +1015,21 @@ export const TransactionsPage: React.FC = () => {
                       <input 
                         type="number"
                         required
+                        min="0.01"
+                        max={MAX_TRANSACTION_AMOUNT}
+                        step="0.01"
+                        inputMode="decimal"
                         placeholder="0.00"
                         className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-sm outline-none focus:border-accent transition-all font-mono text-white"
                         value={newTransactionForm.amount || ''}
-                        onChange={e => setNewTransactionForm({ ...newTransactionForm, amount: parseFloat(e.target.value) })}
+                        onChange={e => {
+                          setAddTransactionError('');
+                          const amountValue = e.target.value === '' ? undefined : Number.parseFloat(e.target.value);
+                          setNewTransactionForm({ ...newTransactionForm, amount: amountValue });
+                        }}
                       />
                     </div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-white/20">Up to {MAX_TRANSACTION_AMOUNT.toLocaleString()} per transaction.</p>
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-white/30 block ml-1">Category</label>
@@ -1010,10 +1075,10 @@ export const TransactionsPage: React.FC = () => {
                   </button>
                   <button 
                     onClick={handleAddTransaction}
-                    disabled={!newTransactionForm.merchant || !newTransactionForm.amount}
+                    disabled={isAddTransactionDisabled}
                     className="flex-[2] py-4 rounded-2xl bg-accent text-white text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-accent/80 transition-all shadow-lg violet-glow disabled:opacity-50"
                   >
-                    Add Transaction
+                    {isSavingTransaction ? 'Saving...' : 'Add Transaction'}
                   </button>
                 </div>
               </div>

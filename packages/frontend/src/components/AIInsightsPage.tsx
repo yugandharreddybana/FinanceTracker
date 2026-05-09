@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, AlertCircle, TrendingUp, Award, Lightbulb, BarChart, Send, Mic, MicOff, MessageSquare, X, Loader2, Volume2, VolumeX } from 'lucide-react';
+import { Sparkles, AlertCircle, TrendingUp, Award, Lightbulb, BarChart, Send, Mic, MicOff, MessageSquare, X, Loader2, Volume2, VolumeX, Trash2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { MCPClient } from '../services/mcpClient';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useFinance } from '../context/FinanceContext';
+import { Transaction } from '../types';
 import { financeApi, MIDDLEWARE_BASE } from '../services/api';
 
 import DeleteModal from './DeleteModal';
@@ -23,8 +24,18 @@ interface AIInsightsPageProps {
   onClose?: () => void;
 }
 
+type ChatMessage = {
+  role: 'user' | 'ai';
+  content: string;
+};
+
+const defaultWelcomeMessage: ChatMessage = { role: 'ai', content: "Welcome back. I'm analyzing your real-time financial stream. How can I help you optimize your wealth today?" };
+
 export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose }) => {
-  const { accounts } = useFinance();
+  const { accounts, transactions, userProfile } = useFinance();
+  const chatStorageKey = userProfile.email && userProfile.email !== 'guest@example.com'
+    ? `yugi_ai_chat_history_${userProfile.email}`
+    : null;
   const [selectedBank, setSelectedBank] = useState<string>('ALL');
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -39,28 +50,54 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
   });
   const [insights, setInsights] = useState<Insight[]>([]);
   const [insightFilter, setInsightFilter] = useState('All Intelligence');
-  const [messages, setMessages] = useState<{ role: 'user' | 'ai', content: string }[]>(() => {
-    try {
-      const saved = localStorage.getItem('yugi_ai_chat_history');
-      if (saved) return JSON.parse(saved);
-    } catch { /* ignore */ }
-    return [{ role: 'ai' as const, content: "Welcome back. I'm analyzing your real-time financial stream. How can I help you optimize your wealth today?" }];
-  });
+  const [messages, setMessages] = useState<ChatMessage[]>([defaultWelcomeMessage]);
 
   const mcpClientRef = useRef<MCPClient | null>(null);
-  const historyRef = useRef<any[]>([]);
+  const historyRef = useRef<ChatMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  const hasTransactionData = transactions.length > 0;
+
+  const clearHistory = () => {
+    historyRef.current = [];
+    setInput('');
+    setMessages([defaultWelcomeMessage]);
+    if (!chatStorageKey) return;
+    try {
+      localStorage.removeItem(chatStorageKey);
+    } catch {
+      // ignore storage errors
+    }
+  };
+
+  useEffect(() => {
+    if (!chatStorageKey) {
+      setMessages([defaultWelcomeMessage]);
+      return;
+    }
+
+    try {
+      const saved = localStorage.getItem(chatStorageKey);
+      setMessages(saved ? JSON.parse(saved) : [defaultWelcomeMessage]);
+    } catch {
+      setMessages([defaultWelcomeMessage]);
+    }
+  }, [chatStorageKey, defaultWelcomeMessage]);
+
   useEffect(() => {
     scrollToBottom();
+    historyRef.current = messages[0]?.role === defaultWelcomeMessage.role && messages[0]?.content === defaultWelcomeMessage.content
+      ? messages.slice(1)
+      : messages;
+    if (!chatStorageKey) return;
     try {
-      localStorage.setItem('yugi_ai_chat_history', JSON.stringify(messages.slice(-50)));
+      localStorage.setItem(chatStorageKey, JSON.stringify(messages.slice(-50)));
     } catch { /* ignore */ }
-  }, [messages]);
+  }, [chatStorageKey, defaultWelcomeMessage.content, defaultWelcomeMessage.role, messages]);
 
   useEffect(() => {
     const initAI = async () => {
@@ -84,10 +121,15 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
   }, []);
 
   const generateInitialInsights = async () => {
+    if (!hasTransactionData) {
+      setInsights([]);
+      return;
+    }
+
     setIsGeneratingInsights(true);
     try {
-      const transactions = await mcpClientRef.current?.callTool('get_transactions', {}) || [];
-      const parsedInsights = await financeApi.getAIInsights(transactions, selectedBank);
+      const ledgerTransactions = await mcpClientRef.current?.callTool<Transaction[]>('get_transactions', {}) || [];
+      const parsedInsights = await financeApi.getAIInsights(ledgerTransactions, selectedBank);
       setInsights(parsedInsights);
     } catch (err) {
       console.error("Failed to generate insights:", err);
@@ -98,6 +140,17 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
+
+    if (!hasTransactionData) {
+      const userMessage = input.trim();
+      setMessages(prev => [
+        ...prev,
+        { role: 'user', content: userMessage },
+        { role: 'ai', content: 'Add some transactions first to get personalized insights. Once your ledger has activity, I can analyze spending patterns, goals, risks, and tax opportunities.' }
+      ]);
+      setInput('');
+      return;
+    }
     
     const userMessage = input;
     setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
@@ -105,12 +158,10 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
     setIsLoading(true);
 
     try {
-      const transactions = await mcpClientRef.current?.callTool('get_transactions', {}) || [];
-      const response = await financeApi.sendAIChat(userMessage, historyRef.current, transactions);
+      const ledgerTransactions = await mcpClientRef.current?.callTool<Transaction[]>('get_transactions', {}) || [];
+      const response = await financeApi.sendAIChat(userMessage, historyRef.current, ledgerTransactions);
       
       setMessages(prev => [...prev, { role: 'ai', content: response.content }]);
-      historyRef.current.push({ role: 'user', content: userMessage });
-      historyRef.current.push({ role: 'ai', content: response.content });
 
       if (isVoiceMode) {
         speakMessage(response.content);
@@ -153,8 +204,11 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
     };
     recognition.onend = () => setIsListening(false);
     recognition.onerror = (event: any) => {
-      console.error("Speech recognition error:", event.error);
+      console.warn("Speech recognition event:", event.error);
       setIsListening(false);
+      if (event.error === 'aborted' || event.error === 'no-speech') {
+        return; // Normal cancellation or silence, ignore silently
+      }
       if (event.error === 'network') {
         setMessages(prev => [...prev, { role: 'ai', content: "I'm having trouble connecting to the speech service. This is often caused by browser restrictions in the preview environment. Please try opening the app in a new tab, or type your message instead." }]);
       } else if (event.error === 'not-allowed') {
@@ -256,7 +310,15 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
             </div>
 
             <div className="flex-1 overflow-y-auto pr-4 space-y-6 no-scrollbar">
-              {isGeneratingInsights && insights.length === 0 ? (
+              {!hasTransactionData ? (
+                <div className="flex h-64 flex-col items-center justify-center rounded-[32px] border border-dashed border-white/10 bg-white/[0.02] px-8 text-center">
+                  <AlertCircle className="mb-4 h-12 w-12 text-white/20" />
+                  <p className="text-lg font-bold">No transaction data yet</p>
+                  <p className="mt-2 text-sm font-medium leading-7 text-white/40">
+                    Add a few transactions first, then return here for personalized insights, risk alerts, and optimization ideas.
+                  </p>
+                </div>
+              ) : isGeneratingInsights && insights.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-64 text-white/20">
                   <Loader2 className="w-12 h-12 animate-spin mb-4" />
                   <p className="font-bold uppercase tracking-widest text-xs">Synthesizing Neural Insights...</p>
@@ -326,6 +388,13 @@ export const AIInsightsPage: React.FC<AIInsightsPageProps> = ({ compact, onClose
               </div>
             </div>
             <div className="flex items-center gap-4">
+              <button
+                title="Clear chat history"
+                onClick={clearHistory}
+                className="p-2 rounded-xl hover:bg-white/5 text-white/30 hover:text-white transition-all"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
               <div className="flex gap-2">
                 <div className="w-2 h-2 rounded-full bg-positive animate-pulse" />
                 <span className="text-[10px] font-bold text-positive uppercase tracking-widest">Active</span>

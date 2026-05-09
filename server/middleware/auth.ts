@@ -11,7 +11,7 @@
  */
 
 import { Request, Response, NextFunction } from "express";
-import { verifyToken, findUserById } from "../lib/auth.js";
+import { verifyToken, findUserById, findUserByEmail } from "../lib/auth.js";
 import { verifyRequestSignature } from "../lib/keyManager.js";
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -43,6 +43,13 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction) 
     res.status(401).json({ error: "Unauthorized: invalid or expired token" });
     return;
   }
+
+  const stored = findUserByEmail(payload.email);
+  if (stored?.emailVerified === false) {
+    res.status(403).json({ error: "Email verification required" });
+    return;
+  }
+
   (req as any).user = payload;
   next();
 };

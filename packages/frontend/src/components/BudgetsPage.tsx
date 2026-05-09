@@ -36,6 +36,19 @@ const PRESET_COLORS = [
   '#3B82F6', // Blue
 ];
 
+const PRESET_COLOR_CLASSES: Record<string, { solid: string; soft: string; border: string; text: string }> = {
+  '#7C6EFA': { solid: 'bg-accent', soft: 'bg-accent/15', border: 'border-accent/30', text: 'text-accent' },
+  '#22D3EE': { solid: 'bg-cyan-400', soft: 'bg-cyan-400/15', border: 'border-cyan-400/30', text: 'text-cyan-400' },
+  '#22D3A5': { solid: 'bg-positive', soft: 'bg-positive/15', border: 'border-positive/30', text: 'text-positive' },
+  '#F43F5E': { solid: 'bg-negative', soft: 'bg-negative/15', border: 'border-negative/30', text: 'text-negative' },
+  '#F59E0B': { solid: 'bg-amber-500', soft: 'bg-amber-500/15', border: 'border-amber-500/30', text: 'text-amber-500' },
+  '#8B5CF6': { solid: 'bg-violet-500', soft: 'bg-violet-500/15', border: 'border-violet-500/30', text: 'text-violet-400' },
+  '#EC4899': { solid: 'bg-pink-500', soft: 'bg-pink-500/15', border: 'border-pink-500/30', text: 'text-pink-400' },
+  '#3B82F6': { solid: 'bg-blue-500', soft: 'bg-blue-500/15', border: 'border-blue-500/30', text: 'text-blue-400' },
+};
+
+const getBudgetColorClasses = (color?: string) => PRESET_COLOR_CLASSES[color || ''] || PRESET_COLOR_CLASSES['#7C6EFA'];
+
 interface BudgetsPageProps {
   setActiveTab: (tab: string) => void;
 }
@@ -43,7 +56,14 @@ interface BudgetsPageProps {
 export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
   const { budgets, addBudget, updateBudget, deleteBudget, transactions, healthMetricsByCurrency } = useFinance();
   const currencies = Array.from(new Set(budgets.map(b => b.currency || 'INR')));
-  const [selectedCurrency, setSelectedCurrency] = React.useState(currencies[0] || 'INR');
+  const [selectedCurrency, setSelectedCurrency] = React.useState('INR');
+
+  React.useEffect(() => {
+    if (currencies.length > 0 && !currencies.includes(selectedCurrency)) {
+      setSelectedCurrency(currencies[0]);
+    }
+  }, [currencies, selectedCurrency]);
+
   const [isAdding, setIsAdding] = React.useState(false);
   const [editingBudget, setEditingBudget] = React.useState<Budget | null>(null);
   const [formData, setFormData] = React.useState({ 
@@ -53,8 +73,12 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
     perTransactionLimit: '',
     color: PRESET_COLORS[0],
     dueDate: '',
-    currency: selectedCurrency
+    currency: 'INR'
   });
+
+  React.useEffect(() => {
+    setFormData(prev => ({ ...prev, currency: selectedCurrency }));
+  }, [selectedCurrency]);
   const [selectedCategory, setSelectedCategory] = React.useState<string | null>(null);
   const [isProcessingRollover, setIsProcessingRollover] = React.useState(false);
   const [sortBy, setSortBy] = React.useState<'category' | 'limit' | 'spent' | 'dueDate'>('category');
@@ -307,10 +331,10 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                         title={`Select color ${color}`}
                         onClick={() => setFormData(prev => ({ ...prev, color }))}
                         className={cn(
-                          "w-10 h-10 rounded-xl transition-all border-2 [background-color:var(--bc)]",
+                          'w-10 h-10 rounded-xl transition-all border-2',
+                          getBudgetColorClasses(color).solid,
                           formData.color === color ? "border-white scale-110 shadow-lg" : "border-transparent hover:scale-105"
                         )}
-                        style={{ '--bc': color } as React.CSSProperties}
                       />
                     ))}
                     <div className="relative">
@@ -321,11 +345,8 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                         onChange={(e) => setFormData(prev => ({ ...prev, color: e.target.value }))}
                         className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 cursor-pointer opacity-0 absolute inset-0"
                       />
-                      <div 
-                        className="w-10 h-10 rounded-xl border-2 border-dashed border-white/20 flex items-center justify-center text-white/20 [background-color:var(--fc)]"
-                        style={{ '--fc': PRESET_COLORS.includes(formData.color) ? 'transparent' : formData.color } as React.CSSProperties}
-                      >
-                        {!PRESET_COLORS.includes(formData.color) ? null : <Plus className="w-4 h-4" />}
+                      <div className="w-10 h-10 rounded-xl border-2 border-dashed border-white/20 flex items-center justify-center text-[8px] font-bold text-white/40">
+                        {PRESET_COLORS.includes(formData.color) ? <Plus className="w-4 h-4" /> : 'HEX'}
                       </div>
                     </div>
                   </div>
@@ -492,7 +513,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
               <div className="w-full md:w-1/2 grid grid-cols-2 gap-4">
                 {budgets.map((budget) => (
                   <div key={budget.id} className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5">
-                    <div className="w-3 h-3 rounded-full [background-color:var(--bc)]" style={{ '--bc': budget.color } as React.CSSProperties} />
+                    <div className={cn('w-3 h-3 rounded-full', getBudgetColorClasses(budget.color).solid)} />
                     <div className="min-w-0">
                       <p className="text-[10px] font-bold text-white truncate">{budget.category}</p>
                       <p className="text-[10px] font-mono text-white/40">
@@ -558,6 +579,7 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
             const progress = (budget.spent / effectiveLimit) * 100;
             const isOver = budget.spent > effectiveLimit;
             const isAtLimit = progress >= 90 && progress <= 100;
+            const colorClasses = getBudgetColorClasses(budget.color);
             
             // Sparkline data for budget category
             const categoryTransactions = transactions
@@ -594,14 +616,21 @@ export const BudgetsPage: React.FC<BudgetsPageProps> = ({ setActiveTab }) => {
                 )}
                 <div className="flex justify-between items-start mb-8">
                   <div className="flex items-center gap-4">
-                    <div 
-                      className="w-12 h-12 rounded-2xl flex items-center justify-center border transition-all group-hover:scale-110 shadow-lg [background-color:var(--bbg)] [border-color:var(--bbd)] [color:var(--btx)]"
-                      style={{ '--bbg': `${budget.color}15`, '--bbd': isOver ? '#F43F5E' : `${budget.color}30`, '--btx': isOver ? '#F43F5E' : budget.color } as React.CSSProperties}
-                    >
+                    <div className={cn(
+                      'w-12 h-12 rounded-2xl flex items-center justify-center border transition-all group-hover:scale-110 shadow-lg',
+                      isOver ? 'bg-negative/15 border-negative text-negative' : `${colorClasses.soft} ${colorClasses.border} ${colorClasses.text}`
+                    )}>
                       {CATEGORY_ICONS[budget.category] || <span className="text-xl">{budget.emoji}</span>}
                     </div>
                     <div>
-                      <h3 className="font-bold text-lg tracking-tight">{budget.category}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-lg tracking-tight">{budget.category}</h3>
+                        {isOver && (
+                          <span className="rounded-full border border-negative/30 bg-negative/10 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-negative">
+                            Over Budget
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2">
                         <p className="text-[10px] text-white/20 font-bold uppercase tracking-widest">Monthly Allocation</p>
                         {budget.dueDate && (

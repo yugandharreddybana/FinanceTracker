@@ -76,8 +76,8 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onSwitchToLogi
         <div className="glass-card p-8 border-white/5 shadow-2xl">
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Browser Autofill Honeypot */}
-            <input type="text" style={{ display: 'none' }} aria-hidden="true" />
-            <input type="password" style={{ display: 'none' }} aria-hidden="true" />
+            <input type="text" className="hidden" aria-hidden="true" />
+            <input type="password" className="hidden" aria-hidden="true" />
             {error && (
               <motion.div
                 initial={{ opacity: 0, x: -10 }}
@@ -148,6 +148,10 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onSignup, onSwitchToLogi
               <p className="text-[10px] text-white/40 leading-relaxed">
                 By signing up, you agree to our <span className="text-white/60 underline">Terms of Service</span> and <span className="text-white/60 underline">Privacy Policy</span>. Your data is always yours.
               </p>
+            </div>
+
+            <div className="rounded-xl border border-white/5 bg-white/[0.03] px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-white/40">
+              Sessions stay active for up to 24 hours on this device, or until you sign out.
             </div>
 
             <button 

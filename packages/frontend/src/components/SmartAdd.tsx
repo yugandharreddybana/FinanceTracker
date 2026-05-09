@@ -14,10 +14,13 @@ const intentLabel = (r: any) => {
     const t = r.type ? ` · ${r.type}` : '';
     return `${r.merchant || r.name || 'Unknown'} · ${sym}${amt}${acct}${t}`;
   }
-  if (r.intent === 'SAVINGS_GOAL') return `Goal: ${r.name || 'New Goal'} · target ${r.target || 0}`;
-  if (r.intent === 'RECURRING_PAYMENT') return `Subscription: ${r.name || r.merchant || ''} · ${r.amount || 0}`;
-  if (r.intent === 'LOAN') return `Loan: ${r.name || ''} · ${r.totalAmount || 0}`;
-  if (r.intent === 'SAVINGS_TRANSFER') return `Transfer ${r.amount || 0} → ${r.goalId || 'goal'}`;
+  if (r.intent === 'SAVINGS_GOAL') return `🎯 Goal: ${r.name || 'New Goal'} · target ${r.target || 0}`;
+  if (r.intent === 'RECURRING_PAYMENT') return `🔄 Subscription: ${r.name || r.merchant || ''} · ${r.amount || 0}/${r.frequency || 'Monthly'}`;
+  if (r.intent === 'LOAN') return `🏦 Loan: ${r.name || ''} · ${r.totalAmount || 0}`;
+  if (r.intent === 'SAVINGS_TRANSFER') return `💰 Transfer ${r.amount || 0} → ${r.goalName || r.goalId || 'goal'}`;
+  if (r.intent === 'BUDGET') return `📊 Budget: ${r.category || 'Category'} · limit ${r.limit || 0}`;
+  if (r.intent === 'LOAN_PAYMENT') return `💳 Loan Payment: ${r.loanName || 'loan'} · ${r.amount || 0}`;
+  if (r.intent === 'DELETE_TRANSACTION') return `🗑️ Delete: ${r.merchant || 'transaction'}`;
   return r.intent || 'Entry';
 };
 
@@ -435,12 +438,12 @@ export const SmartAdd: React.FC<{ setActiveTab: (tab: string) => void }> = ({ se
         whileTap={{ scale: 0.95 }}
         onClick={() => { setShowCoachmark(false); setIsAdding(!isAdding); }}
         className={cn(
-          "w-20 h-20 rounded-3xl flex items-center justify-center shadow-[0_32px_64px_rgba(0,0,0,0.6)] transition-all duration-500 relative group",
+          "w-14 h-14 rounded-2xl flex items-center justify-center shadow-[0_16px_32px_rgba(0,0,0,0.4)] transition-all duration-500 relative group",
           isAdding ? "bg-card border border-white/10 rotate-45" : "bg-accent violet-glow"
         )}
       >
-        <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-3xl" />
-        <Plus className={cn("w-10 h-10 transition-transform duration-500", isAdding ? "text-white/40" : "text-white")} />
+        <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl" />
+        <Plus className={cn("w-6 h-6 transition-transform duration-500", isAdding ? "text-white/40" : "text-white")} />
       </motion.button>
     </div>
   );

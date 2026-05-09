@@ -31,7 +31,7 @@ public class TransactionController {
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
             tx.setIdempotencyKey(idempotencyKey);
         }
-        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(tx));
+        return ResponseEntity.ok(service.create(tx));
     }
 
     @PutMapping("/{id}")
