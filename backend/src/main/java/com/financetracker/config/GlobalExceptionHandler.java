@@ -1,5 +1,7 @@
 package com.financetracker.config;
 
+import com.financetracker.exception.NotFoundException;
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -7,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.server.ResponseStatusException;
 import java.util.Map;
 import java.util.UUID;
@@ -47,17 +50,28 @@ public class GlobalExceptionHandler {
             .body(Map.of("error", "Validation failed: " + e.getMessage()));
     }
 
+    // Phase4.0007: typed 404 signal — replaces fragile string matching on
+    // RuntimeException.getMessage().contains("not found"), which previously
+    // reclassified internal cache misses ("payload not found in cache") as 404.
+    @ExceptionHandler({NotFoundException.class, EntityNotFoundException.class})
+    public ResponseEntity<Map<String, String>> handleNotFound(RuntimeException e) {
+        String correlationId = UUID.randomUUID().toString();
+        log.info("[{}] Resource not found: {}", correlationId, e.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(Map.of("error", "Resource not found", "correlationId", correlationId));
+    }
+
+    // Phase4.0006: missing required headers (e.g. X-User-Id) → 400 BAD_REQUEST.
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<Map<String, String>> handleMissingHeader(MissingRequestHeaderException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(Map.of("error", "Missing required header: " + e.getHeaderName()));
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, String>> handleRuntime(RuntimeException e) {
         String correlationId = UUID.randomUUID().toString();
-        // ISSUE #19 FIX: Log full detail server-side only — never return class name or message
         log.error("[{}] Unhandled RuntimeException: {}", correlationId, e.getMessage(), e);
-        String msg = e.getMessage();
-        // Safe to return 404 signal — does NOT expose internal IDs
-        if (msg != null && msg.toLowerCase().contains("not found")) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(Map.of("error", "Resource not found", "correlationId", correlationId));
-        }
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
             .body(Map.of("error", "An unexpected error occurred", "correlationId", correlationId));
     }

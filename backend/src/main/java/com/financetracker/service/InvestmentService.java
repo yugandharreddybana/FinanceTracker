@@ -33,7 +33,7 @@ public class InvestmentService {
     @Transactional
     public Investment update(String id, Investment updates, String requestUserId) {
         Investment existing = repo.findById(id)
-            .orElseThrow(() -> new RuntimeException("Investment not found"));
+            .orElseThrow(() -> new com.financetracker.exception.NotFoundException("Investment not found"));
         Guards.assertOwner(existing.getUserId(), requestUserId);
         if (updates.getSymbol() != null) existing.setSymbol(updates.getSymbol());
         if (updates.getName() != null) existing.setName(updates.getName());
@@ -49,7 +49,7 @@ public class InvestmentService {
     @Transactional
     public void delete(String id, String requestUserId) {
         Investment existing = repo.findById(id)
-            .orElseThrow(() -> new RuntimeException("Investment not found"));
+            .orElseThrow(() -> new com.financetracker.exception.NotFoundException("Investment not found"));
         Guards.assertOwner(existing.getUserId(), requestUserId);
         // ISSUE #22 FIX: Soft-delete
         existing.setDeleted(true);
@@ -62,8 +62,10 @@ public class InvestmentService {
     public void updatePricesFromMarket(String symbol, java.math.BigDecimal price) {
         List<Investment> holdings = repo.findAllBySymbol(symbol);
         for (Investment inv : holdings) {
-            inv.setCurrentPrice(price);
-            inv.setLastUpdated(Instant.now());
+            // Phase5.0014: setCurrentPrice is now package-private; only the
+            // server-only setCurrentPriceInternal mutator (which also bumps
+            // lastUpdated) is reachable from this package.
+            inv.setCurrentPriceInternal(price);
             repo.save(inv);
         }
     }

@@ -53,7 +53,7 @@ public class FamilyAccountService {
     @Transactional
     public FamilyAccount update(String id, FamilyAccount updates, String requestUserId) {
         FamilyAccount existing = repo.findById(id)
-            .orElseThrow(() -> new RuntimeException("Family account not found"));
+            .orElseThrow(() -> new com.financetracker.exception.NotFoundException("Family account not found"));
         Guards.assertOwner(existing.getOwnerId(), requestUserId);
         if (updates.getName() != null) existing.setName(updates.getName());
         if (updates.getSharedBudgets() != null) existing.setSharedBudgets(updates.getSharedBudgets());
@@ -65,7 +65,7 @@ public class FamilyAccountService {
     @Transactional
     public void delete(String id, String requestUserId) {
         FamilyAccount existing = repo.findById(id)
-            .orElseThrow(() -> new RuntimeException("Family account not found"));
+            .orElseThrow(() -> new com.financetracker.exception.NotFoundException("Family account not found"));
         Guards.assertOwner(existing.getOwnerId(), requestUserId);
         // ISSUE #22 FIX: Soft-delete
         existing.setDeleted(true);
@@ -77,7 +77,7 @@ public class FamilyAccountService {
     @Transactional
     public FamilyInvitation inviteMember(String familyId, String inviterId, String inviteeEmail) {
         FamilyAccount family = repo.findById(familyId)
-            .orElseThrow(() -> new RuntimeException("Family account not found"));
+            .orElseThrow(() -> new com.financetracker.exception.NotFoundException("Family account not found"));
         Guards.assertOwner(family.getOwnerId(), inviterId);
         FamilyInvitation inv = FamilyInvitation.builder()
             .id(UUID.randomUUID().toString())
@@ -106,7 +106,7 @@ public class FamilyAccountService {
             throw new ResponseStatusException(HttpStatus.GONE, "Invitation has expired");
         }
         FamilyAccount family = repo.findById(inv.getFamilyId())
-            .orElseThrow(() -> new RuntimeException("Family account not found"));
+            .orElseThrow(() -> new com.financetracker.exception.NotFoundException("Family account not found"));
         boolean alreadyMember = family.getMembers() != null &&
             family.getMembers().stream().anyMatch(m -> acceptingUserId.equals(m.getUid()));
         if (!alreadyMember) {

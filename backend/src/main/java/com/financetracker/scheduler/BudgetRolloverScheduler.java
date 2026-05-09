@@ -1,7 +1,9 @@
 package com.financetracker.scheduler;
 
 import com.financetracker.model.Budget;
+import com.financetracker.model.UserProfile;
 import com.financetracker.repository.BudgetRepository;
+import com.financetracker.repository.UserProfileRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -9,30 +11,48 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.List;
 
 /**
- * ISSUE #9 FIX: Month-end budget rollover scheduler.
- * Runs at 00:05 UTC on the 1st of every month.
- * - Resets spent to zero for all MONTHLY budgets
- * - Advances periodStart/periodEnd to the new month
- * - Computes rolloverAmount (unspent from prior month) if rolloverEnabled = true
+ * Phase5.0009: per-user month-end rollover.
+ * Runs hourly (00 UTC of every hour) and only rolls budgets for users whose
+ * local time is the first of the month between 00:00 and 00:59. This avoids
+ * the prior bug where a UTC 00:05 cron rolled budgets for users in UTC-12 on
+ * the last day of THEIR month.
+ *
+ * Each user's budgets are processed at most once per local-month transition.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class BudgetRolloverScheduler {
     private final BudgetRepository budgetRepo;
+    private final UserProfileRepository userRepo;
 
-    @Scheduled(cron = "0 5 0 1 * *", zone = "UTC")
+    @Scheduled(cron = "0 0 * * * *", zone = "UTC")
     @Transactional
     public void rolloverBudgets() {
-        LocalDate newStart = LocalDate.now(ZoneOffset.UTC).withDayOfMonth(1);
+        List<UserProfile> users = userRepo.findAll();
+        int rolled = 0;
+        for (UserProfile user : users) {
+            ZoneId zone = parseZone(user.getTimezone());
+            ZonedDateTime localNow = ZonedDateTime.now(zone);
+            // Only fire when the user's local clock just rolled into the 1st.
+            if (localNow.getDayOfMonth() != 1 || localNow.getHour() != 0) continue;
+            rolled += rolloverForUser(user.getId(), localNow.toLocalDate());
+        }
+        if (rolled > 0) log.info("[BudgetRolloverScheduler] Rolled {} budgets across users", rolled);
+    }
+
+    private int rolloverForUser(String userId, LocalDate newStart) {
         LocalDate newEnd = newStart.plusMonths(1).minusDays(1);
-        List<Budget> budgets = budgetRepo.findAllByPeriodType(Budget.PeriodType.MONTHLY);
-        log.info("[BudgetRolloverScheduler] Rolling over {} budgets to period {}/{}",
-            budgets.size(), newStart, newEnd);
+        List<Budget> budgets = budgetRepo.findAllByUserId(userId).stream()
+            .filter(b -> b.getPeriodType() == Budget.PeriodType.MONTHLY)
+            // Idempotency: don't re-roll if already on this period
+            .filter(b -> b.getPeriodStart() == null || !b.getPeriodStart().equals(newStart))
+            .toList();
         for (Budget b : budgets) {
             BigDecimal spent = b.getSpent() != null ? b.getSpent() : BigDecimal.ZERO;
             BigDecimal limit = b.getLimit() != null ? b.getLimit() : BigDecimal.ZERO;
@@ -45,6 +65,15 @@ public class BudgetRolloverScheduler {
             b.setPeriodEnd(newEnd);
             budgetRepo.save(b);
         }
-        log.info("[BudgetRolloverScheduler] Rollover complete for {} budgets", budgets.size());
+        return budgets.size();
+    }
+
+    private ZoneId parseZone(String tz) {
+        if (tz == null || tz.isBlank()) return ZoneId.of("UTC");
+        try {
+            return ZoneId.of(tz);
+        } catch (Exception e) {
+            return ZoneId.of("UTC");
+        }
     }
 }

@@ -31,4 +31,11 @@ public class UserProfile {
     private Map<String, Object> preferences;
 
     private String familyId;
+
+    // Phase5.0009: IANA timezone (e.g. "Pacific/Honolulu", "Asia/Kolkata"). Used
+    // by BudgetRolloverScheduler to roll budgets at the user's local first-of-month
+    // rather than UTC, so users in UTC-12 don't see a fresh budget on the last
+    // day of their local month. Falls back to UTC when null.
+    @Column(length = 64)
+    private String timezone;
 }

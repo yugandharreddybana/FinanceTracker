@@ -16,53 +16,61 @@ public class UserProfileController {
 
     @SuppressWarnings("null")
     @GetMapping("/{id}")
-    public ResponseEntity<UserProfile> getById(@PathVariable String id, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public ResponseEntity<UserProfile> getById(@PathVariable String id, @RequestHeader("X-User-Id") String userId) {
         Guards.assertOwner(id, userId);
         return service.findById(id)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // Pre-auth lookup for login flow (gated by middleware in production).
+    // Phase4.0002: caller can only look up themselves. The Express middleware
+    // already enforces email == caller email, but defence-in-depth requires the
+    // backend to reject if X-User-Id (set by the JWT filter) does not own the
+    // returned profile — the previous behaviour allowed PII enumeration via the
+    // backend if it was ever exposed directly.
     @SuppressWarnings("null")
     @GetMapping("/by-email/{email}")
-    public ResponseEntity<UserProfile> getByEmail(@PathVariable String email) {
+    public ResponseEntity<UserProfile> getByEmail(@PathVariable String email,
+                                                  @RequestHeader("X-User-Id") String userId) {
         return service.findByEmail(email)
-                .map(ResponseEntity::ok)
+                .map(profile -> {
+                    Guards.assertOwner(profile.getId(), userId);
+                    return ResponseEntity.ok(profile);
+                })
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @PostMapping
     public ResponseEntity<UserProfile> create(
             @RequestBody UserProfile profile,
-            @RequestHeader(value = "X-User-Id", required = false) String userId) {
+            @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         profile.setId(userId);
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(profile));
     }
 
     @PutMapping("/{id}")
-    public UserProfile update(@PathVariable String id, @RequestBody UserProfile updates, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public UserProfile update(@PathVariable String id, @RequestBody UserProfile updates, @RequestHeader("X-User-Id") String userId) {
         Guards.assertOwner(id, userId);
         return service.update(id, updates);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable String id, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public ResponseEntity<Void> delete(@PathVariable String id, @RequestHeader("X-User-Id") String userId) {
         Guards.assertOwner(id, userId);
         service.delete(id);
         return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/by-email/{email}")
-    public ResponseEntity<Void> deleteByEmail(@PathVariable String email, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public ResponseEntity<Void> deleteByEmail(@PathVariable String email, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         service.deleteByEmailOwned(email, userId);
         return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/purge/{userId}")
-    public ResponseEntity<Void> purgeUserData(@PathVariable("userId") String targetId, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public ResponseEntity<Void> purgeUserData(@PathVariable("userId") String targetId, @RequestHeader("X-User-Id") String userId) {
         Guards.assertOwner(targetId, userId);
         service.purgeUserData(targetId);
         return ResponseEntity.noContent().build();

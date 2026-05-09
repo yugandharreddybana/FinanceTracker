@@ -1,11 +1,32 @@
 import { Router, Request, Response } from "express";
+import { rateLimit } from "express-rate-limit";
 import { verifyToken } from "../lib/auth.js";
-import { rateLimit, capPayload } from "../middleware/rateLimit.js";
 import dotenv from "dotenv";
 
 dotenv.config();
 
 const router = Router();
+
+// Phase3.0008: per-user rate limit on costly LLM endpoints. IP-based limits are
+// trivial to bypass with rotating proxies; bucketing by JWT uid bounds spend.
+const aiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => (req as any).user?.uid || req.ip || "anon",
+  message: { error: "AI rate limit exceeded. Please try again shortly." },
+});
+
+// Phase3.0008: bound history/transaction context shipped to the LLM so a 2 MB
+// body can't multiply the per-call token cost.
+const MAX_HISTORY = 20;
+const MAX_CONTEXT_TX = 30;
+
+// Phase3.0006: any single create_transaction proposed by the LLM that exceeds
+// this absolute cap is rejected outright. Below the cap the tool still does NOT
+// auto-execute — it returns a pendingAction the user must confirm via UI.
+const MAX_AI_TX_AMOUNT = 10000;
 
 // ---------------------------------------------------------------------------
 // NVIDIA NIM — OpenAI-compatible client
@@ -166,50 +187,10 @@ router.post("/process-input", authMiddleware, async (req, res) => {
     if (input.length > 2000) {
       return res.status(400).json({ error: "Input too long (max 2000 characters)" });
     }
+    // Phase3.0007: never silently fabricate ledger entries when the LLM is not
+    // configured. Frontend handles 503 by surfacing a clear "AI is offline" state.
     if (!NVIDIA_API_KEY) {
-      console.warn("[process-input] Mocking AI response because NVIDIA_API_KEY is not set");
-      const lowerInput = input.toLowerCase();
-      let resIntent = "TRANSACTION";
-      let merchant = "Mocked AI Response";
-      let amount = 10;
-      let category = "Others";
-      let type = "expense";
-
-      if (lowerInput.includes("budget")) {
-        resIntent = "BUDGET";
-        category = input.split("budget")[1]?.trim() || "Food & Drink";
-        amount = 500;
-      } else if (lowerInput.includes("savings goal") || lowerInput.includes("savings-goal") || lowerInput.includes("goal")) {
-        resIntent = "SAVINGS_GOAL";
-        merchant = input.split("goal")[1]?.trim() || "New Goal";
-        amount = 1000;
-      } else if (lowerInput.includes("transfer") || lowerInput.includes("savings transfer")) {
-        resIntent = "SAVINGS_TRANSFER";
-        amount = 50;
-      } else if (lowerInput.includes("loan payment") || lowerInput.includes("emi")) {
-        resIntent = "LOAN_PAYMENT";
-        amount = 250;
-      } else if (lowerInput.includes("loan")) {
-        resIntent = "LOAN";
-        merchant = input.split("loan")[1]?.trim() || "New Loan";
-        amount = 5000;
-      }
-
-      return res.json([
-        {
-          intent: resIntent,
-          merchant,
-          name: merchant,
-          amount,
-          target: amount,
-          limit: amount,
-          totalAmount: amount,
-          date: new Date().toISOString().split('T')[0],
-          category,
-          type,
-          confidence: 0.99
-        }
-      ]);
+      return res.status(503).json({ error: "AI service not configured" });
     }
 
     const { text } = await nvidiaChat(
@@ -347,9 +328,11 @@ router.post("/analyze-file", authMiddleware, async (req, res) => {
 // 4. AI Oracle Chat with Tool Calling
 // ---------------------------------------------------------------------------
 
-router.post("/oracle", authMiddleware, async (req, res) => {
+router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
   try {
-    const { message, history = [] } = req.body;
+    const rawHistory = Array.isArray(req.body?.history) ? req.body.history : [];
+    const history = rawHistory.slice(-MAX_HISTORY);
+    const { message } = req.body;
     const { uid, name } = (req as any).user;
     const token = req.headers.authorization?.split(" ")[1] ||
       (req as any).cookies?.auth_token || "";
@@ -475,7 +458,26 @@ router.post("/oracle", authMiddleware, async (req, res) => {
           } else if (fnName === "get_savings_goals") {
             toolResult = await callBackend("/savings-goals", "GET", null, uid, token);
           } else if (fnName === "create_transaction") {
-            toolResult = await callBackend("/transactions", "POST", args, uid, token);
+            // Phase3.0006: mutating tools never auto-execute. Returning a
+            // pendingAction makes the LLM tell the user to confirm via UI.
+            const amount = Number(args?.amount);
+            if (!Number.isFinite(amount)) {
+              toolResult = { error: "amount must be a number" };
+            } else if (Math.abs(amount) > MAX_AI_TX_AMOUNT) {
+              toolResult = {
+                error: `amount exceeds ${MAX_AI_TX_AMOUNT} cap — user must create this transaction manually`,
+              };
+            } else {
+              toolResult = {
+                pendingAction: {
+                  type: "create_transaction",
+                  payload: args,
+                },
+                requiresConfirmation: true,
+                message:
+                  "Transaction drafted. The user must confirm and submit via the Smart Add dialog before it is recorded.",
+              };
+            }
           } else {
             toolResult = { error: `Unknown tool: ${fnName}` };
           }
@@ -503,9 +505,11 @@ router.post("/oracle", authMiddleware, async (req, res) => {
 // 5. AI Insights
 // ---------------------------------------------------------------------------
 
-router.post("/insights", authMiddleware, async (req, res) => {
+router.post("/insights", authMiddleware, aiLimiter, async (req, res) => {
   try {
-    const { transactions, selectedBank } = req.body;
+    const rawTransactions = Array.isArray(req.body?.transactions) ? req.body.transactions : [];
+    const transactions = rawTransactions.slice(-50);
+    const { selectedBank } = req.body;
     if (!NVIDIA_API_KEY) return res.status(503).json({ error: "AI service not configured" });
 
     const bankFilter = selectedBank !== "ALL" ? `Focus on transactions from account: ${selectedBank}.` : "";
@@ -522,9 +526,7 @@ router.post("/insights", authMiddleware, async (req, res) => {
         },
         {
           role: "user",
-          content: `Analyze these transactions and give me 4 insights: ${JSON.stringify(
-            (transactions || []).slice(0, 50) // cap to avoid token overflow
-          )}`,
+          content: `Analyze these transactions and give me 4 insights: ${JSON.stringify(transactions)}`,
         },
       ],
       { jsonMode: true, temperature: 0.4 }
@@ -544,9 +546,13 @@ router.post("/insights", authMiddleware, async (req, res) => {
 // 6. Generic AI Chat
 // ---------------------------------------------------------------------------
 
-router.post("/chat", authMiddleware, async (req, res) => {
+router.post("/chat", authMiddleware, aiLimiter, async (req, res) => {
   try {
-    const { message, history, transactions } = req.body;
+    const rawHistory = Array.isArray(req.body?.history) ? req.body.history : [];
+    const rawTransactions = Array.isArray(req.body?.transactions) ? req.body.transactions : [];
+    const history = rawHistory.slice(-MAX_HISTORY);
+    const transactions = rawTransactions.slice(-MAX_CONTEXT_TX);
+    const { message } = req.body;
     const { name } = (req as any).user;
     // Input validation
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
@@ -563,9 +569,9 @@ router.post("/chat", authMiddleware, async (req, res) => {
         content:
           `You are the Yugi Oracle, a premium personal financial AI. The user's name is ${name}. ` +
           `Today is ${new Date().toISOString().split("T")[0]}. ` +
-          `Here is the user's recent transaction context: ${JSON.stringify((transactions || []).slice(0, 30))}.`,
+          `Here is the user's recent transaction context: ${JSON.stringify(transactions)}.`,
       },
-      ...(history || []).map((h: any) => ({
+      ...history.map((h: any) => ({
         role: (h.role === "ai" ? "assistant" : "user") as "user" | "assistant",
         content: h.content,
       })),

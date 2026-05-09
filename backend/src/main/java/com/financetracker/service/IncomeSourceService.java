@@ -29,7 +29,7 @@ public class IncomeSourceService {
     @SuppressWarnings("null")
     @Transactional
     public IncomeSource update(String id, IncomeSource updates, String requestUserId) {
-        IncomeSource existing = repo.findById(id).orElseThrow(() -> new RuntimeException("Income source not found: " + id));
+        IncomeSource existing = repo.findById(id).orElseThrow(() -> new com.financetracker.exception.NotFoundException("Income source not found: " + id));
         Guards.assertOwner(existing.getUserId(), requestUserId);
         if (updates.getSource() != null) existing.setSource(updates.getSource());
         if (updates.getAmount() != null) existing.setAmount(updates.getAmount());
@@ -42,7 +42,7 @@ public class IncomeSourceService {
 
     @Transactional
     public void delete(String id, String requestUserId) {
-        IncomeSource existing = repo.findById(id).orElseThrow(() -> new RuntimeException("Income source not found: " + id));
+        IncomeSource existing = repo.findById(id).orElseThrow(() -> new com.financetracker.exception.NotFoundException("Income source not found: " + id));
         Guards.assertOwner(existing.getUserId(), requestUserId);
         repo.deleteById(id);
     }

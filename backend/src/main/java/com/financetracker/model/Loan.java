@@ -2,6 +2,10 @@ package com.financetracker.model;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -24,6 +28,8 @@ public class Loan {
 
     private String name;
 
+    @DecimalMin(value = "0.01", message = "totalAmount must be positive")
+    @DecimalMax(value = "999999999.99", message = "totalAmount exceeds maximum")
     @Column(precision = 15, scale = 2)
     private BigDecimal totalAmount;
 
@@ -33,9 +39,16 @@ public class Loan {
     @Column(precision = 15, scale = 2)
     private BigDecimal monthlyEMI;
 
+    // Phase5.0007: bounded interest rate (0–100% APR) — protects amortisation
+    // from negative rates (which divide by ((1+r)^n - 1) = 0 → NaN/infinite loop).
+    @DecimalMin(value = "0.0", message = "interestRate cannot be negative")
+    @DecimalMax(value = "100.0", message = "interestRate cannot exceed 100%")
     @Column(precision = 5, scale = 2)
     private BigDecimal interestRate;
 
+    // Phase5.0007: tenure 1–50 years — n=0 would crash the EMI formula.
+    @Min(value = 1, message = "tenureYears must be at least 1")
+    @Max(value = 50, message = "tenureYears cannot exceed 50")
     private Integer tenureYears;
     private String startDate;
     private String endDate;

@@ -36,6 +36,32 @@ try {
 
 const SYNC_TTL_SECONDS = 3600; // 1-hour TTL on cached transaction lists
 
+// Phase3.0003 caps for /sync-transactions
+const MAX_SYNC_TRANSACTIONS = 5000;
+const MAX_SYNC_PAYLOAD_BYTES = 1_000_000;
+
+// Phase3.0005: every dynamic path segment that comes from the client must match
+// this shape before we forward it to Spring. Stops control chars, slashes, and
+// pathologically long IDs from poisoning the upstream router.
+const ID_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
+const EMAIL_PATTERN = /^[A-Za-z0-9._%+-]{1,254}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,24}$/;
+
+function requireValidId(req: Request, res: Response, value: string, label = "id"): boolean {
+  if (!ID_PATTERN.test(value)) {
+    res.status(400).json({ error: `Invalid ${label}` });
+    return false;
+  }
+  return true;
+}
+
+function requireValidEmail(req: Request, res: Response, value: string): boolean {
+  if (!EMAIL_PATTERN.test(value)) {
+    res.status(400).json({ error: "Invalid email" });
+    return false;
+  }
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Generic proxy helper — forwards requests to Spring Boot
 // ---------------------------------------------------------------------------
@@ -107,10 +133,16 @@ router.post("/transactions", (req: Request, res: Response) => {
   return proxyToBackend(req, res, "/transactions");
 });
 
-router.put("/transactions/:id", (req, res) => proxyToBackend(req, res, `/transactions/${encodeURIComponent(req.params.id)}`));
+router.put("/transactions/:id", (req, res) => {
+  if (!requireValidId(req, res, req.params.id)) return;
+  return proxyToBackend(req, res, `/transactions/${encodeURIComponent(req.params.id)}`);
+});
 router.patch("/transactions/bulk", (req, res) => proxyToBackend(req, res, "/transactions/bulk"));
 router.post("/transactions/bulk-delete", (req, res) => proxyToBackend(req, res, "/transactions/bulk-delete"));
-router.delete("/transactions/:id", (req, res) => proxyToBackend(req, res, `/transactions/${encodeURIComponent(req.params.id)}`));
+router.delete("/transactions/:id", (req, res) => {
+  if (!requireValidId(req, res, req.params.id)) return;
+  return proxyToBackend(req, res, `/transactions/${encodeURIComponent(req.params.id)}`);
+});
 
 // ---------------------------------------------------------------------------
 // Accounts
@@ -118,8 +150,14 @@ router.delete("/transactions/:id", (req, res) => proxyToBackend(req, res, `/tran
 
 router.get("/accounts", (req, res) => proxyToBackend(req, res, "/accounts"));
 router.post("/accounts", (req, res) => proxyToBackend(req, res, "/accounts"));
-router.put("/accounts/:id", (req, res) => proxyToBackend(req, res, `/accounts/${encodeURIComponent(req.params.id)}`));
-router.delete("/accounts/:id", (req, res) => proxyToBackend(req, res, `/accounts/${encodeURIComponent(req.params.id)}`));
+router.put("/accounts/:id", (req, res) => {
+  if (!requireValidId(req, res, req.params.id)) return;
+  return proxyToBackend(req, res, `/accounts/${encodeURIComponent(req.params.id)}`);
+});
+router.delete("/accounts/:id", (req, res) => {
+  if (!requireValidId(req, res, req.params.id)) return;
+  return proxyToBackend(req, res, `/accounts/${encodeURIComponent(req.params.id)}`);
+});
 
 // ---------------------------------------------------------------------------
 // Budgets
@@ -127,8 +165,14 @@ router.delete("/accounts/:id", (req, res) => proxyToBackend(req, res, `/accounts
 
 router.get("/budgets", (req, res) => proxyToBackend(req, res, "/budgets"));
 router.post("/budgets", (req, res) => proxyToBackend(req, res, "/budgets"));
-router.put("/budgets/:id", (req, res) => proxyToBackend(req, res, `/budgets/${encodeURIComponent(req.params.id)}`));
-router.delete("/budgets/:id", (req, res) => proxyToBackend(req, res, `/budgets/${encodeURIComponent(req.params.id)}`));
+router.put("/budgets/:id", (req, res) => {
+  if (!requireValidId(req, res, req.params.id)) return;
+  return proxyToBackend(req, res, `/budgets/${encodeURIComponent(req.params.id)}`);
+});
+router.delete("/budgets/:id", (req, res) => {
+  if (!requireValidId(req, res, req.params.id)) return;
+  return proxyToBackend(req, res, `/budgets/${encodeURIComponent(req.params.id)}`);
+});
 
 // ---------------------------------------------------------------------------
 // Loans
@@ -136,8 +180,14 @@ router.delete("/budgets/:id", (req, res) => proxyToBackend(req, res, `/budgets/$
 
 router.get("/loans", (req, res) => proxyToBackend(req, res, "/loans"));
 router.post("/loans", (req, res) => proxyToBackend(req, res, "/loans"));
-router.put("/loans/:id", (req, res) => proxyToBackend(req, res, `/loans/${encodeURIComponent(req.params.id)}`));
-router.delete("/loans/:id", (req, res) => proxyToBackend(req, res, `/loans/${encodeURIComponent(req.params.id)}`));
+router.put("/loans/:id", (req, res) => {
+  if (!requireValidId(req, res, req.params.id)) return;
+  return proxyToBackend(req, res, `/loans/${encodeURIComponent(req.params.id)}`);
+});
+router.delete("/loans/:id", (req, res) => {
+  if (!requireValidId(req, res, req.params.id)) return;
+  return proxyToBackend(req, res, `/loans/${encodeURIComponent(req.params.id)}`);
+});
 
 // ---------------------------------------------------------------------------
 // Savings Goals
@@ -145,8 +195,14 @@ router.delete("/loans/:id", (req, res) => proxyToBackend(req, res, `/loans/${enc
 
 router.get("/savings-goals", (req, res) => proxyToBackend(req, res, "/savings-goals"));
 router.post("/savings-goals", (req, res) => proxyToBackend(req, res, "/savings-goals"));
-router.put("/savings-goals/:id", (req, res) => proxyToBackend(req, res, `/savings-goals/${encodeURIComponent(req.params.id)}`));
-router.delete("/savings-goals/:id", (req, res) => proxyToBackend(req, res, `/savings-goals/${encodeURIComponent(req.params.id)}`));
+router.put("/savings-goals/:id", (req, res) => {
+  if (!requireValidId(req, res, req.params.id)) return;
+  return proxyToBackend(req, res, `/savings-goals/${encodeURIComponent(req.params.id)}`);
+});
+router.delete("/savings-goals/:id", (req, res) => {
+  if (!requireValidId(req, res, req.params.id)) return;
+  return proxyToBackend(req, res, `/savings-goals/${encodeURIComponent(req.params.id)}`);
+});
 
 // ---------------------------------------------------------------------------
 // Recurring Payments
@@ -154,8 +210,14 @@ router.delete("/savings-goals/:id", (req, res) => proxyToBackend(req, res, `/sav
 
 router.get("/recurring-payments", (req, res) => proxyToBackend(req, res, "/recurring-payments"));
 router.post("/recurring-payments", (req, res) => proxyToBackend(req, res, "/recurring-payments"));
-router.put("/recurring-payments/:id", (req, res) => proxyToBackend(req, res, `/recurring-payments/${encodeURIComponent(req.params.id)}`));
-router.delete("/recurring-payments/:id", (req, res) => proxyToBackend(req, res, `/recurring-payments/${encodeURIComponent(req.params.id)}`));
+router.put("/recurring-payments/:id", (req, res) => {
+  if (!requireValidId(req, res, req.params.id)) return;
+  return proxyToBackend(req, res, `/recurring-payments/${encodeURIComponent(req.params.id)}`);
+});
+router.delete("/recurring-payments/:id", (req, res) => {
+  if (!requireValidId(req, res, req.params.id)) return;
+  return proxyToBackend(req, res, `/recurring-payments/${encodeURIComponent(req.params.id)}`);
+});
 
 // ---------------------------------------------------------------------------
 // Income Sources
@@ -163,8 +225,14 @@ router.delete("/recurring-payments/:id", (req, res) => proxyToBackend(req, res, 
 
 router.get("/income-sources", (req, res) => proxyToBackend(req, res, "/income-sources"));
 router.post("/income-sources", (req, res) => proxyToBackend(req, res, "/income-sources"));
-router.put("/income-sources/:id", (req, res) => proxyToBackend(req, res, `/income-sources/${encodeURIComponent(req.params.id)}`));
-router.delete("/income-sources/:id", (req, res) => proxyToBackend(req, res, `/income-sources/${encodeURIComponent(req.params.id)}`));
+router.put("/income-sources/:id", (req, res) => {
+  if (!requireValidId(req, res, req.params.id)) return;
+  return proxyToBackend(req, res, `/income-sources/${encodeURIComponent(req.params.id)}`);
+});
+router.delete("/income-sources/:id", (req, res) => {
+  if (!requireValidId(req, res, req.params.id)) return;
+  return proxyToBackend(req, res, `/income-sources/${encodeURIComponent(req.params.id)}`);
+});
 
 // ---------------------------------------------------------------------------
 // Investments
@@ -172,40 +240,67 @@ router.delete("/income-sources/:id", (req, res) => proxyToBackend(req, res, `/in
 
 router.get("/investments", (req, res) => proxyToBackend(req, res, "/investments"));
 router.post("/investments", (req, res) => proxyToBackend(req, res, "/investments"));
-router.put("/investments/:id", (req, res) => proxyToBackend(req, res, `/investments/${encodeURIComponent(req.params.id)}`));
-router.delete("/investments/:id", (req, res) => proxyToBackend(req, res, `/investments/${encodeURIComponent(req.params.id)}`));
+router.put("/investments/:id", (req, res) => {
+  if (!requireValidId(req, res, req.params.id)) return;
+  return proxyToBackend(req, res, `/investments/${encodeURIComponent(req.params.id)}`);
+});
+router.delete("/investments/:id", (req, res) => {
+  if (!requireValidId(req, res, req.params.id)) return;
+  return proxyToBackend(req, res, `/investments/${encodeURIComponent(req.params.id)}`);
+});
 
 // ---------------------------------------------------------------------------
 // User Profiles (scoped to authenticated user only)
 // ---------------------------------------------------------------------------
 
 router.post("/user-profiles", (req, res) => proxyToBackend(req, res, "/user-profiles"));
-router.get("/user-profiles/by-email/:email", (req, res) =>
-  proxyToBackend(req, res, `/user-profiles/by-email/${encodeURIComponent(req.params.email)}`));
+router.get("/user-profiles/by-email/:email", (req, res) => {
+  const callerEmail = (req as any).user?.email as string | undefined;
+  if (!callerEmail) return res.status(401).json({ error: "Unauthorized" });
+  if (!requireValidEmail(req, res, req.params.email)) return;
+  // Phase4.0002 stub: caller can only look up themselves. Spring backend
+  // additionally enforces ownership via X-User-Id once Phase 4 fixes land.
+  if (req.params.email.toLowerCase() !== callerEmail.toLowerCase()) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  return proxyToBackend(req, res, `/user-profiles/by-email/${encodeURIComponent(req.params.email)}`);
+});
 router.get("/user-profiles/:id", (req, res) => {
   const userId = (req as any).user?.uid;
+  if (!requireValidId(req, res, req.params.id)) return;
   if (req.params.id !== userId) return res.status(403).json({ error: "Forbidden" });
   return proxyToBackend(req, res, `/user-profiles/${encodeURIComponent(req.params.id)}`);
 });
 router.put("/user-profiles/:id", (req, res) => {
   const userId = (req as any).user?.uid;
+  if (!requireValidId(req, res, req.params.id)) return;
   if (req.params.id !== userId) return res.status(403).json({ error: "Forbidden" });
   return proxyToBackend(req, res, `/user-profiles/${encodeURIComponent(req.params.id)}`);
 });
 router.delete("/user-profiles/:id", (req, res) => {
   const userId = (req as any).user?.uid;
+  if (!requireValidId(req, res, req.params.id)) return;
   if (req.params.id !== userId) return res.status(403).json({ error: "Forbidden" });
   return proxyToBackend(req, res, `/user-profiles/${encodeURIComponent(req.params.id)}`);
 });
 
 router.delete("/user-profiles/by-email/:email", async (req, res) => {
   const userId = (req as any).user?.uid;
-  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+  const callerEmail = (req as any).user?.email as string | undefined;
+  if (!userId || !callerEmail) return res.status(401).json({ error: "Unauthorized" });
+  if (!requireValidEmail(req, res, req.params.email)) return;
+  if (req.params.email.toLowerCase() !== callerEmail.toLowerCase()) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
   try {
-    const del = await fetch(`${BACKEND_API}/user-profiles/by-email/${encodeURIComponent(req.params.email)}`, { method: "DELETE" });
-    if (userId) {
-      await fetch(`${BACKEND_API}/user-profiles/purge/${userId}`, { method: "DELETE" });
-    }
+    const del = await fetch(`${BACKEND_API}/user-profiles/by-email/${encodeURIComponent(req.params.email)}`, {
+      method: "DELETE",
+      headers: { "X-User-Id": userId },
+    });
+    await fetch(`${BACKEND_API}/user-profiles/purge/${encodeURIComponent(userId)}`, {
+      method: "DELETE",
+      headers: { "X-User-Id": userId },
+    });
     res.status(del.status).send();
   } catch {
     res.status(502).json({ error: "Backend unavailable" });
@@ -223,8 +318,16 @@ router.post("/sync-transactions", async (req, res) => {
     return;
   }
   const transactions = Array.isArray(req.body?.transactions) ? req.body.transactions : [];
+  // Phase3.0003: hard caps prevent a single user from exhausting the Redis cache.
+  if (transactions.length > MAX_SYNC_TRANSACTIONS) {
+    return res.status(413).json({ error: `Too many transactions (max ${MAX_SYNC_TRANSACTIONS})` });
+  }
+  const serialised = JSON.stringify(transactions);
+  if (Buffer.byteLength(serialised, "utf8") > MAX_SYNC_PAYLOAD_BYTES) {
+    return res.status(413).json({ error: "Transaction payload exceeds size limit" });
+  }
   if (redis) {
-    await redis.setex(`txn_cache:${userId}`, SYNC_TTL_SECONDS, JSON.stringify(transactions));
+    await redis.setex(`txn_cache:${userId}`, SYNC_TTL_SECONDS, serialised);
   }
   res.json({ ok: true, count: transactions.length });
 });
@@ -245,9 +348,15 @@ router.get("/sync-transactions", async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // MCP Endpoints — auth-gated; 'spent' removed from update_budget input schema
+//
+// Phase3.0002: SSE clientId is now a cryptographic UUID rather than Date.now()
+// (which collided under bursty traffic), and the /mcp/message handler verifies
+// that the JWT owner matches the SSE channel owner. Without this check, any
+// authenticated user could guess another's clientId and impersonate them.
 // ---------------------------------------------------------------------------
 
-let mcpClients: any[] = [];
+interface McpClient { id: string; userId: string; res: Response }
+const mcpClients = new Map<string, McpClient>();
 
 router.get("/mcp/sse", (req, res) => {
   const userId = (req as any).user?.uid;
@@ -257,7 +366,7 @@ router.get("/mcp/sse", (req, res) => {
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
 
-  const clientId = Date.now();
+  const clientId = crypto.randomUUID();
   const messageEndpoint = `/api/finance/mcp/message?clientId=${clientId}`;
   res.write(`event: endpoint\ndata: ${messageEndpoint}\n\n`);
 
@@ -265,18 +374,53 @@ router.get("/mcp/sse", (req, res) => {
     res.write(': keep-alive\n\n');
   }, 30000);
 
-  const client = { id: clientId, userId, res };
-  mcpClients.push(client);
+  mcpClients.set(clientId, { id: clientId, userId, res });
 
   req.on("close", () => {
     clearInterval(keepAlive);
-    mcpClients = mcpClients.filter((c) => c.id !== clientId);
+    mcpClients.delete(clientId);
   });
 });
+
+// Phase3.0004: per-tool whitelist — keys NOT in this list are dropped before
+// forwarding to the backend. Stops mass-assignment of server-managed fields
+// (spent, current, idempotencyKey, userId) via the MCP transport.
+const MCP_ALLOWED_FIELDS: Record<string, string[]> = {
+  create_transaction: ["merchant", "amount", "currency", "date", "category", "type", "account", "description"],
+  create_budget: ["category", "limit", "currency", "periodType", "periodStart", "periodEnd"],
+  create_savings_goal: ["name", "target", "deadline", "currency"],
+  update_budget: ["limit", "periodType", "periodStart", "periodEnd"],
+  // Pure GET tools have no body; the entry exists only so the lookup is exhaustive.
+  get_transactions: [],
+  get_accounts: [],
+  get_budgets: [],
+  get_savings_goals: [],
+  get_investments: [],
+  get_loans: [],
+};
+
+function pickAllowed(name: string, args: Record<string, any>): Record<string, any> {
+  const allowed = MCP_ALLOWED_FIELDS[name] || [];
+  const out: Record<string, any> = {};
+  for (const key of allowed) {
+    if (args && Object.prototype.hasOwnProperty.call(args, key)) out[key] = args[key];
+  }
+  return out;
+}
 
 router.post("/mcp/message", async (req, res) => {
   const userId = (req as any).user?.uid;
   if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+  // Phase3.0002: bind the SSE channel to the JWT owner. A malicious caller
+  // who guesses a clientId still cannot drive another user's session.
+  const clientId = (req.query.clientId as string) || "";
+  if (clientId) {
+    const channel = mcpClients.get(clientId);
+    if (!channel) return res.status(404).json({ error: "Unknown SSE channel" });
+    if (channel.userId !== userId) return res.status(403).json({ error: "Forbidden" });
+  }
+
   const { method, params, id } = req.body;
 
   let result: any = null;
@@ -369,7 +513,7 @@ router.post("/mcp/message", async (req, res) => {
         ],
       };
     } else if (method === "tools/call") {
-      const { name, arguments: args } = params;
+      const { name, arguments: args } = params || {};
       const toolMap: Record<string, { endpoint: string; method: string }> = {
         "get_transactions": { endpoint: "/transactions", method: "GET" },
         "get_accounts": { endpoint: "/accounts", method: "GET" },
@@ -383,40 +527,40 @@ router.post("/mcp/message", async (req, res) => {
       };
 
       const tool = toolMap[name];
-      if (tool) {
+      if (!tool) {
+        error = { code: -32601, message: "Tool not found" };
+      } else {
         let endpoint = tool.endpoint;
         let httpMethod = tool.method;
-        if (name === "update_budget" && args?.id) {
-          endpoint = `/budgets/${args.id}`;
-          httpMethod = "PUT";
-          // FLAW #4 FIX: Strip 'spent' from MCP-supplied args — never allow client override
-          const { spent: _spent, ...safeArgs } = args;
+        let body: string | undefined;
+
+        if (name === "update_budget") {
+          if (!args?.id || !ID_PATTERN.test(String(args.id))) {
+            error = { code: -32602, message: "update_budget requires a valid id" };
+          } else {
+            endpoint = `/budgets/${encodeURIComponent(String(args.id))}`;
+            httpMethod = "PUT";
+            body = JSON.stringify({ ...pickAllowed("update_budget", args), userId });
+          }
+        } else if (httpMethod !== "GET") {
+          // Phase3.0004: only fields explicitly whitelisted for the tool reach the
+          // backend; userId is forced from the verified JWT, never from args.
+          body = JSON.stringify({ ...pickAllowed(name, args || {}), userId });
+        }
+
+        if (!error) {
           const response = await fetch(`${BACKEND_API}${endpoint}`, {
             method: httpMethod,
             headers: {
               "Content-Type": "application/json",
               ...(req.headers.authorization ? { Authorization: req.headers.authorization as string } : {}),
-              ...(userId ? { "X-User-Id": userId } : {}),
+              "X-User-Id": userId,
             },
-            body: JSON.stringify(safeArgs)
+            ...(body !== undefined ? { body } : {}),
           });
-          const data = await response.json();
-          result = { content: [{ type: "text", text: JSON.stringify(data) }] };
-        } else {
-          const response = await fetch(`${BACKEND_API}${endpoint}`, {
-            method: httpMethod,
-            headers: {
-              "Content-Type": "application/json",
-              ...(req.headers.authorization ? { Authorization: req.headers.authorization as string } : {}),
-              ...(userId ? { "X-User-Id": userId } : {}),
-            },
-            ...(httpMethod !== "GET" ? { body: JSON.stringify({ ...args, userId }) } : {})
-          });
-          const data = await response.json();
+          const data = await response.json().catch(() => null);
           result = { content: [{ type: "text", text: JSON.stringify(data) }] };
         }
-      } else {
-        error = { code: -32601, message: "Tool not found" };
       }
     } else {
       error = { code: -32601, message: "Method not found" };

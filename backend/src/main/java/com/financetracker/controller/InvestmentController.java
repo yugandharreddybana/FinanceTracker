@@ -16,26 +16,26 @@ public class InvestmentController {
     private final InvestmentService service;
 
     @GetMapping
-    public List<Investment> getAll(@RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public List<Investment> getAll(@RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         return service.findAllByUserId(userId);
     }
 
     @PostMapping
-    public ResponseEntity<Investment> create(@RequestBody Investment investment, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public ResponseEntity<Investment> create(@RequestBody Investment investment, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         investment.setUserId(userId);
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(investment));
     }
 
     @PutMapping("/{id}")
-    public Investment update(@PathVariable String id, @RequestBody Investment updates, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public Investment update(@PathVariable String id, @RequestBody Investment updates, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         return service.update(id, updates, userId);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable String id, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public ResponseEntity<Void> delete(@PathVariable String id, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         service.delete(id, userId);
         return ResponseEntity.noContent().build();

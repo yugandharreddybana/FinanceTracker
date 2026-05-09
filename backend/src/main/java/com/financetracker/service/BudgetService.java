@@ -32,7 +32,7 @@ public class BudgetService {
     @SuppressWarnings("null")
     @Transactional
     public Budget update(String id, Budget updates, String requestUserId) {
-        Budget existing = repo.findById(id).orElseThrow(() -> new RuntimeException("Budget not found: " + id));
+        Budget existing = repo.findById(id).orElseThrow(() -> new com.financetracker.exception.NotFoundException("Budget not found: " + id));
         Guards.assertOwner(existing.getUserId(), requestUserId);
         if (updates.getCategory() != null) existing.setCategory(updates.getCategory());
         if (updates.getEmoji() != null) existing.setEmoji(updates.getEmoji());
@@ -54,7 +54,7 @@ public class BudgetService {
 
     @Transactional
     public void delete(String id, String requestUserId) {
-        Budget existing = repo.findById(id).orElseThrow(() -> new RuntimeException("Budget not found: " + id));
+        Budget existing = repo.findById(id).orElseThrow(() -> new com.financetracker.exception.NotFoundException("Budget not found: " + id));
         Guards.assertOwner(existing.getUserId(), requestUserId);
         repo.deleteById(id);
     }

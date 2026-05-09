@@ -16,26 +16,26 @@ public class SavingsGoalController {
     private final SavingsGoalService service;
 
     @GetMapping
-    public List<SavingsGoal> getAll(@RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public List<SavingsGoal> getAll(@RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         return service.findAllByUserId(userId);
     }
 
     @PostMapping
-    public ResponseEntity<SavingsGoal> create(@RequestBody SavingsGoal goal, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public ResponseEntity<SavingsGoal> create(@RequestBody SavingsGoal goal, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         goal.setUserId(userId);
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(goal));
     }
 
     @PutMapping("/{id}")
-    public SavingsGoal update(@PathVariable String id, @RequestBody SavingsGoal updates, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public SavingsGoal update(@PathVariable String id, @RequestBody SavingsGoal updates, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         return service.update(id, updates, userId);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable String id, @RequestHeader(value = "X-User-Id", required = false) String userId) {
+    public ResponseEntity<Void> delete(@PathVariable String id, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
         service.delete(id, userId);
         return ResponseEntity.noContent().build();

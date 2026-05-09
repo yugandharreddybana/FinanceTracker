@@ -42,9 +42,16 @@ public class Transaction {
     @Transient
     private String date;
 
-    // FLAW #12 FIX: createdAt stored as UTC Instant — immutable audit timestamp
+    // Phase5.0012: createdAt is set on INSERT via @PrePersist — not at object
+    // construction. The previous initializer made the timestamp wrong when an
+    // object was built and then queued for retry, persisting minutes later.
     @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt = Instant.now();
+    private Instant createdAt;
+
+    @PrePersist
+    void onCreate() {
+        if (createdAt == null) createdAt = Instant.now();
+    }
 
     private String merchant;
 

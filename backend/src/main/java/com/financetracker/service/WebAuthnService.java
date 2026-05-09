@@ -22,21 +22,34 @@ public class WebAuthnService {
     private final AuthenticatorRepository authenticatorRepository;
     private final RelyingParty rp;
 
-    public WebAuthnService(AppUserRepository userRepository, 
+    public WebAuthnService(AppUserRepository userRepository,
                            AuthenticatorRepository authenticatorRepository,
-                           @Value("${app.url:http://localhost:3000}") String appUrl) {
+                           @Value("${app.url:http://localhost:3000}") String appUrl,
+                           @Value("${WEBAUTHN_RP_ID:localhost}") String rpId,
+                           @Value("${WEBAUTHN_ORIGINS:}") String rpOrigins) {
         this.userRepository = userRepository;
         this.authenticatorRepository = authenticatorRepository;
 
+        // Phase2.0011: RP ID must be the registrable domain in production. Credentials
+        // are bound to this value — changing it invalidates every existing passkey.
         RelyingPartyIdentity rpIdentity = RelyingPartyIdentity.builder()
-                .id("localhost") // In production, this should be the domain
+                .id(rpId)
                 .name("Finance Tracker")
                 .build();
+
+        Set<String> origins = new HashSet<>();
+        if (rpOrigins != null && !rpOrigins.isBlank()) {
+            for (String o : rpOrigins.split(",")) {
+                String trimmed = o.trim();
+                if (!trimmed.isEmpty()) origins.add(trimmed);
+            }
+        }
+        if (origins.isEmpty()) origins.add(appUrl);
 
         this.rp = RelyingParty.builder()
                 .identity(rpIdentity)
                 .credentialRepository(new CredentialRepositoryBridge())
-                .origins(Collections.singleton(appUrl))
+                .origins(origins)
                 .build();
     }
 

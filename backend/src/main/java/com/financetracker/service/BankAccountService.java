@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -21,7 +22,9 @@ public class BankAccountService {
     @Transactional
     public BankAccount create(BankAccount account) {
         if (account.getId() == null || account.getId().isBlank()) {
-            account.setId("acc-" + System.currentTimeMillis());
+            // Phase5.0013: UUID — millisecond timestamps collide under burst
+            // creation (two accounts in the same ms → DB integrity violation).
+            account.setId("acc-" + UUID.randomUUID());
         }
         if (Boolean.TRUE.equals(account.getIsPrimary())) {
             demoteOtherPrimaries(account.getUserId(), account.getCurrency(), account.getId());
@@ -32,12 +35,15 @@ public class BankAccountService {
     @SuppressWarnings("null")
     @Transactional
     public BankAccount update(String id, BankAccount updates, String requestUserId) {
-        BankAccount existing = repo.findById(id).orElseThrow(() -> new RuntimeException("Account not found: " + id));
+        BankAccount existing = repo.findById(id).orElseThrow(() -> new com.financetracker.exception.NotFoundException("Account not found: " + id));
         Guards.assertOwner(existing.getUserId(), requestUserId);
 
         if (updates.getName() != null) existing.setName(updates.getName());
         if (updates.getType() != null) existing.setType(updates.getType());
-        if (updates.getBalance() != null) existing.setBalance(updates.getBalance());
+        // Phase4.0001: balance is server-managed only — derived from transaction
+        // deltas (TransactionService.applyBalanceDelta). Accepting it from the
+        // client would let any user PUT { "balance": 9_999_999 } and overwrite
+        // the ledger. Initial balance is set on create() only.
         if (updates.getBank() != null) existing.setBank(updates.getBank());
         if (updates.getColor() != null) existing.setColor(updates.getColor());
         if (updates.getLastSynced() != null) existing.setLastSynced(updates.getLastSynced());
@@ -60,7 +66,7 @@ public class BankAccountService {
 
     @Transactional
     public void delete(String id, String requestUserId) {
-        BankAccount existing = repo.findById(id).orElseThrow(() -> new RuntimeException("Account not found: " + id));
+        BankAccount existing = repo.findById(id).orElseThrow(() -> new com.financetracker.exception.NotFoundException("Account not found: " + id));
         Guards.assertOwner(existing.getUserId(), requestUserId);
         repo.deleteById(id);
     }

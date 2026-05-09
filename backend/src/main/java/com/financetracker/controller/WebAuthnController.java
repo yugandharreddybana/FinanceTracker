@@ -6,6 +6,7 @@ import com.yubico.webauthn.data.PublicKeyCredentialCreationOptions;
 import com.financetracker.service.WebAuthnService;
 import com.financetracker.repository.AppUserRepository;
 import com.financetracker.repository.AuthenticatorRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import jakarta.servlet.http.HttpSession;
 import lombok.Data;
@@ -13,7 +14,6 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/auth/webauthn")
-@CrossOrigin(origins = "*")
 public class WebAuthnController {
 
     private final WebAuthnService webAuthnService;
@@ -26,10 +26,19 @@ public class WebAuthnController {
         this.authenticatorRepository = authenticatorRepository;
     }
 
+    // Phase2.0009: only the owner of the email may wipe their passkeys.
+    // X-User-Id is set by the Express middleware after JWT verification.
     @DeleteMapping("/credentials")
-    public ResponseEntity<Void> deleteCredentials(@RequestParam String email) {
+    public ResponseEntity<Void> deleteCredentials(@RequestParam String email,
+                                                  @RequestHeader("X-User-Id") String userId) {
+        if (userId == null || userId.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
         return userRepository.findByEmail(email)
                 .map(user -> {
+                    if (!user.getId().equals(userId)) {
+                        return ResponseEntity.status(HttpStatus.FORBIDDEN).<Void>build();
+                    }
                     authenticatorRepository.deleteByUserId(user.getId());
                     return ResponseEntity.noContent().<Void>build();
                 })

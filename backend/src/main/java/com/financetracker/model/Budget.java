@@ -7,7 +7,12 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-@Data
+// Phase5.0001: drop @Data so Lombok no longer synthesises a public setSpent;
+// every other setter is generated explicitly via @Setter, but spent has only
+// the package-private setSpentInternal below. Combined with the JsonProperty
+// READ_ONLY annotation, neither Jackson nor unrelated callers can write spent.
+@Getter
+@Setter
 @Entity
 @Table(name = "budgets", schema = "finance_app")
 @NoArgsConstructor
@@ -28,10 +33,12 @@ public class Budget {
     @JsonProperty("limit")
     private BigDecimal limit;
 
-    // FLAW #4 FIX: 'spent' is READ-ONLY — computed server-side via TransactionService.
-    // It is never written from client input. The setter is intentionally package-private
-    // so only server-side service code can update it.
+    // FLAW #4 + Phase5.0001 FIX: 'spent' is READ-ONLY — computed server-side via
+    // TransactionService.applyBudgetDelta(). Jackson cannot deserialize this
+    // field (READ_ONLY) and the only Java setter is package-private below.
     @Column(precision = 15, scale = 2)
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    @Setter(AccessLevel.PACKAGE)
     private BigDecimal spent;
 
     private String color;
@@ -64,8 +71,11 @@ public class Budget {
         MONTHLY, WEEKLY, CUSTOM
     }
 
-    // Package-private spent setter — prevents accidental client-controlled writes
-    void setSpentInternal(BigDecimal spent) {
+    // Server-only mutator — name signals the only legitimate writers
+    // (TransactionService, BudgetRolloverScheduler). Jackson can never reach this
+    // method (READ_ONLY on the field), and Lombok's setSpent is package-private
+    // by AccessLevel.PACKAGE so cross-package mass-assignment is blocked too.
+    public void setSpentInternal(BigDecimal spent) {
         this.spent = spent;
     }
 }

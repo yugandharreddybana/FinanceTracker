@@ -30,7 +30,7 @@ public class RecurringPaymentService {
     @Transactional
     public RecurringPayment update(String id, RecurringPayment updates, String requestUserId) {
         RecurringPayment existing = repo.findById(id)
-            .orElseThrow(() -> new RuntimeException("Recurring payment not found"));
+            .orElseThrow(() -> new com.financetracker.exception.NotFoundException("Recurring payment not found"));
         Guards.assertOwner(existing.getUserId(), requestUserId);
         if (updates.getName() != null) existing.setName(updates.getName());
         if (updates.getAmount() != null) existing.setAmount(updates.getAmount());
@@ -49,7 +49,7 @@ public class RecurringPaymentService {
     @Transactional
     public void delete(String id, String requestUserId) {
         RecurringPayment existing = repo.findById(id)
-            .orElseThrow(() -> new RuntimeException("Recurring payment not found"));
+            .orElseThrow(() -> new com.financetracker.exception.NotFoundException("Recurring payment not found"));
         Guards.assertOwner(existing.getUserId(), requestUserId);
         // ISSUE #22 FIX: Soft-delete — mark as CANCELLED, preserve history
         existing.setStatus("CANCELLED");
