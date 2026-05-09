@@ -1,0 +1,94 @@
+name: CI — Build & Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Node.js Middleware ────────────────────────────────────────────────────
+  node-build:
+    name: Node Server — TypeScript Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript compile check
+        run: npx tsc --noEmit
+
+  # ── Frontend ──────────────────────────────────────────────────────────────
+  frontend-build:
+    name: Frontend — Vite Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: packages/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Vite build check
+        run: npm run build
+        env:
+          VITE_MIDDLEWARE_URL: https://middleware-financetracker-production.up.railway.app
+
+  # ── Java Spring Boot Backend ──────────────────────────────────────────────
+  java-build:
+    name: Java Backend — Maven Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Maven compile (skip tests for speed)
+        run: mvn compile -DskipTests --no-transfer-progress
+
+  # ── Secret Scanning ───────────────────────────────────────────────────────
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for hardcoded secrets in .env.example
+        run: |
+          # Fail if .env.example contains real-looking passwords or API keys
+          if grep -E '(password|secret|key)\s*=\s*[A-Za-z0-9@#$%^&*!]{12,}' .env.example | grep -iv 'your-\|placeholder\|example\|here\|change'; then
+            echo "ERROR: Possible hardcoded secret found in .env.example"
+            exit 1
+          fi
+          echo "No secrets detected."
