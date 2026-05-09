@@ -1,31 +1,8 @@
-# Build artifacts
 node_modules/
 build/
 dist/
-target/
-**/target/
-*.class
 coverage/
-
-# IDE / System files
 .DS_Store
-.idea/
-.vscode/
-
-# Environment and Logs
 *.log
 .env*
 !.env.example
-
-# H2 local database files (dev profile)
-backend/data/
-
-# Server compiled output
-server/dist/
-server/data/
-
-# Scratch/notes files
-*.txt
-# Scratch/test files with potential secrets
-server/scratch/
-scratch/
