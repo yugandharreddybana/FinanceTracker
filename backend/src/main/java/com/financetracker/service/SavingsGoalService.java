@@ -23,7 +23,7 @@ public class SavingsGoalService {
 
     @Transactional(readOnly = true)
     public List<SavingsGoal> findAllByUserId(String userId) {
-        return repo.findAllByUserId(userId);
+        return repo.findAllByUserIdAndDeletedFalse(userId);
     }
 
     @Transactional

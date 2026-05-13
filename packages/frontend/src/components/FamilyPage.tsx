@@ -77,7 +77,7 @@ export const FamilyPage: React.FC = () => {
 
   if (!familyAccount) {
     return (
-      <div className="min-h-[70vh] flex items-center justify-center">
+      <div data-testid="page-family" className="min-h-[70vh] flex items-center justify-center">
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -177,7 +177,7 @@ export const FamilyPage: React.FC = () => {
   }
 
   return (
-    <div className="space-y-10 pb-20">
+    <div data-testid="page-family" className="space-y-10 pb-20">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>

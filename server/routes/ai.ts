@@ -7,11 +7,24 @@ dotenv.config();
 
 const router = Router();
 
-// Phase3.0008: per-user rate limit on costly LLM endpoints. IP-based limits are
-// trivial to bypass with rotating proxies; bucketing by JWT uid bounds spend.
+const IS_PROD_AI = process.env.NODE_ENV === "production";
+const STRICT_AI_RATE_LIMIT =
+  IS_PROD_AI || process.env.STRICT_AI_RATE_LIMIT === "true";
+
+/** Avoid leaking NVIDIA/upstream messages or stack fragments to browsers in production. */
+function aiPublicError(err: unknown): string {
+  if (!IS_PROD_AI) {
+    return err instanceof Error ? err.message : String(err);
+  }
+  return "AI request failed. Please try again later.";
+}
+
+const MAX_CATEGORIZE_TARGETS = 100;
+
+// Phase3.0008: per-user rate limit on costly LLM endpoints.
 const aiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === "production" ? 30 : 1000,
+  max: STRICT_AI_RATE_LIMIT ? 30 : 1000,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: Request) => (req as any).user?.uid || req.ip || "anon",
@@ -22,6 +35,260 @@ const aiLimiter = rateLimit({
 // body can't multiply the per-call token cost.
 const MAX_HISTORY = 20;
 const MAX_CONTEXT_TX = 30;
+const MAX_CONTEXT_ACCOUNTS = 40;
+const MAX_CONTEXT_BUDGETS = 40;
+const MAX_CONTEXT_GOALS = 30;
+const MAX_CONTEXT_LOANS = 24;
+const MAX_CONTEXT_RECURRING = 40;
+const MAX_CONTEXT_INVESTMENTS = 40;
+const MAX_CONTEXT_INCOME = 30;
+const MAX_NW_KEYS = 16;
+const MAX_CUSTOM_CATEGORIES = 45;
+const MAX_MONTHLY_TREND_ROWS = 8;
+
+function slimBankAccountsForPrompt(raw: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, MAX_CONTEXT_ACCOUNTS).map((item: any) => ({
+    name: typeof item?.name === "string" ? item.name : "Account",
+    bank: typeof item?.bank === "string" ? item.bank : "",
+    type: typeof item?.type === "string" ? item.type : "",
+    balance:
+      typeof item?.balance === "number" && Number.isFinite(item.balance) ? item.balance : 0,
+    currency: typeof item?.currency === "string" ? item.currency : "INR",
+    isPrimary: Boolean(item?.isPrimary),
+    ...(typeof item?.creditLimit === "number" && Number.isFinite(item.creditLimit)
+      ? { creditLimit: item.creditLimit }
+      : {}),
+  }));
+}
+
+function slimBudgetsForPrompt(raw: unknown): unknown[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, MAX_CONTEXT_BUDGETS).map((item) => {
+    const b = item as Record<string, unknown>;
+    return {
+      category: typeof b.category === "string" ? b.category : "",
+      limit: typeof b.limit === "number" && Number.isFinite(b.limit) ? b.limit : 0,
+      spent: typeof b.spent === "number" && Number.isFinite(b.spent) ? b.spent : 0,
+      currency: typeof b.currency === "string" ? b.currency : "INR",
+      period: typeof b.period === "string" ? b.period : "",
+    };
+  });
+}
+
+function slimSavingsGoalsForPrompt(raw: unknown): unknown[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, MAX_CONTEXT_GOALS).map((item) => {
+    const g = item as Record<string, unknown>;
+    return {
+      name: typeof g.name === "string" ? g.name : "",
+      target: typeof g.target === "number" && Number.isFinite(g.target) ? g.target : 0,
+      current: typeof g.current === "number" && Number.isFinite(g.current) ? g.current : 0,
+      deadline: typeof g.deadline === "string" ? g.deadline : "",
+      currency: typeof g.currency === "string" ? g.currency : "INR",
+    };
+  });
+}
+
+function slimLoansForPrompt(raw: unknown): unknown[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, MAX_CONTEXT_LOANS).map((item) => {
+    const l = item as Record<string, unknown>;
+    return {
+      name: typeof l.name === "string" ? l.name : "",
+      remainingAmount:
+        typeof l.remainingAmount === "number" && Number.isFinite(l.remainingAmount)
+          ? l.remainingAmount
+          : 0,
+      monthlyEMI: typeof l.monthlyEMI === "number" && Number.isFinite(l.monthlyEMI) ? l.monthlyEMI : 0,
+      interestRate:
+        typeof l.interestRate === "number" && Number.isFinite(l.interestRate) ? l.interestRate : 0,
+      currency: typeof l.currency === "string" ? l.currency : "INR",
+    };
+  });
+}
+
+function slimRecurringForPrompt(raw: unknown): unknown[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, MAX_CONTEXT_RECURRING).map((item) => {
+    const r = item as Record<string, unknown>;
+    return {
+      name: typeof r.name === "string" ? r.name : "",
+      amount: typeof r.amount === "number" && Number.isFinite(r.amount) ? r.amount : 0,
+      frequency: typeof r.frequency === "string" ? r.frequency : "",
+      status: typeof r.status === "string" ? r.status : "",
+      category: typeof r.category === "string" ? r.category : "",
+      currency: typeof r.currency === "string" ? r.currency : "INR",
+      date: typeof r.date === "number" && Number.isFinite(r.date) ? r.date : 0,
+    };
+  });
+}
+
+function slimInvestmentsForPrompt(raw: unknown): unknown[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, MAX_CONTEXT_INVESTMENTS).map((item) => {
+    const i = item as Record<string, unknown>;
+    const qty = typeof i.quantity === "number" && Number.isFinite(i.quantity) ? i.quantity : 0;
+    const px = typeof i.currentPrice === "number" && Number.isFinite(i.currentPrice) ? i.currentPrice : 0;
+    return {
+      symbol: typeof i.symbol === "string" ? i.symbol : "",
+      name: typeof i.name === "string" ? i.name : "",
+      type: typeof i.type === "string" ? i.type : "",
+      quantity: qty,
+      currentPrice: px,
+      currency: typeof i.currency === "string" ? i.currency : "INR",
+      market_value: qty * px,
+    };
+  });
+}
+
+function slimIncomeSourcesForPrompt(raw: unknown): unknown[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, MAX_CONTEXT_INCOME).map((item) => {
+    const s = item as Record<string, unknown>;
+    return {
+      source: typeof s.source === "string" ? s.source : "",
+      amount: typeof s.amount === "number" && Number.isFinite(s.amount) ? s.amount : 0,
+      frequency: typeof s.frequency === "string" ? s.frequency : "",
+      currency: typeof s.currency === "string" ? s.currency : "INR",
+      lastReceivedDate: typeof s.lastReceivedDate === "string" ? s.lastReceivedDate : "",
+      nextPaymentDate: typeof s.nextPaymentDate === "string" ? s.nextPaymentDate : "",
+    };
+  });
+}
+
+function slimNetWorthByCurrencyForPrompt(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, unknown> = {};
+  const entries = Object.entries(raw as Record<string, unknown>).slice(0, MAX_NW_KEYS);
+  for (const [k, v] of entries) {
+    if (!v || typeof v !== "object") continue;
+    const m = v as Record<string, unknown>;
+    out[k] = {
+      total: typeof m.total === "number" && Number.isFinite(m.total) ? m.total : 0,
+      assets: typeof m.assets === "number" && Number.isFinite(m.assets) ? m.assets : 0,
+      liabilities: typeof m.liabilities === "number" && Number.isFinite(m.liabilities) ? m.liabilities : 0,
+      income: typeof m.income === "number" && Number.isFinite(m.income) ? m.income : 0,
+      expenses: typeof m.expenses === "number" && Number.isFinite(m.expenses) ? m.expenses : 0,
+      change: typeof m.change === "number" && Number.isFinite(m.change) ? m.change : 0,
+    };
+  }
+  return out;
+}
+
+function slimHealthMetricsForPrompt(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, unknown> = {};
+  const entries = Object.entries(raw as Record<string, unknown>).slice(0, MAX_NW_KEYS);
+  for (const [k, v] of entries) {
+    if (!v || typeof v !== "object") continue;
+    const h = v as Record<string, unknown>;
+    out[k] = {
+      savingsRate: typeof h.savingsRate === "number" && Number.isFinite(h.savingsRate) ? h.savingsRate : 0,
+      debtRatio: typeof h.debtRatio === "number" && Number.isFinite(h.debtRatio) ? h.debtRatio : 0,
+      emergencyFund:
+        typeof h.emergencyFund === "number" && Number.isFinite(h.emergencyFund) ? h.emergencyFund : 0,
+      budgetAdherence:
+        typeof h.budgetAdherence === "number" && Number.isFinite(h.budgetAdherence) ? h.budgetAdherence : 0,
+      overallScore:
+        typeof h.overallScore === "number" && Number.isFinite(h.overallScore) ? h.overallScore : 0,
+    };
+  }
+  return out;
+}
+
+function slimPreferencesForPrompt(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== "object") return {};
+  const p = raw as Record<string, unknown>;
+  return {
+    currency: typeof p.currency === "string" ? p.currency : "INR",
+    theme: typeof p.theme === "string" ? p.theme : "",
+    language: typeof p.language === "string" ? p.language : "",
+    notifications: Boolean(p.notifications),
+  };
+}
+
+function slimCustomCategoriesForPrompt(raw: unknown): unknown[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, MAX_CUSTOM_CATEGORIES).map((item) => {
+    const c = item as Record<string, unknown>;
+    return {
+      name: typeof c.name === "string" ? c.name : "",
+      color: typeof c.color === "string" ? c.color : "",
+      icon: typeof c.icon === "string" ? c.icon : "",
+    };
+  });
+}
+
+function slimMonthlyTrendsForPrompt(raw: unknown): unknown[] {
+  if (!Array.isArray(raw)) return [];
+  const slice = raw.slice(-MAX_MONTHLY_TREND_ROWS);
+  return slice.map((row) => {
+    if (!row || typeof row !== "object") return {};
+    const r = row as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(r)) {
+      if (k === "month") {
+        out.month = typeof v === "string" ? v : String(v ?? "");
+        continue;
+      }
+      if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
+      else if (typeof v === "string" && k.length < 32) out[k] = v.length > 64 ? `${v.slice(0, 64)}…` : v;
+    }
+    return out;
+  });
+}
+
+function buildFinanceSnapshotFromBody(body: Record<string, unknown>): Record<string, unknown> {
+  const fc = body.financeContext;
+  const ctx = fc && typeof fc === "object" ? (fc as Record<string, unknown>) : null;
+  return {
+    budgets: slimBudgetsForPrompt(ctx?.budgets),
+    savings_goals: slimSavingsGoalsForPrompt(ctx?.savingsGoals),
+    loans: slimLoansForPrompt(ctx?.loans),
+    recurring_payments: slimRecurringForPrompt(ctx?.recurringPayments),
+    investments: slimInvestmentsForPrompt(ctx?.investments),
+    income_sources: slimIncomeSourcesForPrompt(ctx?.incomeSources),
+    net_worth_by_currency: slimNetWorthByCurrencyForPrompt(ctx?.netWorthByCurrency),
+    health_metrics_by_currency: slimHealthMetricsForPrompt(ctx?.healthMetricsByCurrency),
+    preferences: slimPreferencesForPrompt(ctx?.preferences),
+    custom_categories: slimCustomCategoriesForPrompt(ctx?.customCategories),
+    monthly_trends: slimMonthlyTrendsForPrompt(ctx?.monthlyTrends),
+  };
+}
+
+function buildChatSystemContent(
+  name: string,
+  transactions: unknown[],
+  accountsSlim: unknown[],
+  financeSnapshot: Record<string, unknown>
+): string {
+  const accountsJson = JSON.stringify(accountsSlim);
+  const txJson = JSON.stringify(transactions);
+  const financeJson = JSON.stringify(financeSnapshot);
+  const accountsNote =
+    accountsSlim.length === 0
+      ? "BANK_ACCOUNTS_SNAPSHOT is empty — the user has not added bank accounts yet; tell them to add accounts under Bank Accounts for accurate balances."
+      : "BANK_ACCOUNTS_SNAPSHOT is the authoritative source for balances (not transaction history).";
+
+  return (
+    `You are the Yugi Oracle, a premium personal financial assistant.\n` +
+    `User: ${name}. Today: ${new Date().toISOString().split("T")[0]}.\n\n` +
+    `BANK_ACCOUNTS_SNAPSHOT (${accountsNote})\n` +
+    `${accountsJson}\n\n` +
+    `USER_FINANCE_SNAPSHOT (cross-domain context — before saying anything is missing, check every subsection below)\n` +
+    `${financeJson}\n\n` +
+    `Recent transactions (cash-flow detail — may be empty; balance questions still use accounts):\n` +
+    `${txJson}\n\n` +
+    `RULES:\n` +
+    `- If the user asks about **current balance**, **total balance**, **bank balances**, **how much money I have**, **across accounts**, or similar: answer using BANK_ACCOUNTS_SNAPSHOT only. Sum balances **per currency**. List each account with name, type, balance, and currency.\n` +
+    `- Treat **Credit** accounts as debt: show them separately from Current/Savings when giving “cash” or “liquid” totals.\n` +
+    `- Budget / spending limits → USER_FINANCE_SNAPSHOT.budgets. Savings goals → savings_goals. Debt / EMI → loans. Subscriptions → recurring_payments. Portfolio → investments. Salary or income streams → income_sources. Net worth / wealth rollups → net_worth_by_currency (plus accounts where relevant). Financial health scores → health_metrics_by_currency. Category definitions → custom_categories. Recent multi-month cash-flow shape → monthly_trends. Prefer **preferences.currency** when picking a default currency to emphasize.\n` +
+    `- Do **not** refuse balance questions because transactions are empty — rely on BANK_ACCOUNTS_SNAPSHOT.\n` +
+    `- Do **not** claim the user has no budgets, goals, loans, etc. without confirming the matching array in USER_FINANCE_SNAPSHOT is empty.\n` +
+    `- Answer using markdown (**bold** figures, bullets). Be concise (2–4 short paragraphs). Never invent accounts, transactions, or holdings.`
+  );
+}
 
 // Phase3.0006: any single create_transaction proposed by the LLM that exceeds
 // this absolute cap is rejected outright. Below the cap the tool still does NOT
@@ -178,7 +445,7 @@ async function callBackend(path: string, method: string, body: any, userId: stri
 // 1. Smart Add Transaction NLP
 // ---------------------------------------------------------------------------
 
-router.post("/process-input", authMiddleware, async (req, res) => {
+router.post("/process-input", authMiddleware, aiLimiter, async (req, res) => {
   try {
     const { input, savingsGoals, accounts } = req.body;
     if (!input || typeof input !== 'string') {
@@ -207,16 +474,22 @@ CONTEXT:
 RULES:
 1. Return ONLY a valid JSON object with a "results" key containing an array of parsed items.
 2. Each item MUST have an "intent" field. Supported intents:
-   TRANSACTION, SAVINGS_GOAL, RECURRING_PAYMENT, LOAN, SAVINGS_TRANSFER, BUDGET, LOAN_PAYMENT, DELETE_TRANSACTION
+   TRANSACTION, BANK_ACCOUNT, SAVINGS_GOAL, RECURRING_PAYMENT, LOAN, SAVINGS_TRANSFER, BUDGET, LOAN_PAYMENT, DELETE_TRANSACTION
 3. Be smart about voice transcription errors (e.g. "coffee for dollars" = "coffee $4", "fifty pounds" = £50).
 4. When no date is specified, use today: ${today}.
-5. When no currency is specified, infer from account context or default to the first account's currency.
-6. Amount is ALWAYS a positive number. The "type" field determines if it's income or expense.
-7. For ambiguous inputs, pick the most likely intent with high confidence.
+5. When no currency is specified, infer from account context or default to the first account's currency (ISO 4217: EUR, USD, INR, GBP).
+6. Amount is ALWAYS a positive number for TRANSACTION lines. The "type" field determines if it's income or expense.
+7. **Critical:** If the user wants to **create / open / add a NEW bank account** (named account, opening balance, currency for that account), use intent **BANK_ACCOUNT** — never classify opening/initial balance as Salary or income TRANSACTION.
+8. Do NOT map a **new** account name onto an unrelated existing account from CONTEXT.
+9. For ambiguous inputs, pick the most likely intent with high confidence.
 
 INTENT SCHEMAS:
 
-TRANSACTION (buying, spending, earning, paying, receiving money):
+BANK_ACCOUNT (new ledger account — NOT money movement):
+  { "intent": "BANK_ACCOUNT", "accountName": string, "bank": string (institution or ""), "accountType": "Current"|"Savings"|"Credit", "balance": number (opening balance; 0 if omitted), "currency": string (ISO code), "confidence": 0.0-1.0 }
+  Examples: "create new bank account named Primary in euros with balance 1000", "open a savings account Vacation Fund 5000 INR", "add account Ire Current EUR opening balance 250"
+
+TRANSACTION (buying, spending, earning, paying, receiving money — existing cash flow, NOT new account setup):
   { "intent": "TRANSACTION", "merchant": string, "amount": number, "date": "YYYY-MM-DD", "category": string, "type": "income"|"expense", "currency": string, "account": string, "confidence": 0.0-1.0 }
   Examples: "coffee 5 euros", "paid rent 1200", "salary 5000 to HDFC", "got 200 from mom", "uber 12 dollars on Chase"
 
@@ -273,7 +546,7 @@ Example: "coffee 5; uber 12; salary 5000" → 3 separate TRANSACTION items.`;
     res.json(result);
   } catch (error: any) {
     console.error("AI Process Input Error:", error.message);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: aiPublicError(error) });
   }
 });
 
@@ -281,11 +554,16 @@ Example: "coffee 5; uber 12; salary 5000" → 3 separate TRANSACTION items.`;
 // 2. Batch Categorization
 // ---------------------------------------------------------------------------
 
-router.post("/categorize", authMiddleware, async (req, res) => {
+router.post("/categorize", authMiddleware, aiLimiter, async (req, res) => {
   try {
     const { targets } = req.body;
     if (!NVIDIA_API_KEY) return res.status(503).json({ error: "AI service not configured" });
     if (!Array.isArray(targets) || targets.length === 0) return res.json({});
+    if (targets.length > MAX_CATEGORIZE_TARGETS) {
+      return res.status(413).json({
+        error: `Too many targets (max ${MAX_CATEGORIZE_TARGETS})`,
+      });
+    }
 
     const { text } = await nvidiaChat(
       [
@@ -315,7 +593,7 @@ router.post("/categorize", authMiddleware, async (req, res) => {
     res.json(parsed);
   } catch (error: any) {
     console.error("AI Categorization Error:", error.message);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: aiPublicError(error) });
   }
 });
 
@@ -325,7 +603,7 @@ router.post("/categorize", authMiddleware, async (req, res) => {
 // and send the text content here. base64Data is treated as pre-extracted text.
 // ---------------------------------------------------------------------------
 
-router.post("/analyze-file", authMiddleware, async (req, res) => {
+router.post("/analyze-file", authMiddleware, aiLimiter, async (req, res) => {
   try {
     const { base64Data, mimeType, type } = req.body;
     if (!NVIDIA_API_KEY) return res.status(503).json({ error: "AI service not configured" });
@@ -369,7 +647,7 @@ router.post("/analyze-file", authMiddleware, async (req, res) => {
     res.json(result);
   } catch (error: any) {
     console.error("AI File Analysis Error:", error.message);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: aiPublicError(error) });
   }
 });
 
@@ -475,6 +753,9 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
         `- You have direct access to the user's REAL financial data via tools. ALWAYS call tools before answering data questions.\n` +
         `- You can view: transactions, bank accounts, budgets, savings goals, loans, and recurring payments.\n` +
         `- You can draft new transactions (user must confirm).\n\n` +
+        `CRITICAL TOOL USE:\n` +
+        `- Questions about **balance**, **bank balances**, **total money**, **cash available**, **across accounts**, or **net liquid**: call **get_accounts** (not only get_transactions). Sum balances **per currency**. Treat **Credit** as debt — separate from deposit balances unless the user asks for one combined net figure.\n` +
+        `- Transaction history alone cannot prove current account balances — never claim balances are “unknown” solely because transactions are empty.\n\n` +
         `RESPONSE GUIDELINES:\n` +
         `1. Be precise with numbers — always show exact amounts with currency symbols (€, $, £, ₹).\n` +
         `2. Use markdown formatting: **bold** for key figures, bullet points for lists, tables for comparisons.\n` +
@@ -557,8 +838,10 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
           } else {
             toolResult = { error: `Unknown tool: ${fnName}` };
           }
-        } catch (e: any) {
-          toolResult = { error: e.message };
+        } catch (e: unknown) {
+          toolResult = {
+            error: IS_PROD_AI ? "Backend request failed" : e instanceof Error ? e.message : String(e),
+          };
         }
 
         loopMessages.push({
@@ -573,7 +856,7 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
     res.json({ content: finalText });
   } catch (error: any) {
     console.error("AI Oracle Error:", error.message);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: aiPublicError(error) });
   }
 });
 
@@ -583,12 +866,41 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
 
 router.post("/insights", authMiddleware, aiLimiter, async (req, res) => {
   try {
-    const rawTransactions = Array.isArray(req.body?.transactions) ? req.body.transactions : [];
-    const transactions = rawTransactions.slice(-50);
+    const { uid } = (req as any).user;
+    const token =
+      req.headers.authorization?.replace(/^Bearer\s+/i, "") ||
+      (req as any).cookies?.auth_token ||
+      "";
     const { selectedBank } = req.body;
+    if (!uid || !token) return res.status(401).json({ error: "Unauthorized" });
     if (!NVIDIA_API_KEY) return res.status(503).json({ error: "AI service not configured" });
 
-    const bankFilter = selectedBank !== "ALL" ? `Focus on transactions from account: ${selectedBank}.` : "";
+    let fromBackend: unknown;
+    try {
+      fromBackend = await callBackend("/transactions", "GET", null, uid, token);
+    } catch (e) {
+      console.error("[insights] transactions fetch failed", e);
+      return res.status(502).json({ error: "Could not load transactions for insights" });
+    }
+
+    let txs = Array.isArray(fromBackend) ? (fromBackend as Record<string, unknown>[]) : [];
+    if (typeof selectedBank === "string" && selectedBank !== "" && selectedBank !== "ALL") {
+      txs = txs.filter((t) => t.account === selectedBank);
+    }
+
+    const transactions = txs.slice(-50).map((t) => ({
+      id: t.id,
+      merchant: t.merchant,
+      amount: t.amount,
+      category: t.category,
+      type: t.type,
+      date: t.transactionDate ?? t.date,
+      account: t.account,
+      currency: t.currency,
+    }));
+
+    const bankFilter =
+      selectedBank !== "ALL" ? `Focus on transactions from account: ${selectedBank}.` : "";
 
     const { text } = await nvidiaChat(
       [
@@ -614,7 +926,7 @@ router.post("/insights", authMiddleware, aiLimiter, async (req, res) => {
     res.json(result);
   } catch (error: any) {
     console.error("AI Insights Error:", error.message);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: aiPublicError(error) });
   }
 });
 
@@ -626,8 +938,13 @@ router.post("/chat", authMiddleware, aiLimiter, async (req, res) => {
   try {
     const rawHistory = Array.isArray(req.body?.history) ? req.body.history : [];
     const rawTransactions = Array.isArray(req.body?.transactions) ? req.body.transactions : [];
+    const rawAccounts = Array.isArray(req.body?.accounts) ? req.body.accounts : [];
     const history = rawHistory.slice(-MAX_HISTORY);
     const transactions = rawTransactions.slice(-MAX_CONTEXT_TX);
+    const accountsSlim = slimBankAccountsForPrompt(rawAccounts);
+    const financeSnapshot = buildFinanceSnapshotFromBody(
+      (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>
+    );
     const { message } = req.body;
     const { name } = (req as any).user;
     // Input validation
@@ -642,19 +959,7 @@ router.post("/chat", authMiddleware, aiLimiter, async (req, res) => {
     const messages: NvidiaMessage[] = [
       {
         role: "system",
-        content:
-          `You are the Yugi Oracle, a premium personal financial AI assistant.\n` +
-          `User: ${name}. Today: ${new Date().toISOString().split("T")[0]}.\n\n` +
-          `You have access to the user's recent transaction data below. Use it to provide accurate, data-driven answers.\n` +
-          `Recent transactions: ${JSON.stringify(transactions)}\n\n` +
-          `GUIDELINES:\n` +
-          `- Use markdown formatting: **bold** for numbers, bullet points for lists.\n` +
-          `- Be precise with amounts — always include currency symbols.\n` +
-          `- Provide actionable advice, not generic tips.\n` +
-          `- When analyzing spending, calculate totals by category.\n` +
-          `- Keep responses concise (2-3 paragraphs max) but insightful.\n` +
-          `- If asked about something not in the data, say so honestly.\n` +
-          `- For budgeting advice, suggest specific amounts based on their actual spending patterns.`,
+        content: buildChatSystemContent(name, transactions, accountsSlim, financeSnapshot),
       },
       ...history.map((h: any) => ({
         role: (h.role === "ai" ? "assistant" : "user") as "user" | "assistant",
@@ -667,7 +972,91 @@ router.post("/chat", authMiddleware, aiLimiter, async (req, res) => {
     res.json({ content: text });
   } catch (error: any) {
     console.error("AI Chat Error:", error.message);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: aiPublicError(error) });
+  }
+});
+
+router.post("/chat-stream", authMiddleware, aiLimiter, async (req, res) => {
+  try {
+    const rawHistory = Array.isArray(req.body?.history) ? req.body.history : [];
+    const rawTransactions = Array.isArray(req.body?.transactions) ? req.body.transactions : [];
+    const rawAccounts = Array.isArray(req.body?.accounts) ? req.body.accounts : [];
+    const history = rawHistory.slice(-MAX_HISTORY);
+    const transactions = rawTransactions.slice(-MAX_CONTEXT_TX);
+    const accountsSlim = slimBankAccountsForPrompt(rawAccounts);
+    const financeSnapshot = buildFinanceSnapshotFromBody(
+      (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>
+    );
+    const { message } = req.body;
+    const { name } = (req as any).user;
+    if (!message || typeof message !== "string" || message.trim().length === 0) {
+      return res.status(400).json({ error: "Message is required" });
+    }
+    if (message.length > 4000) {
+      return res.status(400).json({ error: "Message too long (max 4000 characters)" });
+    }
+    if (!NVIDIA_API_KEY) return res.status(503).json({ error: "AI service not configured" });
+
+    const messages: NvidiaMessage[] = [
+      {
+        role: "system",
+        content: buildChatSystemContent(name, transactions, accountsSlim, financeSnapshot),
+      },
+      ...history.map((h: any) => ({
+        role: (h.role === "ai" ? "assistant" : "user") as "user" | "assistant",
+        content: h.content,
+      })),
+      { role: "user", content: message },
+    ];
+
+    const upstream = await fetch(`${NVIDIA_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${NVIDIA_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: NVIDIA_MODEL,
+        messages,
+        temperature: 0.5,
+        max_tokens: 2500,
+        stream: true,
+      }),
+    });
+
+    if (!upstream.ok || !upstream.body) {
+      const errText = await upstream.text().catch(() => "");
+      if (!IS_PROD_AI) {
+        console.error("[chat-stream] upstream error", upstream.status, errText.slice(0, 800));
+      }
+      return res.status(502).json({
+        error: IS_PROD_AI ? "AI service unavailable. Try again later." : errText || "Upstream AI error",
+      });
+    }
+
+    res.status(200);
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+
+    const reader = upstream.body.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.write(Buffer.from(value));
+      }
+    } finally {
+      reader.releaseLock?.();
+    }
+    res.end();
+  } catch (error: any) {
+    console.error("AI Chat Stream Error:", error.message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: aiPublicError(error) });
+    } else {
+      res.end();
+    }
   }
 });
 
@@ -675,10 +1064,21 @@ router.post("/chat", authMiddleware, aiLimiter, async (req, res) => {
 // 7. Forecast
 // ---------------------------------------------------------------------------
 
-router.post("/forecast", authMiddleware, async (req, res) => {
+router.post("/forecast", authMiddleware, aiLimiter, async (req, res) => {
   try {
     const { currentNetWorth, monthlySavings, riskProfile } = req.body;
     if (!NVIDIA_API_KEY) return res.status(503).json({ error: "AI service not configured" });
+
+    const nw = Number(currentNetWorth);
+    const ms = Number(monthlySavings);
+    const riskStr =
+      typeof riskProfile === "string" ? riskProfile.slice(0, 120) : String(riskProfile ?? "moderate").slice(0, 120);
+    if (!Number.isFinite(nw) || nw < -1e14 || nw > 1e16) {
+      return res.status(400).json({ error: "Invalid currentNetWorth" });
+    }
+    if (!Number.isFinite(ms) || ms < -1e9 || ms > 1e9) {
+      return res.status(400).json({ error: "Invalid monthlySavings" });
+    }
 
     const { text } = await nvidiaChat(
       [
@@ -691,7 +1091,7 @@ router.post("/forecast", authMiddleware, async (req, res) => {
         },
         {
           role: "user",
-          content: `Current net worth: ${currentNetWorth}. Monthly savings: ${monthlySavings}. Risk profile: ${riskProfile}.`,
+          content: `Current net worth: ${nw}. Monthly savings: ${ms}. Risk profile: ${riskStr}.`,
         },
       ],
       { jsonMode: true, temperature: 0.2 }
@@ -702,7 +1102,7 @@ router.post("/forecast", authMiddleware, async (req, res) => {
     res.json(parsed);
   } catch (error: any) {
     console.error("AI Forecast Error:", error.message);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: aiPublicError(error) });
   }
 });
 
@@ -742,9 +1142,14 @@ function buildFallbackTaxSteps(title: string, description: string, category?: st
   ];
 }
 
-router.post("/tax-suggestions", authMiddleware, async (req, res) => {
+const TAX_AI_DISCLAIMER =
+  "Estimates only — not legal, tax, or investment advice. Confirm rules for your jurisdiction with a qualified professional.";
+
+router.post("/tax-suggestions", authMiddleware, aiLimiter, async (req, res) => {
   try {
-    const { spendingData } = req.body;
+    const { spendingData } = req.body || {};
+    const jRaw = typeof req.body?.jurisdiction === "string" ? req.body.jurisdiction.trim().slice(0, 64) : "";
+    const jurisdiction = jRaw || "UNSPECIFIED";
     if (!NVIDIA_API_KEY) return res.status(503).json({ error: "AI service not configured" });
 
     const { text } = await nvidiaChat(
@@ -752,13 +1157,15 @@ router.post("/tax-suggestions", authMiddleware, async (req, res) => {
         {
           role: "system",
           content:
-            `You are a tax optimization advisor. Analyze the user's spending and income data and provide actionable tax optimization suggestions. ` +
+            `You are a tax optimization advisor. Analyze spending and income summaries and return generic educational suggestions only. ` +
+            `Never guarantee refunds, filing outcomes, or jurisdiction-specific legal positions unless the payload explicitly names that jurisdiction. ` +
+            `Avoid phrases like "you must file" or "you qualify for". ` +
             `Return ONLY a valid JSON array of suggestion objects with fields: ` +
             `title (string), description (string, max 200 chars), potentialSavings (number), category (string), difficulty ("easy"|"medium"|"hard"), steps (array of exactly 3 short actionable strings).`,
         },
         {
           role: "user",
-          content: `Analyze and provide tax suggestions for: ${JSON.stringify(spendingData)}`,
+          content: `Jurisdiction hint: ${jurisdiction}. Data: ${JSON.stringify(spendingData)}`,
         },
       ],
       { jsonMode: true, temperature: 0.3 }
@@ -779,10 +1186,14 @@ router.post("/tax-suggestions", authMiddleware, async (req, res) => {
           : buildFallbackTaxSteps(item.title, item.description, item.category),
       }));
 
-    res.json(normalized);
+    res.json({
+      jurisdiction,
+      disclaimer: TAX_AI_DISCLAIMER,
+      suggestions: normalized,
+    });
   } catch (error: any) {
     console.error("AI Tax Suggestions Error:", error.message);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: aiPublicError(error) });
   }
 });
 

@@ -10,10 +10,15 @@ import com.financetracker.repository.SavingsGoalRepository;
 import com.financetracker.repository.TransactionRepository;
 import com.financetracker.util.Guards;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
+import jakarta.persistence.OptimisticLockException;
+import org.hibernate.StaleObjectStateException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -30,7 +35,22 @@ public class TransactionService {
     private final BudgetRepository budgetRepo;
     private final SavingsGoalRepository savingsRepo;
 
+    @Lazy
+    @Autowired
+    private TransactionService self;
+
     private static final int MAX_OPTIMISTIC_RETRIES = 3;
+
+    private static boolean isOptimisticLockConflict(Throwable e) {
+        Throwable cur = e;
+        while (cur != null) {
+            if (cur instanceof ObjectOptimisticLockingFailureException) return true;
+            if (cur instanceof OptimisticLockException) return true;
+            if (cur instanceof StaleObjectStateException) return true;
+            cur = cur.getCause();
+        }
+        return false;
+    }
 
     // Phase5.0005: hard cap on any single transaction amount. Defends against a
     // client PUT that drives an account to ±10**8 silently. Per-currency caps
@@ -45,7 +65,7 @@ public class TransactionService {
     // FLAW #1 FIX: UUID-based IDs + idempotency key deduplication
     // FLAW #3 FIX: REPEATABLE_READ isolation prevents dirty/non-repeatable reads
     //              across the balance + budget + savings delta chain
-    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    @Transactional
     public Transaction create(Transaction tx) {
         if (tx.getAmount() != null && tx.getAmount().abs().compareTo(MAX_TX_AMOUNT) > 0) {
             throw new org.springframework.web.server.ResponseStatusException(
@@ -84,7 +104,7 @@ public class TransactionService {
         try {
             Transaction saved = repo.save(tx);
             // FLAW #6 FIX: balance update wrapped in optimistic-lock retry loop
-            applyBalanceDeltaWithRetry(saved, +1);
+            self.applyBalanceDeltaWithRetryInNewTransaction(saved, +1);
             applyBudgetDelta(saved, +1);
             applySavingsDelta(saved, +1);
             return saved;
@@ -167,11 +187,71 @@ public class TransactionService {
         return repo.save(updated);
     }
 
-    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    /**
+     * Deletes with outer optimistic-lock retries so a failed attempt never leaves the persistence context wedged.
+     * Balance deltas still commit in {@link #applyBalanceDeltaWithRetryInNewTransaction} (REQUIRES_NEW).
+     */
     public void delete(String id, String requestUserId) {
+        // #region agent log
+        com.financetracker.debug.AgentDebugLog.log("H1", "TransactionService.delete:entry", "delete requested", java.util.Map.of("id", id, "uidLen", requestUserId != null ? requestUserId.length() : -1));
+        // #endregion
+        int attempts = 0;
+        while (true) {
+            try {
+                self.deleteTransactionTransactionalAttempt(id, requestUserId);
+                // #region agent log
+                com.financetracker.debug.AgentDebugLog.log("H1", "TransactionService.delete:success", "deleted", java.util.Map.of("id", id));
+                // #endregion
+                return;
+            } catch (Exception e) {
+                if (isOptimisticLockConflict(e)) {
+                    attempts++;
+                    // #region agent log
+                    String em = e.getMessage() != null ? e.getMessage() : "";
+                    com.financetracker.debug.AgentDebugLog.log("H9", "TransactionService.delete:ole-retry", "optimistic lock", java.util.Map.of(
+                        "id", id,
+                        "attempt", attempts,
+                        "surfaceEx", e.getClass().getSimpleName(),
+                        "msg", em.length() > 120 ? em.substring(0, 120) : em
+                    ));
+                    // #endregion
+                    if (attempts >= MAX_OPTIMISTIC_RETRIES) {
+                        throw e;
+                    }
+                    try {
+                        Thread.sleep(50L * attempts);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw e;
+                    }
+                    continue;
+                }
+                // #region agent log
+                String em = e.getMessage() != null ? e.getMessage() : "";
+                com.financetracker.debug.AgentDebugLog.log("H1", "TransactionService.delete:error", "exception", java.util.Map.of(
+                    "id", id,
+                    "ex", e.getClass().getSimpleName(),
+                    "msg", em.length() > 220 ? em.substring(0, 220) : em
+                ));
+                // #endregion
+                throw e;
+            }
+        }
+    }
+
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    public void deleteTransactionTransactionalAttempt(String id, String requestUserId) {
         Transaction tx = repo.findById(id).orElseThrow(() -> new com.financetracker.exception.NotFoundException("Transaction not found: " + id));
         Guards.assertOwner(tx.getUserId(), requestUserId);
-        applyBalanceDeltaWithRetry(tx, -1);
+        // #region agent log
+        com.financetracker.debug.AgentDebugLog.log("H1", "TransactionService.delete:loaded", "tx row found", java.util.Map.of(
+            "id", id,
+            "type", tx.getType() != null ? tx.getType() : "",
+            "hasAccount", tx.getAccount() != null && !tx.getAccount().isBlank(),
+            "hasSavingsGoalId", tx.getSavingsGoalId() != null && !tx.getSavingsGoalId().isBlank()
+        ));
+        // #endregion
+        self.applyBalanceDeltaWithRetryInNewTransaction(tx, -1);
         applyBudgetDelta(tx, -1);
         applySavingsDelta(tx, -1);
         repo.delete(tx);
@@ -191,27 +271,76 @@ public class TransactionService {
         Guards.requireUser(requestUserId);
         List<Transaction> txs = repo.findAllByIdInAndUserId(ids, requestUserId);
         for (Transaction tx : txs) {
-            applyBalanceDelta(tx, -1);
+            self.applyBalanceDeltaWithRetryInNewTransaction(tx, -1);
             applyBudgetDelta(tx, -1);
             applySavingsDelta(tx, -1);
             applyUpdates(tx, updates);
         }
         repo.saveAll(txs);
         for (Transaction tx : txs) {
-            applyBalanceDelta(tx, +1);
+            self.applyBalanceDeltaWithRetryInNewTransaction(tx, +1);
             applyBudgetDelta(tx, +1);
             applySavingsDelta(tx, +1);
         }
         return txs.size();
     }
 
+    public int bulkDelete(List<String> ids, String requestUserId) {
+        // #region agent log
+        com.financetracker.debug.AgentDebugLog.log("H12", "TransactionService.bulkDelete:entry", "bulk delete", java.util.Map.of(
+            "count", ids != null ? ids.size() : -1,
+            "uidLen", requestUserId != null ? requestUserId.length() : -1
+        ));
+        // #endregion
+        int attempts = 0;
+        while (true) {
+            try {
+                int n = self.bulkDeleteTransactionalAttempt(ids, requestUserId);
+                // #region agent log
+                com.financetracker.debug.AgentDebugLog.log("H12", "TransactionService.bulkDelete:success", "ok", java.util.Map.of("deleted", n));
+                // #endregion
+                return n;
+            } catch (Exception e) {
+                if (isOptimisticLockConflict(e)) {
+                    attempts++;
+                    // #region agent log
+                    String em = e.getMessage() != null ? e.getMessage() : "";
+                    com.financetracker.debug.AgentDebugLog.log("H12", "TransactionService.bulkDelete:ole-retry", "retry", java.util.Map.of(
+                        "attempt", attempts,
+                        "surfaceEx", e.getClass().getSimpleName(),
+                        "msg", em.length() > 120 ? em.substring(0, 120) : em
+                    ));
+                    // #endregion
+                    if (attempts >= MAX_OPTIMISTIC_RETRIES) {
+                        throw e;
+                    }
+                    try {
+                        Thread.sleep(50L * attempts);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw e;
+                    }
+                    continue;
+                }
+                // #region agent log
+                String em = e.getMessage() != null ? e.getMessage() : "";
+                com.financetracker.debug.AgentDebugLog.log("H12", "TransactionService.bulkDelete:error", "fail", java.util.Map.of(
+                    "ex", e.getClass().getSimpleName(),
+                    "msg", em.length() > 220 ? em.substring(0, 220) : em
+                ));
+                // #endregion
+                throw e;
+            }
+        }
+    }
+
     @SuppressWarnings("null")
     @Transactional(isolation = Isolation.REPEATABLE_READ)
-    public int bulkDelete(List<String> ids, String requestUserId) {
+    public int bulkDeleteTransactionalAttempt(List<String> ids, String requestUserId) {
         Guards.requireUser(requestUserId);
         List<Transaction> txs = repo.findAllByIdInAndUserId(ids, requestUserId);
         for (Transaction tx : txs) {
-            applyBalanceDeltaWithRetry(tx, -1);
+            self.applyBalanceDeltaWithRetryInNewTransaction(tx, -1);
             applyBudgetDelta(tx, -1);
             applySavingsDelta(tx, -1);
         }
@@ -269,6 +398,12 @@ public class TransactionService {
 
     // FLAW #6 FIX: Optimistic lock retry wrapper for balance mutations.
     // Retries up to MAX_OPTIMISTIC_RETRIES times on concurrent write collision.
+    // Balance commits independently so optimistic-lock retries are not poisoned by the enclosing TX (delete/create/bulkDelete).
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void applyBalanceDeltaWithRetryInNewTransaction(Transaction tx, int sign) {
+        applyBalanceDeltaWithRetry(tx, sign);
+    }
+
     private void applyBalanceDeltaWithRetry(Transaction tx, int sign) {
         int attempts = 0;
         while (true) {
@@ -287,13 +422,22 @@ public class TransactionService {
         }
     }
 
+    /**
+     * When {@code account} is already a persisted bank UUID, never fall back to name matching —
+     * that avoids touching the wrong row if names collide with legacy free-text labels.
+     */
+    private static boolean looksLikeBankUuid(String account) {
+        return account != null
+                && account.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+    }
+
     private void applyBalanceDelta(Transaction tx, int sign) {
         if (tx.getAccount() == null || tx.getAccount().isBlank() || tx.getAmount() == null) return;
         java.util.Optional<BankAccount> optBank = bankRepo.findById(tx.getAccount());
-        if (optBank.isEmpty()) {
+        if (optBank.isEmpty() && !looksLikeBankUuid(tx.getAccount())) {
             optBank = bankRepo.findByNameIgnoreCaseAndUserId(tx.getAccount(), tx.getUserId());
         }
-        if (optBank.isEmpty()) {
+        if (optBank.isEmpty() && !looksLikeBankUuid(tx.getAccount())) {
             optBank = bankRepo.findFirstByBankIgnoreCaseAndUserId(tx.getAccount(), tx.getUserId());
         }
         BankAccount bank = optBank.orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
@@ -341,6 +485,7 @@ public class TransactionService {
     private void applySavingsDelta(Transaction tx, int sign) {
         if (tx.getSavingsGoalId() == null || tx.getSavingsGoalId().isBlank() || tx.getAmount() == null) return;
         savingsRepo.findById(tx.getSavingsGoalId()).ifPresent(goal -> {
+            if (Boolean.TRUE.equals(goal.getDeleted())) return;
             if (goal.getUserId() != null && !goal.getUserId().equals(tx.getUserId())) return;
             // Phase5.0015: skip cross-currency contributions. A USD goal must not
             // accumulate raw EUR amounts as if they were USD — currency

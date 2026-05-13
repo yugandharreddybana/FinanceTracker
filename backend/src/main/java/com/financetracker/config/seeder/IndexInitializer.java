@@ -27,7 +27,7 @@ public class IndexInitializer {
     public ApplicationRunner createIndexes() {
         return args -> {
             logger.info("Creating performance indexes...");
-            createIndex("idx_transactions_date",    "CREATE INDEX IF NOT EXISTS idx_transactions_date    ON finance_app.transactions(date)");
+            createIndex("idx_transactions_date",    "CREATE INDEX IF NOT EXISTS idx_transactions_date    ON finance_app.transactions(transaction_date)");
             createIndex("idx_transactions_category","CREATE INDEX IF NOT EXISTS idx_transactions_category ON finance_app.transactions(category)");
             createIndex("idx_transactions_type",    "CREATE INDEX IF NOT EXISTS idx_transactions_type    ON finance_app.transactions(type)");
             createIndex("idx_transactions_account", "CREATE INDEX IF NOT EXISTS idx_transactions_account  ON finance_app.transactions(account)");

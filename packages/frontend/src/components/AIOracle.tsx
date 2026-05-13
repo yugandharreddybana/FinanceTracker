@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Send, X, MessageSquare, Loader2, Mic, MicOff, Trash2 } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -9,6 +10,11 @@ import { useFinance } from '../context/FinanceContext';
 import DeleteModal from './DeleteModal';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import {
+  concatSpeechResults,
+  getSpeechRecognitionConstructor,
+  pickSpeechRecognitionLang,
+} from '../lib/speechRecognition';
 
 export const AIOracle: React.FC = () => {
   const { userProfile } = useFinance();
@@ -55,6 +61,27 @@ export const AIOracle: React.FC = () => {
 
   const mcpClientRef = useRef<MCPClient | null>(null);
   const isInitializingRef = useRef(false);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const listeningDesiredRef = useRef(false);
+  const latestInputRef = useRef('');
+  const sessionAnchorRef = useRef('');
+
+  useEffect(() => {
+    latestInputRef.current = input;
+  }, [input]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      listeningDesiredRef.current = false;
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        /* */
+      }
+      recognitionRef.current = null;
+      setIsListening(false);
+    }
+  }, [isOpen]);
 
 
   useEffect(() => {
@@ -104,58 +131,103 @@ export const AIOracle: React.FC = () => {
     window.speechSynthesis.speak(utterance);
   };
 
-  const startListening = () => {
-    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-    if (!SpeechRecognition) {
+  const stopListening = useCallback(() => {
+    listeningDesiredRef.current = false;
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      /* */
+    }
+    recognitionRef.current = null;
+    setIsListening(false);
+  }, []);
+
+  const startListening = useCallback(async () => {
+    const SR = getSpeechRecognitionConstructor();
+    if (!SR) {
       setErrorModal({
         isOpen: true,
         title: 'Speech Not Supported',
-        message: 'Your current browser does not support the Web Speech API. Please try using a modern browser like Chrome or Edge.'
+        message:
+          'Your browser does not expose the Web Speech API. Use Chrome or Edge on desktop, allow microphone, and stay online for transcription.',
       });
       return;
     }
+    stopListening();
+    listeningDesiredRef.current = true;
 
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
+    const recognition = new SR();
+    recognition.lang = pickSpeechRecognitionLang();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
-    recognition.onerror = (event: any) => {
-      console.error("Speech recognition error:", event.error);
+    recognition.onstart = () => {
+      sessionAnchorRef.current = latestInputRef.current.trimEnd();
+      setIsListening(true);
+    };
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      const live = concatSpeechResults(event.results).trim();
+      const anchor = sessionAnchorRef.current;
+      const spacer = anchor && live ? ' ' : '';
+      const next = `${anchor}${spacer}${live}`.replace(/\s+/g, ' ').trim();
+      flushSync(() => setInput(next));
+    };
+
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      if (event.error === 'no-speech' || event.error === 'aborted') return;
+      listeningDesiredRef.current = false;
+      recognitionRef.current = null;
       setIsListening(false);
-      
+
       if (event.error === 'not-allowed') {
         setErrorModal({
           isOpen: true,
           title: 'Microphone Access Denied',
-          message: 'Voice entry requires microphone access. Please click "Allow Access" below and then grant permission in your browser prompt.'
+          message:
+            'Voice entry requires microphone access. Click Allow Access below and then grant permission in your browser prompt.',
         });
-      } else if (event.error === 'no-speech') {
-        // Ignore
+      } else if (event.error === 'network') {
+        speak("Speech recognition needs an internet connection in Chrome.");
       } else {
-        speak("I encountered an error with speech recognition.");
+        speak('Speech recognition hit an error. Try typing instead.');
       }
     };
 
-    let finalTranscript = '';
-    recognition.onresult = (event: any) => {
-      let interimTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        } else {
-          interimTranscript += event.results[i][0].transcript;
+    recognition.onend = () => {
+      if (!listeningDesiredRef.current) {
+        recognitionRef.current = null;
+        setIsListening(false);
+        return;
+      }
+      window.setTimeout(() => {
+        if (!listeningDesiredRef.current || recognitionRef.current !== recognition) return;
+        try {
+          recognition.start();
+        } catch {
+          listeningDesiredRef.current = false;
+          recognitionRef.current = null;
+          setIsListening(false);
         }
-      }
-      setInput(finalTranscript + interimTranscript);
+      }, 100);
     };
 
+    recognitionRef.current = recognition;
+    try {
+      recognition.start();
+    } catch {
+      listeningDesiredRef.current = false;
+      recognitionRef.current = null;
+      setIsListening(false);
+      speak('Could not start the microphone. Close other tabs using the mic and try again.');
+    }
+  }, [stopListening]);
 
-    recognition.start();
-  };
+  const toggleListening = useCallback(() => {
+    if (isListening || listeningDesiredRef.current) stopListening();
+    else void startListening();
+  }, [isListening, startListening, stopListening]);
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
@@ -312,7 +384,8 @@ export const AIOracle: React.FC = () => {
                     />
                     <div className="absolute right-2 flex items-center gap-2">
                       <button 
-                        onClick={startListening}
+                        type="button"
+                        onClick={toggleListening}
                         className={cn(
                           "p-3 rounded-xl transition-all border",
                           isListening 

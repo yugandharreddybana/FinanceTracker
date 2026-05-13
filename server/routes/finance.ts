@@ -1,8 +1,70 @@
 import { Router, Request, Response } from "express";
 import { rateLimit } from "express-rate-limit";
+import fs from "fs";
+import path from "path";
 import { authMiddleware, verifiedEmailMiddleware } from "../routes/auth.js";
 import { Redis } from "ioredis";
 import crypto from "crypto";
+
+const IS_PROD = process.env.NODE_ENV === "production";
+const DEBUG_PROXY = process.env.DEBUG_PROXY === "true";
+const STRICT_FINANCE_RATE_LIMIT =
+  IS_PROD || process.env.STRICT_PROXY_RATE_LIMIT === "true";
+
+function sanitizeUpstreamForClient(status: number, data: unknown): Record<string, unknown> {
+  if (!IS_PROD) {
+    return typeof data === "object" && data !== null && !Array.isArray(data)
+      ? { ...(data as Record<string, unknown>) }
+      : { detail: data };
+  }
+  const safe: Record<string, unknown> = { rawStatusCode: status };
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    const o = data as Record<string, unknown>;
+    const msg = o.error ?? o.message;
+    if (typeof msg === "string" && msg.length > 0 && msg.length <= 280) {
+      safe.error = msg;
+    } else {
+      safe.error = "Upstream request failed";
+    }
+    const cid = o.correlationId;
+    if (typeof cid === "string" && cid.length <= 80) {
+      safe.correlationId = cid;
+    }
+  } else {
+    safe.error = "Upstream request failed";
+  }
+  return safe;
+}
+
+function appendAgentDebugNdjson(payload: Record<string, unknown>) {
+  if (!DEBUG_PROXY) return;
+  const line = JSON.stringify({ sessionId: "5c48c3", timestamp: Date.now(), ...payload }) + "\n";
+  const tried: string[] = [];
+  let cur = path.resolve(process.cwd());
+  for (let depth = 0; depth < 14; depth++) {
+    const filePath = path.join(cur, "debug-5c48c3.log");
+    tried.push(filePath);
+    try {
+      fs.appendFileSync(filePath, line);
+      return;
+    } catch {
+      /* try parent */
+    }
+    const parent = path.dirname(cur);
+    if (parent === cur) break;
+    cur = parent;
+  }
+  console.error("[agent-debug] ndjson append failed:", payload.hypothesisId, payload.message, tried.slice(0, 4));
+}
+
+function proxyDebugIngest(payload: Record<string, unknown>) {
+  if (!DEBUG_PROXY) return;
+  fetch("http://127.0.0.1:7877/ingest/45115c5e-d789-479b-b3a2-738882121ed7", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5c48c3" },
+    body: JSON.stringify({ sessionId: "5c48c3", timestamp: Date.now(), ...payload }),
+  }).catch(() => {});
+}
 
 const router = Router();
 
@@ -13,7 +75,7 @@ router.use(verifiedEmailMiddleware);
 // General rate limit: 200 requests per 15 minutes per IP
 const financeLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === "production" ? 200 : 5000,
+  max: STRICT_FINANCE_RATE_LIMIT ? 200 : 5000,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests, please try again later" },
@@ -91,6 +153,26 @@ async function proxyToBackend(req: Request, res: Response, path: string, method?
       },
     };
 
+    const effectiveMethod = options.method || "GET";
+    const isTxnDelete =
+      effectiveMethod === "DELETE" && path.startsWith("/transactions/") && path !== "/transactions/bulk-delete";
+    if (isTxnDelete) {
+      // #region agent log
+      appendAgentDebugNdjson({
+        hypothesisId: "H14",
+        location: "finance.ts:proxyToBackend",
+        message: "proxy transaction delete attempt",
+        data: { path, backendApi: BACKEND_API },
+      });
+      proxyDebugIngest({
+        hypothesisId: "H14",
+        location: "finance.ts:proxyToBackend",
+        message: "proxy transaction delete attempt",
+        data: { path },
+      });
+      // #endregion
+    }
+
     if (["POST", "PUT", "PATCH"].includes(options.method!)) {
       let body = req.body;
       if (typeof body === "object" && body !== null) {
@@ -103,14 +185,76 @@ async function proxyToBackend(req: Request, res: Response, path: string, method?
     const response = await fetch(url, options);
 
     if (response.status === 204) {
+      if (isTxnDelete) {
+        // #region agent log
+        appendAgentDebugNdjson({
+          hypothesisId: "H15",
+          location: "finance.ts:proxyToBackend",
+          message: "transaction delete upstream 204",
+          data: { path },
+        });
+        proxyDebugIngest({
+          hypothesisId: "H15",
+          location: "finance.ts:proxyToBackend",
+          message: "transaction delete upstream 204",
+          data: { path },
+        });
+        // #endregion
+      }
       return res.status(204).send();
     }
 
     const data = await response.json().catch(() => null);
+    if (response.status >= 400) {
+      // #region agent log
+      appendAgentDebugNdjson({
+        hypothesisId: "H3",
+        location: "finance.ts:proxyToBackend",
+        message: "upstream finance error",
+        data: {
+          status: response.status,
+          path,
+          method: options.method,
+          rawBody: data,
+        },
+      });
+      proxyDebugIngest({
+        hypothesisId: "H3",
+        location: "finance.ts:proxyToBackend",
+        message: "upstream finance error",
+        data: {
+          status: response.status,
+          path,
+          method: options.method,
+          errKeys: data && typeof data === "object" ? Object.keys(data as object) : [],
+        },
+      });
+      // #endregion
+      return res.status(response.status).json({
+        error: "PROXIED_DEBUG_ERROR",
+        rawStatusCode: response.status,
+        rawBody: sanitizeUpstreamForClient(response.status, data),
+      });
+    }
     res.status(response.status).json(data);
   } catch (err: any) {
-    console.error(`Proxy error [${req.method} ${path}]`);
-    res.status(502).json({ error: "Backend unavailable" });
+    // #region agent log
+    appendAgentDebugNdjson({
+      hypothesisId: "H16",
+      location: "finance.ts:proxyToBackend",
+      message: "proxy fetch failed",
+      data: { path, diag: err?.message ? String(err.message).slice(0, 200) : "unknown" },
+    });
+    proxyDebugIngest({
+      hypothesisId: "H16",
+      location: "finance.ts:proxyToBackend",
+      message: "proxy fetch failed",
+      data: { path: typeof path === "string" ? path : "" },
+    });
+    // #endregion
+    res.status(502).json(
+      IS_PROD ? { error: "Backend unavailable" } : { error: "Backend unavailable", diag: err.message }
+    );
   }
 }
 
@@ -141,6 +285,20 @@ router.put("/transactions/:id", (req, res) => {
 router.patch("/transactions/bulk", (req, res) => proxyToBackend(req, res, "/transactions/bulk"));
 router.post("/transactions/bulk-delete", (req, res) => proxyToBackend(req, res, "/transactions/bulk-delete"));
 router.delete("/transactions/:id", (req, res) => {
+  // #region agent log
+  appendAgentDebugNdjson({
+    hypothesisId: "H20",
+    location: "finance.ts:DELETE /transactions/:id",
+    message: "route entered",
+    data: { idLen: req.params.id != null ? String(req.params.id).length : -1 },
+  });
+  proxyDebugIngest({
+    hypothesisId: "H20",
+    location: "finance.ts:DELETE /transactions/:id",
+    message: "route entered",
+    data: { idLen: req.params.id != null ? String(req.params.id).length : -1 },
+  });
+  // #endregion
   if (!requireValidId(req, res, req.params.id)) return;
   return proxyToBackend(req, res, `/transactions/${encodeURIComponent(req.params.id)}`);
 });

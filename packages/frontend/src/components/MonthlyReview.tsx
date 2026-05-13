@@ -102,6 +102,7 @@ export const MonthlyReview: React.FC = () => {
 
   return (
     <motion.div
+      data-testid="page-review"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}

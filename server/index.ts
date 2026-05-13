@@ -37,7 +37,7 @@ async function startServer() {
     console.warn("[WARN] DATABASE_URL is not set — user accounts stored in local JSON file (dev only).");
   }
   if (!process.env.JAVA_BACKEND_URL && !process.env.BACKEND_URL) {
-    console.warn("[WARN] JAVA_BACKEND_URL not set — finance data proxies will target http://localhost:8080.");
+    console.warn("[WARN] JAVA_BACKEND_URL not set — finance data proxies will target http://localhost:8081 (Spring default).");
   }
   if (!process.env.FRONTEND_URL) {
     console.warn("[WARN] FRONTEND_URL not set — only localhost origins will be allowed by CORS.");
@@ -147,7 +147,7 @@ async function startServer() {
     // Check Java backend
     try {
       const r = await fetch(
-        `${process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8080"}/api/health`,
+        `${process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8081"}/api/health`,
         { signal: AbortSignal.timeout(3000) }
       );
       checks.javaBackend = r.ok ? "ok" : "degraded";

@@ -117,12 +117,14 @@ public class JwtAuthenticationFilter {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(jwtSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
             byte[] computed = mac.doFinal((parts[0] + "." + parts[1]).getBytes(StandardCharsets.UTF_8));
-            String expected = Base64.getUrlEncoder().withoutPadding().encodeToString(computed);
-
-            byte[] sigBytes = parts[2].getBytes(StandardCharsets.UTF_8);
-            byte[] expBytes = expected.getBytes(StandardCharsets.UTF_8);
-            if (sigBytes.length != expBytes.length) return null;
-            if (!MessageDigest.isEqual(sigBytes, expBytes)) return null;
+            byte[] signatureBytes;
+            try {
+                signatureBytes = Base64.getUrlDecoder().decode(parts[2]);
+            } catch (IllegalArgumentException ex) {
+                return null;
+            }
+            if (signatureBytes.length != computed.length) return null;
+            if (!MessageDigest.isEqual(signatureBytes, computed)) return null;
 
             byte[] payloadJson = Base64.getUrlDecoder().decode(parts[1]);
             @SuppressWarnings("unchecked")
@@ -145,7 +147,7 @@ public class JwtAuthenticationFilter {
     private void deny(HttpServletResponse res, String reason) throws IOException {
         res.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         res.setContentType("application/json");
-        res.getWriter().write("{\"error\":\"" + reason + "\"}");
+        MAPPER.writeValue(res.getWriter(), Map.of("error", reason));
     }
 
     /** Wraps the request so getHeader("X-User-Id") returns the verified JWT uid,

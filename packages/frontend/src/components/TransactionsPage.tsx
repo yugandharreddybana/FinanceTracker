@@ -7,8 +7,9 @@ import { useToast } from './Toast';
 import {
   Plus, Search, ArrowUpRight, ArrowDownRight, Trash2,
   SlidersHorizontal, Sparkles, Mic, Upload, Keyboard,
-  ChevronDown, Calendar, Tag,
+  ChevronDown, Calendar, Tag, Download, Printer,
 } from 'lucide-react';
+import { downloadTransactionsCsv, printTransactionsStatement } from '../lib/exportCsv';
 
 export function TransactionsPage() {
   const { transactions, deleteTransaction } = useFinance();
@@ -57,7 +58,7 @@ export function TransactionsPage() {
   }, [filtered]);
 
   return (
-    <div className="p-4 md:p-8 max-w-[1400px] mx-auto space-y-6">
+    <div data-testid="page-transactions" className="p-4 md:p-8 max-w-[1400px] mx-auto space-y-6">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
         className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -65,11 +66,21 @@ export function TransactionsPage() {
           <h1 className="text-2xl md:text-3xl font-black text-slate-900">Transactions</h1>
           <p className="text-slate-400 font-medium">Track every rupee in and out</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <motion.button type="button" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+            onClick={() => downloadTransactionsCsv(filtered, 'transactions-filtered.csv')}
+            className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50">
+            <Download className="h-4 w-4" aria-hidden /> CSV
+          </motion.button>
+          <motion.button type="button" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+            onClick={() => printTransactionsStatement(filtered, 'Transactions')}
+            className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50">
+            <Printer className="h-4 w-4" aria-hidden /> PDF / Print
+          </motion.button>
           <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
             onClick={() => setShowSmartAdd(true)}
             className="inline-flex items-center gap-2 rounded-2xl animated-gradient px-5 py-3 text-sm font-bold text-white shadow-xl shadow-emerald-200/50">
-            <Plus className="h-4 w-4" /> Add Smart
+            <Plus className="h-4 w-4" aria-hidden /> Add Smart
           </motion.button>
         </div>
       </motion.div>
@@ -162,6 +173,7 @@ export function TransactionsPage() {
         <AnimatePresence>
           {grouped.length === 0 ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              data-testid="empty-transactions"
               className="rounded-3xl bg-white p-16 text-center shadow-sm border border-slate-100">
               <div className="text-4xl mb-3">🔍</div>
               <p className="text-slate-400 font-medium">No transactions found</p>
@@ -196,9 +208,9 @@ export function TransactionsPage() {
                         <span className={cn('text-base font-black tabular-nums', t.type === 'income' ? 'text-emerald-600' : 'text-rose-500')}>
                           {t.type === 'income' ? '+' : '−'}{formatCurrency(t.amount)}
                         </span>
-                        <button onClick={() => { deleteTransaction(t.id); toast('info', 'Transaction deleted', t.merchant); }}
-                          className="opacity-0 group-hover:opacity-100 rounded-lg p-1.5 text-slate-300 hover:bg-rose-50 hover:text-rose-500 transition-all">
-                          <Trash2 className="h-3.5 w-3.5" />
+                        <button type="button" aria-label={`Delete ${t.merchant}`} onClick={() => { deleteTransaction(t.id); toast('info', 'Transaction deleted', t.merchant); }}
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-500 transition-all sm:opacity-0 sm:group-hover:opacity-100 opacity-100">
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden />
                         </button>
                       </div>
                     </motion.div>

@@ -11,6 +11,8 @@ import java.util.List;
 public interface SavingsGoalRepository extends JpaRepository<SavingsGoal, String> {
     List<SavingsGoal> findAllByUserId(String userId);
 
+    List<SavingsGoal> findAllByUserIdAndDeletedFalse(String userId);
+
     @Modifying
     @Transactional
     void deleteByUserId(String userId);

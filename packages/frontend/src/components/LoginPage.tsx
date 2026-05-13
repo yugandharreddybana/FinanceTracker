@@ -1,17 +1,29 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useFinance } from '../context/FinanceContext';
-import { Wallet, Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { Wallet, Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, Sparkles, AlertCircle } from 'lucide-react';
 
 export function LoginPage() {
   const { login } = useFinance();
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [infoMessage, setInfoMessage] = useState('');
+
+  // Support digesting injected location state payloads (e.g., session expired cascades)
+  useEffect(() => {
+    const state = location.state as { authMessage?: string } | null;
+    if (state?.authMessage) {
+      setInfoMessage(state.authMessage);
+      // Purge state so message doesn't persist across refresh triggers
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,12 +39,23 @@ export function LoginPage() {
 
   const handleDemo = async () => {
     setIsLoading(true);
-    await login('demo@yugifinance.com', 'demo123');
-    navigate('/app/dashboard');
+    setError('');
+    try {
+      const ok = await login('demo@yugifinance.com', 'demo123456');
+      if (ok) {
+        navigate('/app/dashboard');
+      } else {
+        setError('Demo system currently offline. Please try creating a free account.');
+      }
+    } catch (err) {
+      setError('Demo system unavailable. Please try again later.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <div className="flex min-h-screen">
+    <div data-testid="page-login" className="flex min-h-screen">
       {/* Left */}
       <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.5 }}
         className="flex flex-1 flex-col justify-center px-5 sm:px-8 py-8 sm:py-12 lg:px-16">
@@ -48,10 +71,19 @@ export function LoginPage() {
           <p className="mt-2 text-slate-500">Sign in to continue managing your finances</p>
 
           <form onSubmit={handleSubmit} className="mt-10 space-y-5">
-            <AnimatePresence>
+            <AnimatePresence mode="wait">
+              {infoMessage && (
+                <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                  className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800 font-semibold flex items-start gap-3 shadow-sm"
+                  data-testid="auth-info-message">
+                  <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <span>{infoMessage}</span>
+                </motion.div>
+              )}
               {error && (
                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
-                  className="rounded-2xl bg-rose-50 border border-rose-200 p-4 text-sm text-rose-600 font-medium">{error}</motion.div>
+                  className="rounded-2xl bg-rose-50 border border-rose-200 p-4 text-sm text-rose-600 font-medium"
+                  data-testid="auth-error-message">{error}</motion.div>
               )}
             </AnimatePresence>
 
@@ -67,7 +99,7 @@ export function LoginPage() {
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <label className="text-sm font-semibold text-slate-700">Password</label>
-                <button type="button" className="text-sm font-medium text-emerald-600 hover:text-emerald-700">Forgot?</button>
+                <Link to="/forgot-password" className="text-sm font-medium text-emerald-600 hover:text-emerald-700">Forgot?</Link>
               </div>
               <div className="group relative">
                 <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-300 group-focus-within:text-emerald-500 transition-colors" />
@@ -91,7 +123,7 @@ export function LoginPage() {
             <div className="h-px flex-1 bg-slate-100" />
           </div>
 
-          <motion.button onClick={handleDemo} whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}
+          <motion.button type="button" data-testid="login-demo-button" onClick={handleDemo} whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}
             className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-slate-100 bg-white py-3.5 text-sm font-bold text-slate-700 transition-all hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
             <Sparkles className="h-4 w-4" />
             Try Demo Account — Instant Access

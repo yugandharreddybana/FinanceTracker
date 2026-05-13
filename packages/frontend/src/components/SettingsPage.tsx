@@ -1,17 +1,20 @@
 import { useState } from 'react';
 import { useFinance } from '../context/FinanceContext';
-import { cn } from '../lib/utils';
+import { cn, safeStorage } from '../lib/utils';
 import { getAIConfig, saveAIConfig, type AIConfig } from '../lib/aiService';
 import { motion } from 'motion/react';
-import { User, Bell, Shield, Palette, Globe, Download, Trash2, Save, Moon, Sun, Check, Sparkles, Eye, EyeOff } from 'lucide-react';
+import { User, Bell, Shield, Palette, Globe, Download, Trash2, Save, Moon, Sun, Check, Sparkles, Eye, EyeOff, Printer } from 'lucide-react';
 import { useToast } from './Toast';
+import { downloadTransactionsCsv, printTransactionsStatement } from '../lib/exportCsv';
 
 export function SettingsPage() {
-  const { userProfile, updateUserProfile } = useFinance();
+  const { userProfile, updateUserProfile, transactions } = useFinance();
   const [name, setName] = useState(userProfile.name);
   const [email, setEmail] = useState(userProfile.email);
   const [currency, setCurrency] = useState(userProfile.preferences?.currency || 'INR');
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(() =>
+    typeof document !== 'undefined' && document.documentElement.classList.contains('dark'),
+  );
   const [notifs, setNotifs] = useState({ budgetAlerts: true, weeklyReports: true, goalReminders: true, billReminders: true });
   const [saved, setSaved] = useState(false);
   const [aiConfig, setAiConfig] = useState<AIConfig>(getAIConfig());
@@ -25,7 +28,8 @@ export function SettingsPage() {
       email,
       preferences: {
         ...userProfile.preferences,
-        currency
+        currency,
+        theme: darkMode ? 'dark' : 'light',
       }
     });
     setSaved(true);
@@ -33,14 +37,14 @@ export function SettingsPage() {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const Toggle = ({ on, onToggle }: { on: boolean; onToggle: () => void }) => (
-    <button onClick={onToggle} className={cn('relative h-7 w-12 rounded-full transition-colors', on ? 'bg-emerald-500' : 'bg-slate-200')}>
+  const Toggle = ({ on, onToggle, label }: { on: boolean; onToggle: () => void; label: string }) => (
+    <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={onToggle} className={cn('relative h-7 w-12 rounded-full transition-colors shrink-0', on ? 'bg-emerald-500' : 'bg-slate-200')}>
       <motion.span layout className={cn('absolute top-0.5 h-6 w-6 rounded-full bg-white shadow-md', on ? 'left-[22px]' : 'left-0.5')} />
     </button>
   );
 
   return (
-    <div className="p-4 md:p-8 max-w-[800px] mx-auto space-y-6">
+    <div data-testid="page-settings" className="p-4 md:p-8 max-w-[800px] mx-auto space-y-6">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-2xl md:text-3xl font-black text-slate-900">Settings</h1>
         <p className="text-slate-400 font-medium">Manage your account</p>
@@ -71,12 +75,23 @@ export function SettingsPage() {
         <div className="space-y-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">{darkMode ? <Moon className="h-5 w-5 text-slate-500" /> : <Sun className="h-5 w-5 text-amber-500" />}<div><p className="font-semibold text-slate-800">Dark Mode</p><p className="text-sm text-slate-400">Toggle dark theme</p></div></div>
-            <Toggle on={darkMode} onToggle={() => setDarkMode(!darkMode)} />
+            <Toggle
+              label="Dark mode"
+              on={darkMode}
+              onToggle={() => {
+                setDarkMode((d) => {
+                  const next = !d;
+                  document.documentElement.classList.toggle('dark', next);
+                  safeStorage.setItem('ft_dark', next ? '1' : '0');
+                  return next;
+                });
+              }}
+            />
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3"><Globe className="h-5 w-5 text-blue-500" /><div><p className="font-semibold text-slate-800">Currency</p><p className="text-sm text-slate-400">Default currency</p></div></div>
             <select value={currency} onChange={e => setCurrency(e.target.value)} className="rounded-xl border-2 border-slate-100 px-3 py-2 text-sm font-medium focus:border-emerald-400 focus:outline-none">
-              <option value="INR">₹ INR</option><option value="USD">$ USD</option><option value="EUR">€ EUR</option></select>
+              <option value="INR">₹ INR</option><option value="EUR">€ EUR</option></select>
           </div>
         </div>
       </motion.div>
@@ -95,7 +110,7 @@ export function SettingsPage() {
           ].map(item => (
             <div key={item.key} className="flex items-center justify-between">
               <div><p className="font-semibold text-slate-800">{item.label}</p><p className="text-sm text-slate-400">{item.desc}</p></div>
-              <Toggle on={notifs[item.key as keyof typeof notifs]} onToggle={() => setNotifs(p => ({ ...p, [item.key]: !p[item.key as keyof typeof p] }))} />
+              <Toggle on={notifs[item.key as keyof typeof notifs]} onToggle={() => setNotifs(p => ({ ...p, [item.key]: !p[item.key as keyof typeof p] }))} label={item.label} />
             </div>
           ))}
         </div>
@@ -106,7 +121,7 @@ export function SettingsPage() {
         className="rounded-3xl bg-white p-6 shadow-sm border border-slate-100">
         <div className="flex items-center gap-3 mb-6">
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl animated-gradient"><Sparkles className="h-5 w-5 text-white" /></div>
-          <div><h3 className="font-bold text-slate-900">AI Configuration</h3><p className="text-sm text-slate-400">Connect an LLM for intelligent understanding</p></div>
+          <div><h3 className="font-bold text-slate-900">AI Configuration</h3><p className="text-sm text-slate-400">Server-side insights use Google Gemini 2.0 Flash. Keys below configure optional client-side Smart Add routing.</p></div>
         </div>
         <div className="space-y-4">
           <div>
@@ -159,16 +174,17 @@ export function SettingsPage() {
           className="rounded-3xl bg-white p-6 shadow-sm border border-slate-100">
           <div className="flex items-center gap-3 mb-4"><div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-100"><Shield className="h-5 w-5 text-emerald-600" /></div><h3 className="font-bold text-slate-900">Security</h3></div>
           <div className="space-y-2">
-            <button className="w-full rounded-2xl border-2 border-slate-100 px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50 text-left">Change Password</button>
-            <button className="w-full rounded-2xl border-2 border-slate-100 px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50 text-left">Enable 2FA</button>
+            <button type="button" onClick={() => { toast('info', 'Password change', 'Use logout and forgot-password if you need to reset access.'); }} className="w-full rounded-2xl border-2 border-slate-100 px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50 text-left">Change Password</button>
+            <button type="button" onClick={() => { toast('info', 'Two-factor authentication', 'Not enabled for this deployment yet.'); }} className="w-full rounded-2xl border-2 border-slate-100 px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50 text-left">Enable 2FA</button>
           </div>
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
           className="rounded-3xl bg-white p-6 shadow-sm border border-slate-100">
           <div className="flex items-center gap-3 mb-4"><div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-100"><Download className="h-5 w-5 text-cyan-600" /></div><h3 className="font-bold text-slate-900">Data</h3></div>
           <div className="space-y-2">
-            <button className="w-full rounded-2xl border-2 border-slate-100 px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50 text-left flex items-center gap-2"><Download className="h-4 w-4" />Export Data</button>
-            <button className="w-full rounded-2xl border-2 border-rose-100 px-4 py-3 text-sm font-bold text-rose-500 hover:bg-rose-50 text-left flex items-center gap-2"><Trash2 className="h-4 w-4" />Delete All Data</button>
+            <button type="button" onClick={() => downloadTransactionsCsv(transactions)} className="w-full rounded-2xl border-2 border-slate-100 px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50 text-left flex items-center gap-2"><Download className="h-4 w-4" aria-hidden />Export CSV (all transactions)</button>
+            <button type="button" onClick={() => printTransactionsStatement(transactions, 'Full statement')} className="w-full rounded-2xl border-2 border-slate-100 px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50 text-left flex items-center gap-2"><Printer className="h-4 w-4" aria-hidden />Print / Save PDF</button>
+            <button type="button" onClick={() => { toast('info', 'Delete all data', 'Clear transactions from the Transactions page or contact support for account deletion.'); }} className="w-full rounded-2xl border-2 border-rose-100 px-4 py-3 text-sm font-bold text-rose-500 hover:bg-rose-50 text-left flex items-center gap-2"><Trash2 className="h-4 w-4" aria-hidden />Delete All Data</button>
           </div>
         </motion.div>
       </div>

@@ -13,7 +13,9 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('[ErrorBoundary]', error, info.componentStack);
+    if (import.meta.env.DEV) {
+      console.error('[ErrorBoundary]', error, info.componentStack);
+    }
   }
   render() {
     if (this.state.hasError) {

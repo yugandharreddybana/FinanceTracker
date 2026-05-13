@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'motion/react';
-import { Wallet, BarChart3, Target, TrendingUp, Shield, Sparkles, ArrowRight, Check, Zap, Globe, Users } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Wallet, BarChart3, Target, TrendingUp, Shield, Sparkles, ArrowRight, Check, Zap, Globe, Users, X, PlayCircle } from 'lucide-react';
 
 const features = [
   { icon: BarChart3, title: 'Smart Budgeting', desc: 'AI-powered budget tracking that learns your habits and adapts.', gradient: 'from-blue-500 to-cyan-400' },
@@ -15,8 +16,10 @@ const container = { hidden: {}, show: { transition: { staggerChildren: 0.1 } } }
 const item = { hidden: { opacity: 0, y: 30 }, show: { opacity: 1, y: 0, transition: { duration: 0.5 } } };
 
 export function LandingPage() {
+  const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
+
   return (
-    <div className="min-h-screen bg-white overflow-x-hidden">
+    <div data-testid="page-landing" className="min-h-screen bg-white overflow-x-hidden">
       {/* Nav */}
       <motion.header initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="sticky top-0 z-50 glass border-b border-slate-200/50">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
@@ -75,10 +78,12 @@ export function LandingPage() {
               Start Free
               <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
             </Link>
-            <Link to="/login"
-              className="inline-flex items-center gap-2 rounded-full border-2 border-slate-200 bg-white px-6 py-3 sm:px-8 sm:py-4 text-base sm:text-lg font-bold text-slate-700 transition-all hover:border-slate-300 hover:shadow-lg w-full sm:w-auto justify-center">
-              Try Demo
-            </Link>
+            <button
+              onClick={() => setIsDemoModalOpen(true)}
+              className="inline-flex items-center gap-2 rounded-full border-2 border-slate-200 bg-white px-6 py-3 sm:px-8 sm:py-4 text-base sm:text-lg font-bold text-slate-700 transition-all hover:border-slate-300 hover:shadow-lg w-full sm:w-auto justify-center cursor-pointer">
+              <PlayCircle className="h-5 w-5 text-emerald-600" />
+              Watch Demo
+            </button>
           </motion.div>
 
           {/* Stats */}
@@ -178,15 +183,65 @@ export function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-slate-100 py-10">
-        <div className="mx-auto max-w-7xl px-6 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-lg animated-gradient flex items-center justify-center"><Wallet className="h-4 w-4 text-white" /></div>
-            <span className="font-bold text-slate-900">YugiFinance</span>
+      <footer className="border-t border-slate-100 bg-white py-12">
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-lg animated-gradient flex items-center justify-center shadow-md shadow-emerald-200">
+                <Wallet className="h-4 w-4 text-white" />
+              </div>
+              <span className="font-extrabold text-slate-900 tracking-tight">Yugi<span className="text-emerald-600">Finance</span></span>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-4">
+              <Link to="/privacy" className="text-sm font-medium text-slate-500 hover:text-emerald-600 transition-colors">Privacy</Link>
+              <Link to="/terms" className="text-sm font-medium text-slate-500 hover:text-emerald-600 transition-colors">Terms</Link>
+              <Link to="/security" className="text-sm font-medium text-slate-500 hover:text-emerald-600 transition-colors">Security</Link>
+              <Link to="/contact" className="text-sm font-medium text-slate-500 hover:text-emerald-600 transition-colors">Contact</Link>
+            </div>
+
+            <p className="text-sm text-slate-400 font-medium">
+              © {new Date().getFullYear()} YugiFinance.
+            </p>
           </div>
-          <p className="text-sm text-slate-400">© 2025 Yugi Finance. Built with ❤️</p>
         </div>
       </footer>
+
+      <AnimatePresence>
+        {isDemoModalOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsDemoModalOpen(false)}
+              className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl aspect-video z-[110] px-4"
+            >
+              <div className="w-full h-full rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl overflow-hidden flex flex-col items-center justify-center text-center p-8 relative">
+                <button 
+                  onClick={() => setIsDemoModalOpen(false)}
+                  className="absolute top-6 right-6 text-slate-500 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-full p-2 transition-colors cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+                
+                <div className="h-20 w-20 rounded-full bg-emerald-500/10 flex items-center justify-center mb-6">
+                  <PlayCircle className="h-10 w-10 text-emerald-500" />
+                </div>
+                
+                <h3 className="text-2xl font-bold text-white mb-2">Demo coming soon</h3>
+                <p className="text-slate-400 max-w-sm">We're currently recording a deep-dive of the interactive dashboard. Stay tuned!</p>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

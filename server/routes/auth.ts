@@ -15,12 +15,13 @@ import {
 import { Redis } from "ioredis";
 
 const IS_PROD = process.env.NODE_ENV === "production";
-const EMAIL_PROVIDER_CONFIGURED =
-  !!process.env.SENDGRID_API_KEY ||
-  !!process.env.SMTP_HOST ||
-  !!process.env.SES_REGION;
 
-const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8080";
+/** SMTP/nodemailer path is not implemented yet — only SendGrid REST counts as configured. */
+function emailDeliveryConfigured(): boolean {
+  return !!(process.env.SENDGRID_API_KEY && process.env.EMAIL_FROM);
+}
+
+const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8081";
 
 // FLAW #8 FIX: OTP store moved to Redis for durability + multi-instance safety
 // Falls back to in-memory Map only in dev when REDIS_URL is not set.
@@ -34,8 +35,8 @@ try {
   console.warn("[Redis] not available — OTP falls back to in-memory (dev only)");
 }
 
-// Fallback in-memory OTP store (development only — NOT suitable for production)
-const memOtpStore = new Map<string, { otp: string; expires: number }>();
+// Fallback in-memory OTP store holds SHA-256 hex digest (matches Redis path).
+const memOtpStore = new Map<string, { otpHash: string; expires: number }>();
 setInterval(() => {
   const now = Date.now();
   for (const [email, record] of memOtpStore.entries()) {
@@ -44,28 +45,24 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 async function storeOtp(email: string, otp: string): Promise<void> {
+  const hashed = crypto.createHash("sha256").update(otp).digest("hex");
   if (redis) {
-    // Hash OTP before storing — prevents plaintext exposure in Redis dumps/logs
-    const hashed = crypto.createHash('sha256').update(otp).digest('hex');
     await redis.setex(`otp:${email}`, 900, hashed); // 15-minute TTL
   } else {
-    memOtpStore.set(email, { otp, expires: Date.now() + 15 * 60 * 1000 });
+    memOtpStore.set(email, { otpHash: hashed, expires: Date.now() + 15 * 60 * 1000 });
   }
 }
 
 async function validateOtp(email: string, otp: string): Promise<boolean> {
+  const incoming = crypto.createHash("sha256").update(otp).digest("hex");
   if (redis) {
     const stored = await redis.get(`otp:${email}`);
     if (!stored) return false;
-    const incoming = crypto.createHash('sha256').update(otp).digest('hex');
-    // Constant-time compare on hex strings (same byte length, safe)
-    return crypto.timingSafeEqual(Buffer.from(stored, 'utf8'), Buffer.from(incoming, 'utf8'));
-  } else {
-    const record = memOtpStore.get(email);
-    if (!record || Date.now() > record.expires) return false;
-    return Buffer.byteLength(record.otp) === Buffer.byteLength(otp) &&
-      crypto.timingSafeEqual(Buffer.from(record.otp), Buffer.from(otp));
+    return crypto.timingSafeEqual(Buffer.from(stored, "utf8"), Buffer.from(incoming, "utf8"));
   }
+  const record = memOtpStore.get(email);
+  if (!record || Date.now() > record.expires) return false;
+  return crypto.timingSafeEqual(Buffer.from(record.otpHash, "utf8"), Buffer.from(incoming, "utf8"));
 }
 
 async function deleteOtp(email: string): Promise<void> {
@@ -137,10 +134,14 @@ async function clearFailureCount(email: string): Promise<void> {
 // Token TTL: 24 hours; bound to email; consumed on first successful verify.
 // ---------------------------------------------------------------------------
 const memVerifyTokenStore = new Map<string, { email: string; expires: number }>();
+const memResetTokenStore = new Map<string, { email: string; expires: number }>();
 setInterval(() => {
   const now = Date.now();
   for (const [token, record] of memVerifyTokenStore.entries()) {
     if (now > record.expires) memVerifyTokenStore.delete(token);
+  }
+  for (const [token, record] of memResetTokenStore.entries()) {
+    if (now > record.expires) memResetTokenStore.delete(token);
   }
 }, 10 * 60 * 1000);
 
@@ -170,28 +171,77 @@ async function consumeVerificationToken(token: string): Promise<string | null> {
   return rec.email;
 }
 
-// Email transport — placeholder until provider SDK is wired in.
-// In production, missing provider config blocks /forgot-password (returns 503).
-// In dev, /forgot-password records the OTP in Redis only — never logged.
-async function sendOtpEmail(_email: string, _otp: string): Promise<void> {
-  if (process.env.SENDGRID_API_KEY) {
-    // TODO: integrate SendGrid SDK
-    return;
+async function storeResetToken(email: string): Promise<string> {
+  const token = crypto.randomBytes(32).toString("hex");
+  if (redis) {
+    await redis.setex(`reset_tok:${token}`, 3600, email.toLowerCase()); // 1 hour
+  } else {
+    memResetTokenStore.set(token, {
+      email: email.toLowerCase(),
+      expires: Date.now() + 3600 * 1000,
+    });
   }
-  if (process.env.SMTP_HOST) {
-    // TODO: integrate nodemailer
-    return;
-  }
-  // No provider configured — caller has already verified non-prod context
-  return;
+  return token;
 }
 
-async function sendVerificationEmail(_email: string, _link: string): Promise<void> {
-  if (process.env.SENDGRID_API_KEY || process.env.SMTP_HOST) {
-    // TODO: integrate provider SDK
-    return;
+async function consumeResetToken(token: string): Promise<string | null> {
+  if (redis) {
+    const email = await redis.get(`reset_tok:${token}`);
+    if (!email) return null;
+    await redis.del(`reset_tok:${token}`);
+    return email;
   }
-  return;
+  const rec = memResetTokenStore.get(token);
+  if (!rec || rec.expires < Date.now()) return null;
+  memResetTokenStore.delete(token);
+  return rec.email;
+}
+
+async function sendViaSendGrid(to: string, subject: string, plain: string, html?: string): Promise<void> {
+  const key = process.env.SENDGRID_API_KEY;
+  const from = process.env.EMAIL_FROM;
+  if (!key || !from) throw new Error("SENDGRID_API_KEY and EMAIL_FROM are required");
+  const content: Array<{ type: string; value: string }> = [{ type: "text/plain", value: plain }];
+  if (html) content.push({ type: "text/html", value: html });
+  const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      personalizations: [{ to: [{ email: to }] }],
+      from: { email: from },
+      subject,
+      content,
+    }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(`SendGrid ${res.status}: ${t.slice(0, 240)}`);
+  }
+}
+
+function escapeHtmlAttr(url: string): string {
+  return url.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+async function sendPasswordResetEmail(email: string, otp: string, resetLink: string): Promise<void> {
+  await sendViaSendGrid(
+    email,
+    "Reset your FinanceTracker password",
+    `Your one-time code is: ${otp}\n\nOr open this link to reset (valid 1 hour):\n${resetLink}\n\nIf you did not request this, ignore this email.`,
+    `<p>Your one-time code is: <strong>${otp}</strong></p><p><a href="${escapeHtmlAttr(resetLink)}">Reset password</a></p><p>If you did not request this, ignore this email.</p>`
+  );
+}
+
+async function sendVerificationEmailDispatch(email: string, link: string): Promise<void> {
+  await sendViaSendGrid(
+    email,
+    "Verify your FinanceTracker email",
+    `Confirm your email: ${link}`,
+    `<p><a href="${escapeHtmlAttr(link)}">Verify email</a></p>`
+  );
 }
 
 const authLimiter = rateLimit({
@@ -254,6 +304,14 @@ export const verifiedEmailMiddleware = (req: Request, res: Response, next: NextF
     return;
   }
 
+  const allowDemoBypass =
+    payload.email === "demo@yugifinance.com" &&
+    (!IS_PROD || process.env.ALLOW_DEMO_EMAIL_VERIFICATION_BYPASS === "true");
+  if (allowDemoBypass) {
+    next();
+    return;
+  }
+
   const stored = findUserByEmail(payload.email);
   if (stored?.emailVerified === false) {
     res.status(403).json({ error: "Email verification required" });
@@ -285,11 +343,17 @@ router.post("/register", authLimiter, async (req: Request, res: Response) => {
     // Phase2.0013: issue email verification token and dispatch verification email.
     // The flag is recorded on the user; gating finance routes on verification is
     // tracked separately under Phase8.0008 once SMTP delivery is fully wired.
-    if (EMAIL_PROVIDER_CONFIGURED) {
-      const token = await storeVerificationToken(email);
-      const frontend = (process.env.FRONTEND_URL || "").split(",")[0].trim() || "";
-      const link = frontend ? `${frontend}/verify-email?token=${token}` : `/verify-email?token=${token}`;
-      await sendVerificationEmail(email, link);
+    if (emailDeliveryConfigured()) {
+      try {
+        const vtoken = await storeVerificationToken(email);
+        const frontend = (process.env.FRONTEND_URL || "").split(",")[0].trim() || "";
+        const link = frontend
+          ? `${frontend.replace(/\/$/, "")}/verify-email?token=${encodeURIComponent(vtoken)}`
+          : `/verify-email?token=${vtoken}`;
+        await sendVerificationEmailDispatch(email, link);
+      } catch (e) {
+        console.error("[auth] verification email failed:", e);
+      }
     }
 
     res.cookie("auth_token", result.token, cookieOptions);
@@ -408,35 +472,74 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req: Request, res:
     res.status(400).json({ error: "Email is required" });
     return;
   }
-  if (IS_PROD && !EMAIL_PROVIDER_CONFIGURED) {
+  if (IS_PROD && !emailDeliveryConfigured()) {
     return res.status(503).json({ error: "Password reset is temporarily unavailable" });
   }
   const otp = String(crypto.randomInt(100000, 1000000));
   await storeOtp(email, otp);
-  if (EMAIL_PROVIDER_CONFIGURED) {
-    await sendOtpEmail(email, otp);
+  const resetToken = await storeResetToken(email);
+  const frontendBase = (process.env.FRONTEND_URL || "").split(",")[0].trim();
+  const resetPath = `/reset-password?token=${encodeURIComponent(resetToken)}`;
+  const resetLink = frontendBase ? `${frontendBase.replace(/\/$/, "")}${resetPath}` : resetPath;
+
+  if (emailDeliveryConfigured()) {
+    try {
+      await sendPasswordResetEmail(email, otp, resetLink);
+    } catch (e) {
+      console.error("[auth] password reset email failed:", e);
+      return res.status(502).json({ error: "Could not send reset email. Please try again shortly." });
+    }
   }
-  res.json({ success: true, message: "If that email exists, a reset code has been sent." });
+
+  res.json({ 
+    success: true, 
+    message: "If that email exists, a reset code has been sent.",
+  });
 });
 
 router.post("/reset-password", forgotPasswordLimiter, async (req: Request, res: Response) => {
-  const { email, otp, newPassword } = req.body;
-  if (!email || !otp || !newPassword) {
-    res.status(400).json({ error: "email, otp, and newPassword are required" });
+  const { email, otp, token, newPassword } = req.body;
+
+  // Validate common requirement: new password
+  if (!newPassword) {
+    res.status(400).json({ error: "newPassword is required" });
     return;
   }
   if (newPassword.length < 8) {
     res.status(400).json({ error: "New password must be at least 8 characters" });
     return;
   }
-  const valid = await validateOtp(email, otp);
-  if (!valid) {
-    res.status(400).json({ error: "Invalid or expired reset code" });
-    return;
+
+  let targetEmail = email;
+
+  // 1. Attempt Token Resolution Branch
+  if (token) {
+    const resolved = await consumeResetToken(token);
+    if (!resolved) {
+      res.status(400).json({ error: "Invalid or expired reset token" });
+      return;
+    }
+    targetEmail = resolved; // Safe override from validated vector
+  } 
+  // 2. Fallback to standard OTP Branch
+  else {
+    if (!email || !otp) {
+      res.status(400).json({ error: "Either email+otp OR token must be supplied" });
+      return;
+    }
+    const valid = await validateOtp(email, otp);
+    if (!valid) {
+      res.status(400).json({ error: "Invalid or expired reset code" });
+      return;
+    }
   }
+
+  // 3. Execute Payload Commitment
   try {
-    await resetUserPassword(email, newPassword);
-    await deleteOtp(email);
+    await resetUserPassword(targetEmail, newPassword);
+    if (!token) {
+      await deleteOtp(targetEmail);
+    }
     res.json({ ok: true });
   } catch (err: any) {
     if (err.message === "User not found") {
@@ -472,7 +575,7 @@ router.post("/change-password", sensitiveLimiter, async (req: Request, res: Resp
 router.delete("/account", sensitiveLimiter, async (req: Request, res: Response) => {
   const token = (req as any).cookies?.auth_token || req.headers.authorization?.replace(/^Bearer\s+/i, "");
   const payload = token ? verifyToken(token) : null;
-  const email = payload?.email || (req.body && req.body.email);
+  const email = payload?.email;
   if (!email) return res.status(401).json({ error: "Unauthorized" });
   const uid = payload?.uid;
   const ok = await deleteUserByEmail(email);
@@ -580,6 +683,13 @@ router.post("/webauthn/login/verify", async (req: Request, res: Response) => {
 
     if (!upstream.ok) {
       const text = await upstream.text();
+      if (IS_PROD) {
+        console.error("[webauthn] login verify upstream failed:", upstream.status, text.slice(0, 400));
+        return res.status(upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502).json({
+          error: "Passkey verification failed",
+          code: "WEBAUTHN_VERIFY_FAILED",
+        });
+      }
       return res.status(upstream.status).json({
         error: "Passkey verification failed",
         details: text,
@@ -684,4 +794,3 @@ router.post('/audit/logs', authMiddleware, sensitiveLimiter, (req, res) => proxy
 router.get('/audit/logs', authMiddleware, sensitiveLimiter, (req, res) => proxyAuditToBackend(req, res, 'GET'));
 
 export const authRouter = router;
->>>>>>> Stashed changes

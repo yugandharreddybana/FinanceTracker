@@ -6,13 +6,14 @@ import { TrendingUp, ArrowUpRight, Calendar, DollarSign, Briefcase, ChevronDown,
 import { cn } from '../lib/utils';
 import { IncomeSource } from '../types';
 import DeleteModal from './DeleteModal';
+import { monthlyEquivalentIncome, nextPaydayLabel } from '../lib/financeHelpers';
 
 const CustomTooltip = ({ active, payload, currency }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div className="glass-card p-3 border-accent/20 bg-card/90 backdrop-blur-xl">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">{payload[0].payload.source || payload[0].payload.month}</p>
-        <p className="text-sm font-bold font-mono text-white">{payload[0].value.toLocaleString(undefined, { style: 'currency', currency: currency || 'INR' })}</p>
+      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">{payload[0].payload.source || payload[0].payload.month}</p>
+        <p className="text-sm font-bold font-mono text-slate-900">{payload[0].value.toLocaleString(undefined, { style: 'currency', currency: currency || 'INR' })}</p>
       </div>
     );
   }
@@ -37,7 +38,10 @@ export const IncomeAnalyticsPage: React.FC = () => {
   });
 
   const filteredIncome = incomeSources.filter(i => (i.currency || 'INR') === selectedCurrency);
-  const totalIncome = filteredIncome.reduce((acc, curr) => acc + curr.amount, 0);
+  const totalMonthlyNormalized = useMemo(
+    () => filteredIncome.reduce((acc, curr) => acc + monthlyEquivalentIncome(curr.amount, curr.frequency), 0),
+    [filteredIncome]
+  );
 
   const incomeTrendData = React.useMemo(() => {
     const monthCount: Record<string, number> = { '6M': 6, '1Y': 12, 'All': 24 };
@@ -88,15 +92,16 @@ export const IncomeAnalyticsPage: React.FC = () => {
 
   return (
     <motion.div
+      data-testid="page-income"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      className="max-w-7xl mx-auto"
+      className="max-w-7xl mx-auto px-4 py-8 bg-slate-50 min-h-full text-slate-900"
     >
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-12 gap-6">
         <div>
-          <h1 className="text-4xl font-bold tracking-tight mb-2">Income Analytics</h1>
-          <p className="text-white/40">Detailed breakdown and forecasting of your earnings</p>
+          <h1 className="text-4xl font-bold tracking-tight mb-2 text-slate-900">Income Analytics</h1>
+          <p className="text-slate-500">Detailed breakdown and forecasting of your earnings</p>
         </div>
         <div className="flex items-center gap-4">
           <button 
@@ -126,7 +131,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
         <div className="lg:col-span-2 space-y-8">
-          <div className="glass-card p-8">
+          <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-8">
             <div className="flex justify-between items-center mb-8">
               <h3 className="text-lg font-bold">Income Distribution</h3>
               <div className="flex items-center gap-2">
@@ -162,7 +167,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="glass-card p-8">
+          <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-8">
             <div className="flex justify-between items-center mb-8">
               <h3 className="text-lg font-bold">Income Trend</h3>
               <div className="flex gap-2">
@@ -218,16 +223,17 @@ export const IncomeAnalyticsPage: React.FC = () => {
         </div>
 
         <div className="space-y-6">
-          <div className="glass-card p-8 bg-accent/5 border-accent/20">
-            <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-2">Total Monthly Income</p>
-            <h4 className="text-4xl font-bold font-mono tracking-tighter mb-4">{totalIncome.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</h4>
-            <div className="flex items-center gap-1 text-white/20 text-xs font-bold font-mono">
+          <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-8 bg-accent/5 border-accent/20">
+            <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-2">Total Monthly Income</p>
+            <p className="text-xs text-slate-500 mb-2">Normalized to monthly from each source&apos;s frequency.</p>
+            <h4 className="text-4xl font-bold font-mono tracking-tighter mb-4 text-slate-900">{totalMonthlyNormalized.toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</h4>
+            <div className="flex items-center gap-1 text-slate-400 text-xs font-bold font-mono">
               <Calendar className="w-4 h-4" />
               <span>Current Period</span>
             </div>
           </div>
 
-          <div className="glass-card p-6">
+          <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-6">
             <h4 className="text-xs font-bold uppercase tracking-widest text-white/30 mb-6">Income Sources</h4>
             <div className="space-y-4">
               {filteredIncome.map(source => (
@@ -266,31 +272,32 @@ export const IncomeAnalyticsPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="glass-card p-6 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-accent">
+        <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-6 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-accent">
             <Briefcase className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-1">Tax Estimate</p>
-            <h4 className="text-xl font-bold font-mono text-negative">{(totalIncome * 0.2).toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</h4>
+            <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-1">Illustrative tax (20%)</p>
+            <p className="text-[11px] text-slate-400 mb-1">Not tax advice.</p>
+            <h4 className="text-xl font-bold font-mono text-rose-600">{(totalMonthlyNormalized * 0.2).toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</h4>
           </div>
         </div>
-        <div className="glass-card p-6 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-positive">
+        <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-6 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-emerald-600">
             <DollarSign className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-1">Take-home Pay</p>
-            <h4 className="text-xl font-bold font-mono text-positive">{(totalIncome * 0.8).toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</h4>
+            <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-1">Illustrative take-home (80%)</p>
+            <h4 className="text-xl font-bold font-mono text-emerald-700">{(totalMonthlyNormalized * 0.8).toLocaleString(undefined, { style: 'currency', currency: selectedCurrency })}</h4>
           </div>
         </div>
-        <div className="glass-card p-6 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-amber-500">
+        <div className="rounded-3xl bg-white border border-slate-100 shadow-sm p-6 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-amber-600">
             <Calendar className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-[10px] font-mono text-white/30 uppercase tracking-widest mb-1">Next Payday</p>
-            <h4 className="text-xl font-bold font-mono">March 25</h4>
+            <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-1">Next payday</p>
+            <h4 className="text-xl font-bold font-mono text-slate-900">{nextPaydayLabel(filteredIncome, selectedCurrency)}</h4>
           </div>
         </div>
       </div>
@@ -318,7 +325,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-lg glass-card p-8 border-accent/30 bg-card/90 shadow-[0_32px_128px_rgba(0,0,0,0.8)]"
+              className="relative w-full max-w-lg rounded-3xl bg-white border border-slate-100 shadow-sm p-8 border-accent/30 bg-card/90 shadow-[0_32px_128px_rgba(0,0,0,0.8)]"
             >
               <div className="flex justify-between items-center mb-8">
                 <div className="flex items-center gap-4">
@@ -441,7 +448,7 @@ export const IncomeAnalyticsPage: React.FC = () => {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-lg glass-card p-8 border-accent/30 bg-card/90 shadow-[0_32px_128px_rgba(0,0,0,0.8)]"
+              className="relative w-full max-w-lg rounded-3xl bg-white border border-slate-100 shadow-sm p-8 border-accent/30 bg-card/90 shadow-[0_32px_128px_rgba(0,0,0,0.8)]"
             >
               <div className="flex justify-between items-center mb-8">
                 <div className="flex items-center gap-4">

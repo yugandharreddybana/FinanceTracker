@@ -112,7 +112,7 @@ export const AuditLogPage: React.FC = () => {
   };
 
   return (
-    <div className="p-10 max-w-7xl mx-auto">
+    <div data-testid="page-audit" className="p-10 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-accent/20 flex items-center justify-center text-accent">

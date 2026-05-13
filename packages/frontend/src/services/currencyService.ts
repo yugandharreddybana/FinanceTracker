@@ -4,19 +4,12 @@ export interface ExchangeRates {
 
 class CurrencyService {
   private rates: ExchangeRates = {
-    USD: 1,
-    EUR: 0.92,
-    GBP: 0.79,
-    JPY: 151.6,
-    AUD: 1.52,
-    CAD: 1.35,
-    INR: 83.3,
+    EUR: 1,
+    INR: 90.5,
   };
 
-  async fetchLatestRates(base: string = 'USD'): Promise<ExchangeRates> {
+  async fetchLatestRates(base: string = 'EUR'): Promise<ExchangeRates> {
     try {
-      // In a real app, we would call an API like ExchangeRate-API or Fixer.io
-      // For this demo, we'll simulate a fetch with slight variations
       const response = await fetch(`https://api.exchangerate-api.com/v4/latest/${base}`);
       if (response.ok) {
         const data = await response.json();
@@ -31,15 +24,24 @@ class CurrencyService {
 
   convert(amount: number, from: string, to: string): number {
     if (from === to) return amount;
-    const baseAmount = amount / (this.rates[from] || 1);
-    return baseAmount * (this.rates[to] || 1);
+    const fromRate = this.rates[from];
+    const toRate = this.rates[to];
+    if (typeof fromRate !== 'number' || typeof toRate !== 'number' || !Number.isFinite(fromRate) || !Number.isFinite(toRate)) {
+      return amount;
+    }
+    const baseAmount = amount / fromRate;
+    return baseAmount * toRate;
   }
 
   formatCurrency(amount: number, currency: string): string {
-    return new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency: currency,
-    }).format(amount);
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: currency || 'EUR',
+      }).format(amount);
+    } catch {
+      return `${amount.toFixed(2)} ${currency}`;
+    }
   }
 }
 

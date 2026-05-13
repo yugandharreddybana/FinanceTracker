@@ -149,6 +149,34 @@ export interface UserProfile {
   familyId?: string;
 }
 
+/** Context bundled with Yugi Oracle streaming chat (trimmed server-side). */
+export interface OracleFinanceContextPayload {
+  budgets: Budget[];
+  savingsGoals: SavingsGoal[];
+  loans: Loan[];
+  recurringPayments: RecurringPayment[];
+  investments: Investment[];
+  incomeSources: IncomeSource[];
+  netWorthByCurrency: Record<string, {
+    total: number;
+    assets: number;
+    liabilities: number;
+    income: number;
+    expenses: number;
+    change: number;
+  }>;
+  healthMetricsByCurrency: Record<string, {
+    savingsRate: number;
+    debtRatio: number;
+    emergencyFund: number;
+    budgetAdherence: number;
+    overallScore: number;
+  }>;
+  preferences: UserProfile['preferences'];
+  customCategories: { name: string; color: string; icon: string }[];
+  monthlyTrends: { month: string; [key: string]: number | string }[];
+}
+
 export interface Investment {
   id: string;
   symbol: string;

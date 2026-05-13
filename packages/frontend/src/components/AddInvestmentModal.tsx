@@ -310,8 +310,6 @@ export const AddInvestmentModal: React.FC<AddInvestmentModalProps> = ({
                     >
                       <option value="INR" className="bg-[#050508]">INR (₹)</option>
                       <option value="EUR" className="bg-[#050508]">EUR (€)</option>
-                      <option value="USD" className="bg-[#050508]">USD ($)</option>
-                      <option value="GBP" className="bg-[#050508]">GBP (£)</option>
                     </select>
                     <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-white/20">
                       <Search className="w-5 h-5 rotate-90" />

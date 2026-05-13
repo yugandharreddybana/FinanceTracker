@@ -29,6 +29,7 @@ export const CategoriesPage: React.FC = () => {
 
   return (
     <motion.div
+      data-testid="page-categories"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
@@ -127,6 +128,7 @@ export const CategoriesPage: React.FC = () => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              data-testid="categories-modal-backdrop"
               onClick={() => setIsAddModalOpen(false)}
               className="absolute inset-0 bg-background/80 backdrop-blur-sm"
             />

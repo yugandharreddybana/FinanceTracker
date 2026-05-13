@@ -1,14 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Sparkles, X, Send, Camera, FileText, Loader2, Mic, MicOff, Keyboard, Check, Pencil, Trash2 } from 'lucide-react';
 import { cn, safeStorage } from '../lib/utils';
 import { useFinance } from '../context/FinanceContext';
 import DeleteModal from './DeleteModal';
+import {
+  concatSpeechResults,
+  getSpeechRecognitionConstructor,
+  pickSpeechRecognitionLang,
+} from '../lib/speechRecognition';
 
 const COACHMARK_KEY = 'yugi_smartadd_seen';
 const intentLabel = (r: any) => {
   if (r.intent === 'TRANSACTION') {
-    const sym = (r.currency === 'EUR' ? '€' : r.currency === 'USD' ? '$' : r.currency === 'GBP' ? '£' : r.currency === 'INR' ? '₹' : (r.currency || ''));
+    const sym = (r.currency === 'EUR' ? '€' : r.currency === 'INR' ? '₹' : (r.currency || '₹'));
     const amt = Math.abs(r.amount || 0);
     const acct = r.account ? ` · ${r.account}` : '';
     const t = r.type ? ` · ${r.type}` : '';
@@ -39,8 +45,14 @@ export const SmartAdd: React.FC<{ setActiveTab: (tab: string) => void }> = ({ se
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [showCoachmark, setShowCoachmark] = useState<boolean>(() => !safeStorage.getItem(COACHMARK_KEY));
   const { addTransactions, previewSmartAdd, analyzeFile, setIsAddTransactionModalOpen } = useFinance();
-  const recognitionRef = useRef<any>(null);
-  const committedRef = useRef<string>('');
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const listeningDesiredRef = useRef(false);
+  const latestNaturalRef = useRef('');
+  const sessionAnchorRef = useRef('');
+
+  useEffect(() => {
+    latestNaturalRef.current = naturalInput;
+  }, [naturalInput]);
 
   useEffect(() => {
     if (isAdding && showCoachmark) {
@@ -56,18 +68,26 @@ export const SmartAdd: React.FC<{ setActiveTab: (tab: string) => void }> = ({ se
   };
 
   const stopListening = () => {
-    try { recognitionRef.current?.stop(); } catch {}
+    listeningDesiredRef.current = false;
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      /* */
+    }
     recognitionRef.current = null;
     setIsListening(false);
   };
 
-  const startListening = () => {
-    if (recognitionRef.current) {
+  const startListening = async () => {
+    if (listeningDesiredRef.current) {
       stopListening();
       return;
     }
-    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-    if (!SpeechRecognition) {
+    listeningDesiredRef.current = true;
+
+    const SR = getSpeechRecognitionConstructor();
+    if (!SR) {
+      listeningDesiredRef.current = false;
       setErrorModal({
         isOpen: true,
         title: 'Speech Not Supported',
@@ -77,20 +97,38 @@ export const SmartAdd: React.FC<{ setActiveTab: (tab: string) => void }> = ({ se
       return;
     }
 
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
+    const recognition = new SR();
+    recognition.lang = pickSpeechRecognitionLang();
     recognition.interimResults = true;
     recognition.continuous = true;
     recognition.maxAlternatives = 1;
-    committedRef.current = naturalInput;
 
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => {
-      recognitionRef.current = null;
-      setIsListening(false);
+    recognition.onstart = () => {
+      sessionAnchorRef.current = latestNaturalRef.current.trimEnd();
+      setIsListening(true);
     };
-    recognition.onerror = (event: any) => {
-      console.error("Speech recognition error:", event.error);
+
+    recognition.onend = () => {
+      if (!listeningDesiredRef.current) {
+        recognitionRef.current = null;
+        setIsListening(false);
+        return;
+      }
+      window.setTimeout(() => {
+        if (!listeningDesiredRef.current || recognitionRef.current !== recognition) return;
+        try {
+          recognition.start();
+        } catch {
+          listeningDesiredRef.current = false;
+          recognitionRef.current = null;
+          setIsListening(false);
+        }
+      }, 100);
+    };
+
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      if (event.error === 'no-speech' || event.error === 'aborted') return;
+      listeningDesiredRef.current = false;
       recognitionRef.current = null;
       setIsListening(false);
 
@@ -103,38 +141,44 @@ export const SmartAdd: React.FC<{ setActiveTab: (tab: string) => void }> = ({ se
           message: 'Voice entry requires microphone access. Please click "Allow Access" below and then grant permission in your browser prompt.',
           action: 'mic',
         });
-      } else if (event.error === 'no-speech' || event.error === 'aborted') {
-        // ignore
       } else {
-        speak("I encountered an error with speech recognition. Please try typing your entry.");
+        speak('I encountered an error with speech recognition. Please try typing your entry.');
       }
     };
 
-    recognition.onresult = (event: any) => {
-      let interim = '';
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      const live = concatSpeechResults(event.results).trim();
+      const anchor = sessionAnchorRef.current;
+      const spacer = anchor && live ? ' ' : '';
+      const display = `${anchor}${spacer}${live}`.replace(/\s+/g, ' ').trim();
+      flushSync(() => setNaturalInput(display));
+
       let finalChunk = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const r = event.results[i];
         if (r.isFinal) finalChunk += r[0].transcript;
-        else interim += r[0].transcript;
       }
-      if (finalChunk) {
+      if (finalChunk.trim()) {
         const trimmed = finalChunk.trim();
         const stopCmd = /\b(stop listening|that'?s all|submit now|process entry)\b/i.test(trimmed);
-        const cleaned = trimmed.replace(/\b(stop listening|that'?s all|submit now|process entry)\b/gi, '').trim();
-        committedRef.current = [committedRef.current, cleaned].filter(Boolean).join('; ');
-        setNaturalInput(committedRef.current);
         if (stopCmd) {
+          const cleanedDisplay = display.replace(/\b(stop listening|that'?s all|submit now|process entry)\b/gi, '').trim();
+          flushSync(() => setNaturalInput(cleanedDisplay));
           stopListening();
-          setTimeout(() => handleSubmit(committedRef.current, false), 300);
+          window.setTimeout(() => handleSubmit(cleanedDisplay, false), 300);
         }
-      } else if (interim) {
-        setNaturalInput([committedRef.current, interim].filter(Boolean).join(' '));
       }
     };
 
     recognitionRef.current = recognition;
-    recognition.start();
+    try {
+      recognition.start();
+    } catch {
+      listeningDesiredRef.current = false;
+      recognitionRef.current = null;
+      setIsListening(false);
+      speak('Could not start the microphone. Close other tabs using the mic and try again.');
+    }
   };
 
   const handleSubmit = async (overrideInput?: string, silent: boolean = true) => {
@@ -268,7 +312,7 @@ export const SmartAdd: React.FC<{ setActiveTab: (tab: string) => void }> = ({ se
                 <textarea
                   autoFocus
                   disabled={isAnalyzing}
-                  placeholder="Coffee €5 at Starbucks using HSBC; Uber $12 on Chase Amex; Salary ₹80000 to HDFC Savings..."
+                  placeholder="Coffee €5 at Starbucks; Groceries ₹1200 on HDFC; Salary ₹80000 to Savings..."
                   className="w-full bg-white/[0.03] border border-white/10 rounded-2xl p-6 text-base outline-none focus:border-accent/50 transition-all resize-none h-40 placeholder:text-white/10 font-medium leading-relaxed disabled:opacity-50"
                   value={naturalInput}
                   onChange={(e) => setNaturalInput(e.target.value)}

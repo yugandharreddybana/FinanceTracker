@@ -20,7 +20,8 @@ import {
   ForecastResult 
 } from '../types';
 import { financeApi, familyApi, auditApi, authApi, MIDDLEWARE_BASE } from '../services/api';
-import { safeStorage } from '../lib/utils';
+import { safeStorage, sanitizeFinanceText } from '../lib/utils';
+import { currencyService } from '../services/currencyService';
 
 interface FinanceContextType {
   transactions: Transaction[];
@@ -63,6 +64,8 @@ interface FinanceContextType {
     total: number;
     assets: number;
     liabilities: number;
+    income: number;
+    expenses: number;
     change: number;
   }>;
   monthlyTrends: { month: string; [key: string]: number | string }[];
@@ -77,6 +80,11 @@ interface FinanceContextType {
   addCategory: (category: { name: string; color: string; icon: string }) => void;
   deleteCategory: (name: string) => void;
   isLoading: boolean;
+  /** True after the first finance API sync attempt finishes (success or failure). Demo/guest skips network but sets true immediately. */
+  financeHydrated: boolean;
+  /** Non-fatal refresh error (stale data may still be shown). */
+  dataRefreshError: string | null;
+  clearDataRefreshError: () => void;
   addTransactions: (input: string | any[]) => Promise<void>;
   previewSmartAdd: (input: string) => Promise<any[]>;
   addManualTransaction: (tx: Transaction) => void;
@@ -194,28 +202,30 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
     });
 
     budgets.forEach((budget) => {
-      const key = budget.category.toLowerCase();
+      const cat = budget.category || 'Uncategorized';
+      const key = cat.toLowerCase();
       if (!categoryMap.has(key)) {
         categoryMap.set(key, {
           id: `budget-${key}`,
-          name: budget.category,
+          name: cat,
           icon: budget.emoji || '*',
-          color: budget.color || CATEGORY_COLORS[budget.category] || '#6B7280',
+          color: budget.color || CATEGORY_COLORS[cat] || '#6B7280',
           type: 'expense',
         });
       }
     });
 
     transactions.forEach((transaction) => {
-      const key = transaction.category.toLowerCase();
+      const cat = transaction.category || 'Uncategorized';
+      const key = cat.toLowerCase();
       const existing = categoryMap.get(key);
 
       if (!existing) {
         categoryMap.set(key, {
           id: `transaction-${key}`,
-          name: transaction.category,
+          name: cat,
           icon: '*',
-          color: CATEGORY_COLORS[transaction.category] || '#6B7280',
+          color: CATEGORY_COLORS[cat] || '#6B7280',
           type: transaction.type,
         });
         return;
@@ -237,6 +247,17 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isCategorizing, setIsCategorizing] = useState(false);
   const [isAddTransactionModalOpen, setIsAddTransactionModalOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [dataRefreshError, setDataRefreshError] = useState<string | null>(null);
+  const [financeHydrated, setFinanceHydrated] = useState(false);
+
+  const clearDataRefreshError = useCallback(() => setDataRefreshError(null), []);
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setFinanceHydrated(false);
+      setDataRefreshError(null);
+    }
+  }, [isLoggedIn]);
 
   // Refs to maintain latest states for async functions
   const transactionsRef = useRef(transactions);
@@ -257,6 +278,8 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
   const isOfflineRef = useRef(isOffline);
   const isLoadingRef = useRef(isLoading);
   const isDataLoadedRef = useRef(isDataLoaded);
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
+  const transactionSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     transactionsRef.current = transactions;
@@ -353,14 +376,34 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [transactions]);
 
   const getNetWorth = useCallback(() => {
-    const accountTotal = accounts.reduce((sum, account) => sum + account.balance, 0);
-    const investmentTotal = investments.reduce((sum, investment) => {
-      return sum + investment.quantity * investment.currentPrice;
-    }, 0);
-    const debtTotal = loans.reduce((sum, loan) => sum + loan.remainingAmount, 0);
+    const pref = userProfile.preferences?.currency || 'INR';
+    const buckets: Record<string, number> = {};
 
-    return accountTotal + investmentTotal - debtTotal;
-  }, [accounts, investments, loans]);
+    accounts.forEach((account) => {
+      const c = account.currency || 'INR';
+      buckets[c] = buckets[c] ?? 0;
+      if (account.type !== 'Credit') {
+        buckets[c] += account.balance;
+      } else {
+        buckets[c] -= Math.abs(account.balance);
+      }
+    });
+
+    loans.forEach((loan) => {
+      const c = loan.currency || 'INR';
+      buckets[c] = (buckets[c] ?? 0) - loan.remainingAmount;
+    });
+
+    investments.forEach((inv) => {
+      const c = inv.currency || 'INR';
+      buckets[c] = (buckets[c] ?? 0) + inv.quantity * inv.currentPrice;
+    });
+
+    return Object.entries(buckets).reduce(
+      (sum, [ccy, value]) => sum + currencyService.convert(value, ccy, pref),
+      0
+    );
+  }, [accounts, loans, investments, userProfile.preferences?.currency]);
 
   const setCarbonEntries = useCallback((p: CarbonEntry[] | ((prev: CarbonEntry[]) => CarbonEntry[])) => {
     dispatch(financeActions.setCarbonEntries(typeof p === 'function' ? p(carbonEntriesRef.current) : p));
@@ -513,58 +556,76 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const refreshData = useCallback(async () => {
     if (!userProfile.email || userProfile.email === 'guest@example.com') {
+      setDataRefreshError(null);
+      setFinanceHydrated(true);
       return;
     }
-    setIsLoading(true);
-
-    try {
-      const [txs, goals, recs, lns, bdgts, accs, incs, invs] = await Promise.all([
-        financeApi.getTransactions(),
-        financeApi.getSavingsGoals(),
-        financeApi.getRecurringPayments(),
-        financeApi.getLoans(),
-        financeApi.getBudgets(),
-        financeApi.getAccounts(),
-        financeApi.getIncomeSources(),
-        financeApi.getInvestments()
-      ]);
-
-      setTransactions(txs);
-      setSavingsGoals(goals);
-      setRecurringPayments(recs);
-      setLoans(lns);
-      setBudgets(bdgts);
-      setAccounts(accs);
-      setIncomeSources(incs.map(normalizeIncomeSource));
-      setInvestments(invs);
-
-      const loaded = accs.length > 0 ? accs : accountsRef.current;
-      if (loaded[0]?.currency && loaded[0].currency !== 'INR') {
-        setUserProfile(p => p.preferences.currency === 'INR'
-          ? { ...p, preferences: { ...p.preferences, currency: loaded[0].currency } }
-          : p);
-      }
+    if (refreshInFlightRef.current) {
+      return refreshInFlightRef.current;
+    }
+    const run = (async () => {
+      setIsLoading(true);
+      setDataRefreshError(null);
 
       try {
-        const backendLogs = await auditApi.getAuditLogs();
-        if (backendLogs.length > 0) {
-          setAuditLogs(prev => {
-            const existingIds = new Set(prev.map(l => l.id));
-            const newLogs = backendLogs.filter((l: AuditLog) => !existingIds.has(l.id));
-            return [...prev, ...newLogs].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-          });
-        }
-      } catch {
-        // Audit log sync is non-critical
-      }
+        const [txs, goals, recs, lns, bdgts, accs, incs, invs] = await Promise.all([
+          financeApi.getTransactions(),
+          financeApi.getSavingsGoals(),
+          financeApi.getRecurringPayments(),
+          financeApi.getLoans(),
+          financeApi.getBudgets(),
+          financeApi.getAccounts(),
+          financeApi.getIncomeSources(),
+          financeApi.getInvestments()
+        ]);
 
-    } catch (error: any) {
-      if (!error.message?.includes('401') && !error.message?.includes('Unauthorized')) {
-        console.error('Failed to fetch/sync data:', error);
+        setTransactions(txs);
+        setSavingsGoals(goals);
+        setRecurringPayments(recs);
+        setLoans(lns);
+        setBudgets(bdgts);
+        setAccounts(accs);
+        setIncomeSources(incs.map(normalizeIncomeSource));
+        setInvestments(invs);
+
+        const loaded = accs.length > 0 ? accs : accountsRef.current;
+        if (loaded[0]?.currency && loaded[0].currency !== 'INR') {
+          setUserProfile(p => p.preferences.currency === 'INR'
+            ? { ...p, preferences: { ...p.preferences, currency: loaded[0].currency } }
+            : p);
+        }
+
+        try {
+          const backendLogs = await auditApi.getAuditLogs();
+          if (backendLogs.length > 0) {
+            setAuditLogs(prev => {
+              const existingIds = new Set(prev.map(l => l.id));
+              const newLogs = backendLogs.filter((l: AuditLog) => !existingIds.has(l.id));
+              return [...prev, ...newLogs].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+            });
+          }
+        } catch {
+          // Audit log sync is non-critical
+        }
+
+      } catch (error: any) {
+        if (!error.message?.includes('401') && !error.message?.includes('Unauthorized')) {
+          console.error('Failed to fetch/sync data:', error);
+          setDataRefreshError(error?.message || 'Unable to refresh finance data from the server.');
+        } else {
+          setDataRefreshError(null);
+        }
+      } finally {
+        setIsLoading(false);
+        setFinanceHydrated(true);
       }
-    } finally {
-      setIsLoading(false);
-    }
+    })();
+
+    refreshInFlightRef.current = run.finally(() => {
+      refreshInFlightRef.current = null;
+    });
+
+    return refreshInFlightRef.current;
   }, [userProfile.email, setTransactions, setSavingsGoals, setRecurringPayments, setLoans, setBudgets, setAccounts, setIncomeSources, setInvestments, setAuditLogs, setUserProfile, setIsLoading]);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -737,14 +798,16 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [familyAccount, addLog, setFamilyAccount]);
 
   const netWorthByCurrency = React.useMemo(() => {
-    const result: Record<string, { total: number; assets: number; liabilities: number; change: number }> = {};
-    const currencies = Array.from(new Set([
+    const result: Record<string, { total: number; assets: number; liabilities: number; income: number; expenses: number; change: number }> = {};
+    const allCurrencies = Array.from(new Set([
       ...accounts.map(a => a.currency || 'INR'),
-      ...loans.map(l => l.currency || 'INR')
+      ...loans.map(l => l.currency || 'INR'),
+      ...transactions.map(t => t.currency || 'INR'),
+      ...investments.map(i => i.currency || 'INR'),
     ]));
 
-    currencies.forEach(c => {
-      result[c] = { total: 0, assets: 0, liabilities: 0, change: 0 };
+    allCurrencies.forEach(c => {
+      result[c] = { total: 0, assets: 0, liabilities: 0, income: 0, expenses: 0, change: 0 };
     });
 
     accounts.forEach(a => {
@@ -753,8 +816,8 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
         result[curr].assets += a.balance;
         result[curr].total += a.balance;
       } else {
-        result[curr].liabilities += a.balance;
-        result[curr].total -= a.balance;
+        result[curr].liabilities += Math.abs(a.balance);
+        result[curr].total -= Math.abs(a.balance);
       }
     });
 
@@ -764,29 +827,45 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
       result[curr].total -= l.remainingAmount;
     });
 
+    investments.forEach(inv => {
+      const curr = inv.currency || 'INR';
+      if (!result[curr]) {
+        result[curr] = { total: 0, assets: 0, liabilities: 0, income: 0, expenses: 0, change: 0 };
+      }
+      const v = inv.quantity * inv.currentPrice;
+      result[curr].assets += v;
+      result[curr].total += v;
+    });
+
     const thisMonth = new Date().getMonth();
     const thisYear = new Date().getFullYear();
-    const monthlyIncome = transactions
-      .filter(t => {
-        const d = new Date(t.date);
-        return d.getMonth() === thisMonth && d.getFullYear() === thisYear && t.type === 'income';
-      })
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-    const monthlyExpenses = transactions
-      .filter(t => {
-        const d = new Date(t.date);
-        return d.getMonth() === thisMonth && d.getFullYear() === thisYear && t.type === 'expense';
-      })
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+    transactions.forEach(t => {
+      const d = new Date(t.date);
+      if (d.getMonth() !== thisMonth || d.getFullYear() !== thisYear) return;
+      const curr = t.currency || 'INR';
+      
+      if (!result[curr]) {
+        result[curr] = { total: 0, assets: 0, liabilities: 0, income: 0, expenses: 0, change: 0 };
+      }
+
+      if (t.type === 'income') {
+        result[curr].income += Math.abs(t.amount);
+      } else if (t.type === 'expense') {
+        result[curr].expenses += Math.abs(t.amount);
+      }
+    });
 
     Object.keys(result).forEach(c => {
-      const total = result[c].total;
-      const base = Math.abs(total);
-      result[c].change = base > 0 ? parseFloat(((monthlyIncome - monthlyExpenses) / base * 100).toFixed(1)) : 0;
+      const metrics = result[c];
+      const base = Math.abs(metrics.total);
+      metrics.change = base > 0 
+        ? parseFloat(((metrics.income - metrics.expenses) / base * 100).toFixed(1)) 
+        : 0;
     });
 
     return result;
-  }, [accounts, loans, transactions]);
+  }, [accounts, loans, transactions, investments]);
 
   const monthlyTrends = React.useMemo(() => {
     const last6Months = Array.from({ length: 6 }).map((_, i) => {
@@ -912,16 +991,27 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [transactions, budgets, setBudgets]);
 
-  // Sync transactions to server
+  // Sync transactions to server (debounced — avoids hammering the proxy on every keystroke)
   useEffect(() => {
     if (userProfile.email === 'guest@example.com' || transactions.length === 0) return;
 
-    fetch(`${MIDDLEWARE_BASE}/api/finance/sync-transactions`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ transactions })
-    }).catch(err => console.error('Failed to sync transactions:', err));
+    if (transactionSyncTimerRef.current) {
+      clearTimeout(transactionSyncTimerRef.current);
+    }
+    transactionSyncTimerRef.current = setTimeout(() => {
+      fetch(`${MIDDLEWARE_BASE}/api/finance/sync-transactions`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transactions })
+      }).catch(err => console.error('Failed to sync transactions:', err));
+    }, 1600);
+
+    return () => {
+      if (transactionSyncTimerRef.current) {
+        clearTimeout(transactionSyncTimerRef.current);
+      }
+    };
   }, [transactions, userProfile.email]);
 
   const spendingDataByCurrency = React.useMemo(() => {
@@ -950,6 +1040,12 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
     const goal = savingsGoals.find(g => g.id === goalId);
     const account = accounts.find(a => a.id === accountId);
     if (!goal || !account) return;
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      const err = new Error('Transfer amount must be a positive number.');
+      window.dispatchEvent(new CustomEvent('finance-toast-error', { detail: { message: err.message } }));
+      throw err;
+    }
 
     if (account.balance < amount) {
       const err = new Error(`Insufficient balance in ${account.name}. Available: ${account.balance}`);
@@ -1011,9 +1107,12 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
     setTransactions(prev => prev.filter(t => t.id !== id));
     
     if (txToDelete && txToDelete.account) {
+      const amt = Math.abs(txToDelete.amount);
+      const income = txToDelete.type === 'INCOME';
+      const balanceDeltaOnRemove = income ? -amt : amt;
       setAccounts(prev => prev.map(acc => {
         if (acc.name === txToDelete.account || acc.id === txToDelete.account) {
-          return { ...acc, balance: acc.balance - txToDelete.amount };
+          return { ...acc, balance: acc.balance + balanceDeltaOnRemove };
         }
         return acc;
       }));
@@ -1025,9 +1124,12 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch (error) {
       setTransactions(snapshot);
       if (txToDelete && txToDelete.account) {
+        const amt = Math.abs(txToDelete.amount);
+        const income = txToDelete.type === 'INCOME';
+        const balanceDeltaOnRemove = income ? -amt : amt;
         setAccounts(prev => prev.map(acc => {
           if (acc.name === txToDelete.account || acc.id === txToDelete.account) {
-            return { ...acc, balance: acc.balance + txToDelete.amount };
+            return { ...acc, balance: acc.balance - balanceDeltaOnRemove };
           }
           return acc;
         }));
@@ -1103,9 +1205,9 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
 
             const createdTx = await financeApi.createTransaction({
               date: dateStr,
-              merchant: res.merchant || res.name || 'AI Logged Purchase',
+              merchant: sanitizeFinanceText(res.merchant || res.name || 'AI Logged Purchase'),
               amount: type === 'expense' ? -Math.abs(amount) : Math.abs(amount),
-              category: finalCat,
+              category: sanitizeFinanceText(finalCat),
               type,
               status: 'confirmed',
               aiTag: 'Arta AI Autopilot',
@@ -1713,6 +1815,9 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
       refreshData,
       spendingDataByCurrency,
       isLoading,
+      financeHydrated,
+      dataRefreshError,
+      clearDataRefreshError,
       addTransactions,
       previewSmartAdd,
       addManualTransaction,

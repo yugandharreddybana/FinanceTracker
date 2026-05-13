@@ -102,7 +102,7 @@ export const InfoPage: React.FC<InfoPageProps> = ({ variant }) => {
   const Icon = page.icon;
 
   return (
-    <div className="min-h-screen bg-background px-6 py-10 text-white">
+    <div data-testid={`page-info-${variant}`} className="min-h-screen bg-slate-950 px-6 py-10 text-white">
       <div className="mx-auto max-w-4xl">
         <Link
           to="/"
@@ -112,7 +112,7 @@ export const InfoPage: React.FC<InfoPageProps> = ({ variant }) => {
           <span>Back to home</span>
         </Link>
 
-        <div className="glass-card overflow-hidden border-white/10">
+        <div className="glass-dark rounded-3xl overflow-hidden border border-white/10">
           <div className="border-b border-white/5 bg-white/[0.02] px-8 py-10">
             <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/10 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-accent">
               <Sparkles className="h-3 w-3" />

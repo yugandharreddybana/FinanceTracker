@@ -16,27 +16,58 @@ const fadeUp = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transi
 
 export function Dashboard() {
   const nav = useNavigate();
-  const { transactions, budgets, investments, userProfile, getTotalBalance, getMonthlyIncome, getMonthlyExpenses, getNetWorth } = useFinance();
   const [hidden, setHidden] = useState(false);
+  const { transactions, budgets, investments, userProfile, netWorthByCurrency } = useFinance();
 
-  const bal = getTotalBalance();
-  const inc = getMonthlyIncome();
-  const exp = getMonthlyExpenses();
-  const nw = getNetWorth();
-  const sr = inc > 0 ? ((inc - exp) / inc) * 100 : 0;
+  // Filter active buckets ensuring valid financial footprints
+  const currencies = Object.keys(netWorthByCurrency || {});
+  const displayCurrencies = currencies.filter(c => 
+    netWorthByCurrency[c].assets > 0 || 
+    netWorthByCurrency[c].liabilities > 0 ||
+    netWorthByCurrency[c].income > 0 ||
+    netWorthByCurrency[c].expenses > 0
+  );
+  const finalCurrencies = displayCurrencies.length > 0 ? displayCurrencies : ['INR'];
+
+  // Dynamically resolve active chart base currency based on user primary stack
+  const chartCurrency = displayCurrencies.includes('INR') ? 'INR' : (displayCurrencies[0] || 'INR');
+  const chartSym = formatCurrency(0, chartCurrency).replace(/[0-9.,\s\-]/g, '');
+
+  const baseNode = netWorthByCurrency[chartCurrency] || { income: 0, expenses: 0 };
+  const sr = baseNode.income > 0 ? ((baseNode.income - baseNode.expenses) / baseNode.income) * 100 : 0;
 
   const catSpend = transactions.filter(t => t.type === 'expense').reduce((a, t) => { a[t.category] = (a[t.category] || 0) + t.amount; return a; }, {} as Record<string, number>);
   const pie = Object.entries(catSpend).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }));
 
-  const trend = [
-    { m: 'Oct', inc: 82000, exp: 55000 },
-    { m: 'Nov', inc: 88000, exp: 52000 },
-    { m: 'Dec', inc: 98000, exp: 68000 },
-    { m: 'Jan', inc, exp },
-  ];
+  const trend = (() => {
+    const months: { m: string; inc: number; exp: number }[] = [];
+    for (let i = 3; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      const label = d.toLocaleString('default', { month: 'short' });
+      const mo = d.getMonth();
+      const yr = d.getFullYear();
+      const inc = transactions.filter(t => { const td = new Date(t.date); return t.type === 'income' && td.getMonth() === mo && td.getFullYear() === yr; }).reduce((s, t) => s + Math.abs(t.amount), 0);
+      const exp = transactions.filter(t => { const td = new Date(t.date); return t.type === 'expense' && td.getMonth() === mo && td.getFullYear() === yr; }).reduce((s, t) => s + Math.abs(t.amount), 0);
+      months.push({ m: label, inc, exp });
+    }
+    return months;
+  })();
 
-  const invVal = investments.reduce((s, i) => s + i.quantity * i.currentPrice, 0);
-  const invCost = investments.reduce((s, i) => s + i.quantity * i.averagePrice, 0);
+  const invVal = investments.reduce((s, i) => {
+    const val = (typeof i.quantity === 'number' && typeof i.currentPrice === 'number') 
+      ? (i.quantity * i.currentPrice) 
+      : ((i as any).currentValue || 0);
+    return s + (Number(val) || 0);
+  }, 0);
+  
+  const invCost = investments.reduce((s, i) => {
+    const cost = (typeof i.quantity === 'number' && typeof i.averagePrice === 'number')
+      ? (i.quantity * i.averagePrice)
+      : ((i as any).amount || 0);
+    return s + (Number(cost) || 0);
+  }, 0);
+
   const invGain = invVal - invCost;
   const invPct = invCost > 0 ? (invGain / invCost) * 100 : 0;
 
@@ -44,8 +75,27 @@ export function Dashboard() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
+  // Reusable Stack Generator enabling premium rendering across multi-fiat states
+  const renderStackedValues = (
+    metrics: string[], 
+    baseStyles: string, 
+    multiStyles: string,
+    maskable: boolean = false
+  ) => (
+    <div className="flex flex-col gap-0.5 mt-0.5 sm:mt-1">
+      {metrics.map((m, i) => (
+        <p key={i} className={cn(
+          'font-black tabular-nums leading-tight tracking-tight', 
+          metrics.length > 1 ? multiStyles : baseStyles
+        )}>
+          {maskable && hidden ? '•••••••' : m}
+        </p>
+      ))}
+    </div>
+  );
+
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-5 sm:space-y-6 max-w-[1440px] mx-auto">
+    <div data-testid="page-dashboard" className="p-4 sm:p-6 lg:p-8 space-y-5 sm:space-y-6 max-w-[1440px] mx-auto">
       {/* ── Header ── */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-slate-900 tracking-tight">{greeting}, {firstName} 👋</h1>
@@ -54,40 +104,54 @@ export function Dashboard() {
 
       {/* ── Stat Cards ── */}
       <motion.div variants={stagger} initial="hidden" animate="show" className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {/* Balance — full width on mobile */}
+        {/* Total Balance */}
         <motion.div variants={fadeUp} className="col-span-2 sm:col-span-1 relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-emerald-500 to-teal-600 p-4 sm:p-6 text-white shadow-xl shadow-emerald-200/30">
           <div className="absolute -right-4 -top-4 h-20 w-20 sm:h-24 sm:w-24 rounded-full bg-white/10" />
-          <div className="flex items-center justify-between mb-3 sm:mb-4">
+          <div className="flex items-center justify-between mb-3">
             <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl sm:rounded-2xl bg-white/20"><Wallet className="h-4 w-4 sm:h-5 sm:w-5" /></div>
-            <button onClick={() => setHidden(!hidden)} className="text-white/50 hover:text-white active:scale-90 transition-all">{hidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
+            <button type="button" aria-label={hidden ? 'Show balance amounts' : 'Hide balance amounts'} onClick={() => setHidden(!hidden)} className="relative z-10 text-white/50 hover:text-white active:scale-90 transition-all">{hidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
           </div>
           <p className="text-xs sm:text-sm text-emerald-100 font-medium">Total Balance</p>
-          <p className="text-2xl sm:text-3xl font-black mt-0.5 sm:mt-1 tabular-nums">{hidden ? '•••••••' : formatCurrency(bal)}</p>
-          <div className="mt-2 sm:mt-3 flex items-center gap-1"><TrendingUp className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-emerald-200" /><span className="text-[11px] sm:text-xs font-semibold text-emerald-100">+12.5%</span></div>
+          {renderStackedValues(
+            finalCurrencies.map(c => formatCurrency(netWorthByCurrency[c]?.assets || 0, c)), 
+            'text-2xl sm:text-3xl', 'text-xl', true
+          )}
+          {netWorthByCurrency[chartCurrency]?.change !== 0 && (
+            <div className="mt-2 sm:mt-3 flex items-center gap-1"><TrendingUp className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-emerald-200" /><span className="text-[11px] sm:text-xs font-semibold text-emerald-100">{netWorthByCurrency[chartCurrency]?.change > 0 ? '+' : ''}{netWorthByCurrency[chartCurrency]?.change.toFixed(1)}%</span></div>
+          )}
         </motion.div>
 
+        {/* Income */}
         <motion.div variants={fadeUp} className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-white p-4 sm:p-6 shadow-sm border border-slate-100">
           <div className="absolute -right-3 -top-3 h-16 w-16 sm:h-24 sm:w-24 rounded-full bg-blue-50/80" />
-          <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl sm:rounded-2xl bg-blue-50 text-blue-500 mb-3 sm:mb-4"><TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" /></div>
+          <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl sm:rounded-2xl bg-blue-50 text-blue-500 mb-3"><TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" /></div>
           <p className="text-xs sm:text-sm text-slate-400 font-medium">Income</p>
-          <p className="text-lg sm:text-2xl font-black text-slate-900 mt-0.5 tabular-nums">{formatCurrency(inc)}</p>
-          <div className="mt-2 flex items-center gap-1"><TrendingUp className="h-3 w-3 text-emerald-500" /><span className="text-[11px] font-semibold text-emerald-600">+8.2%</span></div>
+          {renderStackedValues(
+            finalCurrencies.map(c => formatCurrency(netWorthByCurrency[c]?.income || 0, c)), 
+            'text-lg sm:text-2xl text-slate-900', 'text-base text-slate-900'
+          )}
         </motion.div>
 
+        {/* Expenses */}
         <motion.div variants={fadeUp} className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-white p-4 sm:p-6 shadow-sm border border-slate-100">
           <div className="absolute -right-3 -top-3 h-16 w-16 sm:h-24 sm:w-24 rounded-full bg-rose-50/80" />
-          <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl sm:rounded-2xl bg-rose-50 text-rose-500 mb-3 sm:mb-4"><CreditCard className="h-4 w-4 sm:h-5 sm:w-5" /></div>
+          <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl sm:rounded-2xl bg-rose-50 text-rose-500 mb-3"><CreditCard className="h-4 w-4 sm:h-5 sm:w-5" /></div>
           <p className="text-xs sm:text-sm text-slate-400 font-medium">Expenses</p>
-          <p className="text-lg sm:text-2xl font-black text-slate-900 mt-0.5 tabular-nums">{formatCurrency(exp)}</p>
-          <div className="mt-2 flex items-center gap-1"><TrendingDown className="h-3 w-3 text-rose-500" /><span className="text-[11px] font-semibold text-rose-500">-5.1%</span></div>
+          {renderStackedValues(
+            finalCurrencies.map(c => formatCurrency(netWorthByCurrency[c]?.expenses || 0, c)), 
+            'text-lg sm:text-2xl text-slate-900', 'text-base text-slate-900'
+          )}
         </motion.div>
 
+        {/* Net Worth */}
         <motion.div variants={fadeUp} className="col-span-2 sm:col-span-1 relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-violet-500 to-purple-600 p-4 sm:p-6 text-white shadow-xl shadow-violet-200/30">
           <div className="absolute -right-4 -top-4 h-20 w-20 sm:h-24 sm:w-24 rounded-full bg-white/10" />
-          <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl sm:rounded-2xl bg-white/20 mb-3 sm:mb-4"><Target className="h-4 w-4 sm:h-5 sm:w-5" /></div>
+          <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl sm:rounded-2xl bg-white/20 mb-3"><Target className="h-4 w-4 sm:h-5 sm:w-5" /></div>
           <p className="text-xs sm:text-sm text-violet-100 font-medium">Net Worth</p>
-          <p className="text-2xl sm:text-3xl font-black mt-0.5 sm:mt-1 tabular-nums">{hidden ? '•••••••' : formatCurrency(nw)}</p>
-          <div className="mt-2 sm:mt-3 flex items-center gap-1"><TrendingUp className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-violet-200" /><span className="text-[11px] sm:text-xs font-semibold text-violet-100">+15.3%</span></div>
+          {renderStackedValues(
+            finalCurrencies.map(c => formatCurrency(netWorthByCurrency[c]?.total || 0, c)), 
+            'text-2xl sm:text-3xl', 'text-xl', true
+          )}
         </motion.div>
       </motion.div>
 
@@ -114,8 +178,8 @@ export function Dashboard() {
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis dataKey="m" stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
-              <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} tickFormatter={v => `₹${v/1000}k`} width={48} />
-              <Tooltip contentStyle={{ background: 'rgba(15,23,42,0.92)', border: 'none', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,.2)', fontSize: 12 }} itemStyle={{ color: '#fff' }} labelStyle={{ color: '#94a3b8' }} formatter={(v) => formatCurrency(Number(v))} />
+              <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} tickFormatter={v => `${chartSym}${v/1000}k`} width={48} />
+              <Tooltip contentStyle={{ background: 'rgba(15,23,42,0.92)', border: 'none', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,.2)', fontSize: 12 }} itemStyle={{ color: '#fff' }} labelStyle={{ color: '#94a3b8' }} formatter={(v) => formatCurrency(Number(v), chartCurrency)} />
               <Area type="monotone" dataKey="inc" name="Income" stroke="#10B981" strokeWidth={2} fill="url(#ig)" dot={{ r: 3, fill: '#10B981', strokeWidth: 2, stroke: '#fff' }} />
               <Area type="monotone" dataKey="exp" name="Expenses" stroke="#F43F5E" strokeWidth={2} fill="url(#eg)" dot={{ r: 3, fill: '#F43F5E', strokeWidth: 2, stroke: '#fff' }} />
             </AreaChart>
@@ -157,7 +221,7 @@ export function Dashboard() {
           className="rounded-2xl sm:rounded-3xl bg-white p-4 sm:p-6 shadow-sm border border-slate-100">
           <div className="flex items-center justify-between mb-4 sm:mb-5">
             <h3 className="text-base sm:text-lg font-bold text-slate-900">Recent</h3>
-            <button onClick={() => nav('/dashboard/transactions')} className="text-[11px] sm:text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-full transition-colors">View all</button>
+            <button onClick={() => nav('/app/transactions')} className="text-[11px] sm:text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-full transition-colors">View all</button>
           </div>
           <div className="space-y-1.5 sm:space-y-2">
             {transactions.slice(0, 5).map((t, i) => (
@@ -173,7 +237,7 @@ export function Dashboard() {
                   </div>
                 </div>
                 <span className={cn('text-xs sm:text-sm font-bold tabular-nums flex-shrink-0 ml-2', t.type === 'income' ? 'text-emerald-600' : 'text-rose-500')}>
-                  {t.type === 'income' ? '+' : '−'}{formatCurrency(t.amount)}
+                  {t.type === 'income' ? '+' : '−'}{formatCurrency(t.amount, t.currency)}
                 </span>
               </motion.div>
             ))}
@@ -185,7 +249,7 @@ export function Dashboard() {
           className="rounded-2xl sm:rounded-3xl bg-white p-4 sm:p-6 shadow-sm border border-slate-100">
           <div className="flex items-center justify-between mb-4 sm:mb-5">
             <h3 className="text-base sm:text-lg font-bold text-slate-900">Budgets</h3>
-            <button onClick={() => nav('/dashboard/budgets')} className="text-[11px] sm:text-xs font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 px-2.5 py-1 rounded-full transition-colors">Manage</button>
+            <button onClick={() => nav('/app/budgets')} className="text-[11px] sm:text-xs font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 px-2.5 py-1 rounded-full transition-colors">Manage</button>
           </div>
           <div className="space-y-3 sm:space-y-4">
             {budgets.slice(0, 5).map(b => {
@@ -221,7 +285,7 @@ export function Dashboard() {
                 <div><p className="text-[11px] sm:text-sm text-emerald-100">Savings Rate</p><p className="text-2xl sm:text-3xl font-black mt-0.5 tabular-nums">{sr.toFixed(1)}%</p></div>
                 <div className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-xl sm:rounded-2xl bg-white/20"><Target className="h-5 w-5 sm:h-6 sm:w-6" /></div>
               </div>
-              <p className="text-[10px] sm:text-xs text-emerald-200 mt-2">🎯 Above the recommended 20%</p>
+              <p className="text-[10px] sm:text-xs text-emerald-200 mt-2">{sr >= 20 ? '🎯 Above the recommended 20%' : sr > 0 ? `🎯 Target: 20%` : '🎯 Add income to track savings'}</p>
             </div>
 
             <div className="rounded-2xl sm:rounded-3xl bg-gradient-to-br from-violet-500 to-purple-600 p-4 sm:p-5 text-white shadow-lg shadow-violet-100/40 relative overflow-hidden">
@@ -239,7 +303,9 @@ export function Dashboard() {
                 <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl sm:rounded-2xl bg-white/20 flex-shrink-0"><Sparkles className="h-4 w-4 sm:h-5 sm:w-5" /></div>
                 <div className="min-w-0">
                   <p className="text-xs sm:text-sm font-bold">AI Tip</p>
-                  <p className="text-[10px] sm:text-xs text-amber-100 mt-0.5 leading-relaxed truncate sm:whitespace-normal">Cook at home 3x/week to save ₹3,500/month 🍳</p>
+                  <p className="text-[10px] sm:text-xs text-amber-100 mt-0.5 leading-relaxed truncate sm:whitespace-normal">
+                    {sr >= 20 ? 'Great savings rate! Keep it above 20% for financial freedom' : sr > 0 ? `Try to bump your savings rate from ${sr.toFixed(0)}% to 20%` : 'Start tracking to unlock personalized insights'}
+                  </p>
                 </div>
               </div>
             </div>

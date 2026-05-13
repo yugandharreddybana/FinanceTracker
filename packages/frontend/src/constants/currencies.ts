@@ -9,5 +9,6 @@ export const getCurrencySymbol = (code: string): string => {
 };
 
 export const formatCurrency = (amount: number, currency: string = 'INR'): string => {
-  return amount.toLocaleString(undefined, { style: 'currency', currency });
+  const locale = currency === 'INR' ? 'en-IN' : (currency === 'EUR' ? 'de-DE' : undefined);
+  return amount.toLocaleString(locale, { style: 'currency', currency });
 };

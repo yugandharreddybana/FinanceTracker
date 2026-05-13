@@ -1,17 +1,11 @@
 /**
  * auth.ts — Core authentication library
  *
- * Security model (blockchain-inspired):
- *   Server keypair (RSA-PSS 4096-bit)
- *     └─ Signs JWTs with RS256 — any party with the public key can verify identity
- *        without access to the private key (no shared-secret risk)
- *   User keypair (ECDSA P-256)
- *     └─ User signs every mutating request with their private key
- *        Server verifies against stored public key before processing
- *        Private key is issued to the client ONCE on registration — never stored server-side
+ * Tokens: HS256 JWT signed with shared {@code JWT_SECRET}, interoperable with
+ * {@code JwtAuthenticationFilter} on the Java backend (same algorithm + secret).
  *
- * Password storage: PBKDF2-SHA-512 at 600k iterations (OWASP 2023 minimum for SHA-512 is 210k)
- * Timing safety: crypto.timingSafeEqual for all hash comparisons
+ * Optional per-request ECDSA request-signing (“Layer 2”) exists in
+ * {@code server/middleware/auth.ts} for hardened deployments — clients must opt in.
  */
 
 import dotenv from "dotenv";
@@ -32,11 +26,12 @@ if (!process.env.KEY_ENCRYPTION_SECRET) {
 // Eagerly initialise the server keypair at module load — fail fast if config is missing
 getServerKeyPair();
 
-const IS_PROD = process.env.NODE_ENV === 'production';
-const ALLOW_INSECURE_FILE_AUTH_STORE = process.env.ALLOW_INSECURE_FILE_AUTH_STORE === 'true';
-if (IS_PROD && !ALLOW_INSECURE_FILE_AUTH_STORE) {
+const IS_PROD = process.env.NODE_ENV === "production";
+const ALLOW_INSECURE_FILE_AUTH_STORE = process.env.ALLOW_INSECURE_FILE_AUTH_STORE === "true";
+const HAS_DATABASE_URL = !!process.env.DATABASE_URL;
+if (IS_PROD && !HAS_DATABASE_URL && !ALLOW_INSECURE_FILE_AUTH_STORE) {
   throw new Error(
-    "Refusing to start with file-based auth storage in production. Configure a persistent auth store or set ALLOW_INSECURE_FILE_AUTH_STORE=true only for temporary emergency use."
+    "Refusing to start in production without DATABASE_URL. Set ALLOW_INSECURE_FILE_AUTH_STORE=true only for a deliberate JSON fallback."
   );
 }
 
@@ -126,61 +121,69 @@ function safeHashEqual(a: string, b: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// RS256 JWT — signed with server RSA-PSS private key
+// HS256 JWT — signed with shared secret for backend interoperability
 // ---------------------------------------------------------------------------
 
 /**
- * Issues an RS256 JWT signed with the server's RSA-PSS private key.
+ * Issues an HS256 JWT signed with the shared process.env.JWT_SECRET.
+ * Matches the Java backend configuration in JwtAuthenticationFilter.java.
  * The token carries: uid, email, name, iat, exp.
- * Any party holding the server's PUBLIC key can verify authenticity without
- * access to the private key — mirrors how blockchain certificates work.
  */
 export function createToken(payload: { uid: string; email: string; name: string }): string {
-  const { privateKey } = getServerKeyPair();
-  const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" })).toString("base64url");
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error("JWT_SECRET is not configured in environment.");
+  
+  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
   const now = Math.floor(Date.now() / 1000);
   const body = Buffer.from(
     JSON.stringify({ ...payload, iat: now, exp: now + 86400 })
   ).toString("base64url");
+  
   const signingInput = `${header}.${body}`;
-  // RSA-PSS with SHA-256 + MGF1-SHA-256, saltLength = 32
-  const signature = crypto.sign("SHA256", Buffer.from(signingInput), {
-    key: privateKey,
-    padding: crypto.constants.RSA_PKCS1_PSS_PADDING,
-    saltLength: 32,
-  }).toString("base64url");
+  const signature = crypto.createHmac("sha256", secret)
+    .update(signingInput)
+    .digest("base64url");
+    
   return `${header}.${body}.${signature}`;
 }
 
 /**
- * Verifies an RS256 JWT using the server's RSA public key.
- * If the signature is invalid (tampered token, wrong private key, or expired)
- * returns null — never throws, safe to call in middleware.
+ * Verifies an HS256 JWT using the shared secret.
+ * Performs timing-safe signature comparison and validation of timestamps and schema.
  */
 export function verifyToken(token: string): { uid: string; email: string; name: string } | null {
   try {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      console.error("[verifyToken] ERROR: JWT_SECRET environment variable is missing!");
+      return null;
+    }
+
     const parts = token.split(".");
     if (parts.length !== 3) return null;
     const [header, body, signature] = parts;
 
-    // Verify algorithm claim before touching the signature
+    // Verify algorithm claim matches expected HS256
     const headerObj = JSON.parse(Buffer.from(header, "base64url").toString());
-    if (headerObj.alg !== "RS256") return null;
+    if (headerObj.alg !== "HS256") {
+      return null;
+    }
 
-    const { publicKey } = getServerKeyPair();
     const signingInput = `${header}.${body}`;
-    const valid = crypto.verify("SHA256", Buffer.from(signingInput), {
-      key: publicKey,
-      padding: crypto.constants.RSA_PKCS1_PSS_PADDING,
-      saltLength: 32,
-    }, Buffer.from(signature, "base64url"));
-
-    if (!valid) return null;
+    const sigDecoded = Buffer.from(signature, "base64url");
+    const computedBuf = crypto.createHmac("sha256", secret).update(signingInput).digest();
+    if (sigDecoded.length !== computedBuf.length) return null;
+    if (!crypto.timingSafeEqual(sigDecoded, computedBuf)) return null;
 
     const p = JSON.parse(Buffer.from(body, "base64url").toString());
     const now = Math.floor(Date.now() / 1000);
+    
+    // Token must not be expired
     if (typeof p.exp !== "number" || p.exp < now) return null;
+    
+    // Guard against slight clock drift on iat (max 60 sec into the future)
     if (typeof p.iat !== "number" || p.iat > now + 60) return null;
+    
     if (typeof p.uid !== "string" || p.uid.length === 0) return null;
     if (typeof p.email !== "string" || p.email.length === 0) return null;
     if (typeof p.name !== "string") return null;

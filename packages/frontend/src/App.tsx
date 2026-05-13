@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { SmartAddModal } from './components/SmartAddModal';
@@ -36,6 +36,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { cn, safeStorage } from './lib/utils';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { CommandPalette } from './components/CommandPalette';
+import { FinancePageLoadingShell, FinanceDataErrorBanner } from './components/PageStates';
 import { NotificationCenter, Notification as AppNotification } from './components/NotificationCenter';
 import { LayoutDashboard, Wallet, Receipt, CreditCard, PieChart, TrendingUp, Settings, LogOut, Bell, Sparkles, X, Command, Search, WifiOff, Activity, Leaf, Shield, History, Globe2, FileText, BarChart3, Calculator, UserCircle, Briefcase, HeartPulse, HelpCircle, AlertCircle, Calendar, CheckCircle2, AlertTriangle, TrendingDown, Plus } from 'lucide-react';
 import { aiService, AIInsight } from './services/aiService';
@@ -54,7 +55,20 @@ export default function App() {
 }
 
 function MainApp() {
-  const { userProfile, transactions, budgets, isOffline, updateUserProfile, clearDataForNewUser, refreshData } = useFinance();
+  const {
+    isLoggedIn,
+    userProfile,
+    transactions,
+    budgets,
+    isOffline,
+    updateUserProfile,
+    clearDataForNewUser,
+    refreshData,
+    logout,
+    financeHydrated,
+    dataRefreshError,
+    clearDataRefreshError,
+  } = useFinance();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -62,7 +76,6 @@ function MainApp() {
   const activeTab = location.pathname.split('/')[2] || 'dashboard';
 
   // S1/S2: Auth state is now driven by the httpOnly cookie via /me check — no localStorage
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   // Prevent redirect-to-login flash while the /me check is in flight
   const [authChecking, setAuthChecking] = useState(true);
 
@@ -72,7 +85,6 @@ function MainApp() {
       .then(data => {
         if (data?.user) {
           updateUserProfile({ email: data.user.email, name: data.user.name });
-          setIsLoggedIn(true);
         }
       })
       .catch(() => {})
@@ -92,6 +104,19 @@ function MainApp() {
   const [isSmartAddOpen, setIsSmartAddOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  useLayoutEffect(() => {
+    const stored = safeStorage.getItem('ft_dark');
+    if (stored === '1') document.documentElement.classList.add('dark');
+    else if (stored === '0') document.documentElement.classList.remove('dark');
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!isLoggedIn) return;
+    const stored = safeStorage.getItem('ft_dark');
+    if (stored !== null) return;
+    document.documentElement.classList.toggle('dark', userProfile.preferences?.theme === 'dark');
+  }, [isLoggedIn, userProfile.preferences?.theme]);
+
   // Handle refresh and initial load
   useEffect(() => {
     if (isLoggedIn) {
@@ -108,6 +133,7 @@ function MainApp() {
     if (!isLoggedIn) return;
 
     const fetchRealTimeInsights = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       if (txRef.current.length < 5) return;
       setIsAIProcessing(true);
       try {
@@ -121,6 +147,8 @@ function MainApp() {
             insight.type === 'WIN' ? 'success' :
               insight.type === 'TIP' ? 'info' : 'alert',
           time: insight.date || 'Just now',
+          createdAt: Date.now(),
+          navigateTo: '/app/insights',
           read: false,
           icon: insight.type === 'ALERT' ? AlertTriangle :
             insight.type === 'WIN' ? TrendingUp :
@@ -177,6 +205,8 @@ function MainApp() {
           message,
           type: 'warning' as const,
           time: 'Just now',
+          createdAt: Date.now(),
+          navigateTo: '/app/budgets',
           read: false,
           icon: AlertTriangle,
         };
@@ -187,60 +217,40 @@ function MainApp() {
 
     setNotifications((prev) => {
       const existing = new Set(prev.map((notification) => notification.id));
-      const incoming = budgetNotifications.filter((notification) => !existing.has(notification.id));
+      // Deduplicate against itself FIRST to prevent adding two copies of the same notification key simultaneously
+      const uniqueNew = Array.from(new Map(budgetNotifications.map(n => [n.id, n])).values());
+      const incoming = uniqueNew.filter((notification) => !existing.has(notification.id));
       return incoming.length > 0 ? [...incoming, ...prev].slice(0, 50) : prev;
     });
   }, [budgets, isLoggedIn]);
 
-  // Keyboard shortcuts
+  const unreadBellCount = notifications.filter((n) => !n.read).length;
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      if (!location.pathname.startsWith('/app')) return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      const typing =
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        (e.target as HTMLElement | null)?.isContentEditable;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setIsCommandPaletteOpen(prev => !prev);
+        setIsCommandPaletteOpen((prev) => !prev);
+      }
+      if (e.key === '/' && !e.metaKey && !e.ctrlKey && !typing) {
+        e.preventDefault();
+        setIsCommandPaletteOpen(true);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [location.pathname]);
 
-  const handleLogin = (email: string, _token?: string, name?: string) => {
-    // Token is now an httpOnly cookie set by the server — no localStorage storage needed
-    // A6: Don't clear data before new data arrives; refreshData will overwrite state
-    updateUserProfile({ email, name: name || email.split('@')[0] });
-    setIsLoggedIn(true);
-    setTimeout(() => refreshData(), 0);
-    navigate('/dashboard');
-  };
-
-  const handleSignup = (name: string, email: string, _token?: string) => {
-    // Token is now an httpOnly cookie set by the server — no localStorage storage needed
-    // A6: Don't clear data before new data arrives; refreshData will overwrite state
-    updateUserProfile({ name, email });
-    setIsLoggedIn(true);
-    setTimeout(() => refreshData(), 0);
-    navigate('/dashboard');
-  };
-
-  const handleLogout = useCallback(async () => {
-    const email = userProfile.email;
-    try {
-      await authApi.logout();
-    } catch {
-      // Proceed with client-side cleanup even if server call fails
-    }
-    clearDataForNewUser(email);
-    safeStorage.remove('yugi_finance_notifications');
-    safeStorage.remove('yugi_ai_chat_history');
-    safeStorage.remove('ft_oracle_messages');
-    setNotifications([]);
-    setIsLoggedIn(false);
-    navigate('/');
-  }, [clearDataForNewUser, navigate, userProfile.email]);
-
-  // A5: Keep a stable ref to handleLogout so the inactivity timer doesn't recreate on every render
-  const handleLogoutRef = useRef(handleLogout);
-  useEffect(() => { handleLogoutRef.current = handleLogout; }, [handleLogout]);
+  // Keep a stable ref to logout so the inactivity timer doesn't recreate on every render
+  const logoutRef = useRef(logout);
+  useEffect(() => { logoutRef.current = logout; }, [logout]);
 
   // Inactivity auto-logout (1 hour) — B8: show notification 2 sec before logout
   useEffect(() => {
@@ -257,10 +267,11 @@ function MainApp() {
           message: 'You have been logged out due to 1 hour of inactivity.',
           type: 'warning' as const,
           time: 'Just now',
+          createdAt: Date.now(),
           read: false,
           icon: AlertTriangle
         }]);
-        setTimeout(() => handleLogoutRef.current(), 2000);
+        setTimeout(() => logoutRef.current(), 2000);
       }, 3600000);
     };
 
@@ -273,7 +284,7 @@ function MainApp() {
       if (timeoutId) clearTimeout(timeoutId);
       events.forEach(event => document.removeEventListener(event, resetTimer));
     };
-    // A5: Only depend on isLoggedIn; use handleLogoutRef.current() inside
+    // A5: Only depend on isLoggedIn; use logoutRef.current() inside
   }, [isLoggedIn]);
 
   // Toast error listener — surfaces FinanceContext CRUD errors in the notification bell
@@ -286,6 +297,7 @@ function MainApp() {
         message,
         type: 'warning' as const,
         time: 'Just now',
+        createdAt: Date.now(),
         read: false,
         icon: AlertCircle
       }]);
@@ -305,7 +317,6 @@ function MainApp() {
       safeStorage.remove('yugi_finance_notifications');
       safeStorage.remove('ft_oracle_messages');
       setNotifications([]);
-      setIsLoggedIn(false);
       navigate('/login', { replace: true, state: { authMessage: message } });
     };
 
@@ -315,7 +326,7 @@ function MainApp() {
 
   // Navigate to a tab — URL is the source of truth; activeTab derives automatically
   const handleNavigate = useCallback((tab: string) => {
-    navigate(`/dashboard/${tab}`);
+    navigate(`/app/${tab}`);
   }, [navigate]);
 
   const renderContent = () => {
@@ -345,37 +356,37 @@ function MainApp() {
         // U12: Known empty/undefined tabs default to dashboard; truly unknown tabs show 404
         if (!activeTab || activeTab === 'dashboard') return <Dashboard key="dashboard" />;
         return (
-          <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-            <div className="text-6xl">🔍</div>
-            <h2 className="text-2xl font-bold text-white">Page Not Found</h2>
-            <p className="text-white/50">The page you're looking for doesn't exist.</p>
-            <button onClick={() => handleNavigate('dashboard')} className="px-6 py-3 bg-accent rounded-2xl text-white font-bold hover:bg-accent/80 transition-all">Go to Dashboard</button>
+          <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 px-4" data-testid="page-not-found">
+            <div className="text-6xl" aria-hidden>🔍</div>
+            <h2 className="text-2xl font-bold text-slate-900">Page Not Found</h2>
+            <p className="text-slate-500 text-center max-w-md">The page you&apos;re looking for doesn&apos;t exist.</p>
+            <button type="button" onClick={() => handleNavigate('dashboard')} className="px-6 py-3 rounded-2xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 transition-all">Go to Dashboard</button>
           </div>
         );
     }
   };
 
   return (
-    <div className="min-h-screen bg-background text-white selection:bg-accent/30">
+    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-[#020617] dark:text-slate-100 selection:bg-emerald-500/25">
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={
           authChecking ? null :
           !isLoggedIn ? (
             <LandingPage key="landing" />
-          ) : <Navigate to="/dashboard" replace />
+          ) : <Navigate to="/app/dashboard" replace />
         } />
         <Route path="/login" element={
           authChecking ? null :
           !isLoggedIn ? (
             <LoginPage key="login" />
-          ) : <Navigate to="/dashboard" replace />
+          ) : <Navigate to="/app/dashboard" replace />
         } />
         <Route path="/signup" element={
           authChecking ? null :
           !isLoggedIn ? (
             <SignupPage key="signup" />
-          ) : <Navigate to="/dashboard" replace />
+          ) : <Navigate to="/app/dashboard" replace />
         } />
         <Route path="/forgot-password" element={
           authChecking ? null :
@@ -385,42 +396,70 @@ function MainApp() {
               onBackToLogin={() => navigate('/login')}
               onBackToHome={() => navigate('/')}
             />
-          ) : <Navigate to="/dashboard" replace />
+          ) : <Navigate to="/app/dashboard" replace />
         } />
         <Route path="/reset-password" element={
           !isLoggedIn ? (
             <ResetPasswordPage key="reset-password" />
-          ) : <Navigate to="/dashboard" replace />
+          ) : <Navigate to="/app/dashboard" replace />
         } />
         <Route path="/privacy" element={<InfoPage variant="privacy" />} />
         <Route path="/terms" element={<InfoPage variant="terms" />} />
         <Route path="/security" element={<InfoPage variant="security" />} />
         <Route path="/contact" element={<InfoPage variant="contact" />} />
 
-        <Route path="/dashboard/*" element={
+        <Route path="/app/*" element={
           authChecking ? null :
           isLoggedIn ? (
             <div key="app-main" className="flex h-screen overflow-hidden bg-slate-50/80 text-slate-800">
               <Sidebar mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
 
               <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-                <TopBar onSmartAdd={() => setIsSmartAddOpen(true)} onMenuToggle={() => setMobileMenuOpen(true)} />
+                <TopBar
+                  onSmartAdd={() => setIsSmartAddOpen(true)}
+                  onMenuToggle={() => setMobileMenuOpen(true)}
+                  onNotifications={() => setIsNotificationsOpen(true)}
+                  onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+                  unreadNotificationCount={unreadBellCount}
+                />
 
-                <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-slate-50/50">
-                  <Suspense fallback={
-                    <div className="flex items-center justify-center min-h-[60vh]">
-                      <div className="w-8 h-8 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+                <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-slate-50/50 dark:bg-slate-950/40">
+                  {isOffline && (
+                    <div
+                      data-testid="offline-banner"
+                      className="mb-4 rounded-2xl border border-slate-200 bg-slate-900 px-4 py-3 text-sm font-semibold text-white dark:border-slate-700"
+                      role="status"
+                    >
+                      You appear to be offline. Showing cached data; reconnect to refresh balances.
                     </div>
-                  }>
-                    <AnimatePresence mode="wait">
-                      {renderContent()}
-                    </AnimatePresence>
-                  </Suspense>
+                  )}
+                  <div className="mx-auto max-w-[1600px] space-y-4">
+                    {dataRefreshError && (
+                      <FinanceDataErrorBanner
+                        message={dataRefreshError}
+                        onRetry={() => refreshData()}
+                        onDismiss={clearDataRefreshError}
+                      />
+                    )}
+                    {!financeHydrated ? (
+                      <FinancePageLoadingShell />
+                    ) : (
+                      <Suspense fallback={
+                        <div data-testid="route-lazy-loading" className="flex items-center justify-center min-h-[50vh]">
+                          <div className="w-8 h-8 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" aria-hidden />
+                        </div>
+                      }>
+                        <AnimatePresence mode="wait">
+                          {renderContent()}
+                        </AnimatePresence>
+                      </Suspense>
+                    )}
+                  </div>
                 </main>
               </div>
 
               {/* Mobile FAB */}
-              <motion.button onClick={() => setIsSmartAddOpen(true)}
+              <motion.button data-testid="mobile-smart-add-fab" onClick={() => setIsSmartAddOpen(true)}
                 whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
                 className="lg:hidden fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full animated-gradient text-white shadow-2xl shadow-emerald-300/40">
                 <Plus className="h-6 w-6" />
@@ -433,11 +472,21 @@ function MainApp() {
                 onClose={() => setIsNotificationsOpen(false)}
                 notifications={notifications}
                 onMarkAsRead={(id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))}
+                onMarkAllRead={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
+                onNavigate={(path) => { navigate(path); setIsNotificationsOpen(false); }}
                 onClearAll={() => setNotifications([])}
+              />
+
+              <CommandPalette
+                isOpen={isCommandPaletteOpen}
+                onClose={() => setIsCommandPaletteOpen(false)}
+                onNavigate={handleNavigate}
+                onSmartAdd={() => setIsSmartAddOpen(true)}
               />
 
               {/* Floating AI Insights Button */}
               <motion.button
+                data-testid="floating-ai-oracle-button"
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
                 whileHover={{ scale: 1.1 }}
@@ -455,7 +504,7 @@ function MainApp() {
                     initial={{ opacity: 0, scale: 0.9, y: 20, x: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
                     exit={{ opacity: 0, scale: 0.9, y: 20, x: 20 }}
-                    className="fixed bottom-20 right-8 w-[450px] h-[600px] z-[150] shadow-[0_0_50px_rgba(0,0,0,0.15)] bg-white rounded-3xl overflow-hidden border border-slate-100"
+                    className="fixed bottom-20 right-4 sm:right-8 z-[150] w-[min(100vw-2rem,28rem)] max-h-[min(100vh-6rem,600px)] h-[min(100vh-6rem,600px)] shadow-[0_0_50px_rgba(0,0,0,0.15)] bg-white rounded-3xl overflow-hidden border border-slate-100 flex flex-col"
                   >
                     <AIInsightsPage compact onClose={() => setIsChatOpen(false)} />
                   </motion.div>

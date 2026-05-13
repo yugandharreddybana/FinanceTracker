@@ -1,4 +1,4 @@
-import { Transaction, BankAccount, Budget, Loan, SavingsGoal, RecurringPayment, IncomeSource, Investment, FamilyAccount, AuditLog } from '../types';
+import { Transaction, BankAccount, Budget, Loan, SavingsGoal, RecurringPayment, IncomeSource, Investment, FamilyAccount, AuditLog, OracleFinanceContextPayload } from '../types';
 
 // ---------------------------------------------------------------------------
 // Base URL helpers
@@ -93,31 +93,103 @@ function buildTransactionFingerprint(transaction: Partial<Transaction>): string 
 // ---------------------------------------------------------------------------
 
 async function apiFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(url, {
-    ...options,
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-  });
-  if (res.status === 401 && typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('auth:expired', {
-      detail: { message: 'Your session expired. Please sign in again.' },
-    }));
-  }
-  if (!res.ok) {
-    let errorMessage = `Request failed (${res.status})`;
-    try {
-      const data = await res.json();
-      errorMessage = data.error || data.message || errorMessage;
-    } catch {
-      // response body wasn't JSON
+  const controller = new AbortController();
+  const tid =
+    typeof window !== 'undefined' && !options.signal
+      ? window.setTimeout(() => controller.abort(), 25000)
+      : null;
+
+  const agentDebug =
+    typeof import.meta.env !== 'undefined' &&
+    import.meta.env.DEV === true &&
+    import.meta.env.VITE_AGENT_DEBUG === 'true';
+
+  const txnDeleteProbe =
+    typeof window !== 'undefined' &&
+    agentDebug &&
+    options.method === 'DELETE' &&
+    url.includes('/transactions/') &&
+    !url.includes('bulk-delete');
+
+  try {
+    // #region agent log
+    if (txnDeleteProbe) {
+      fetch('http://127.0.0.1:7877/ingest/45115c5e-d789-479b-b3a2-738882121ed7', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '5c48c3' },
+        body: JSON.stringify({
+          sessionId: '5c48c3',
+          hypothesisId: 'H21',
+          location: 'api.ts:apiFetch',
+          message: 'browser DELETE transactions before fetch',
+          data: { urlPath: (() => {
+            try {
+              return new URL(url).pathname;
+            } catch {
+              return '';
+            }
+          })() },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
     }
-    throw new Error(errorMessage);
+    // #endregion
+    const res = await fetch(url, {
+      ...options,
+      credentials: 'include',
+      signal: options.signal ?? controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      },
+    });
+    // #region agent log
+    if (txnDeleteProbe) {
+      fetch('http://127.0.0.1:7877/ingest/45115c5e-d789-479b-b3a2-738882121ed7', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '5c48c3' },
+        body: JSON.stringify({
+          sessionId: '5c48c3',
+          hypothesisId: 'H22',
+          location: 'api.ts:apiFetch',
+          message: 'browser DELETE transactions response',
+          data: { status: res.status, ok: res.ok },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {});
+    }
+    // #endregion
+    if (res.status === 401 && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('auth:expired', {
+        detail: { message: 'Your session expired. Please sign in again.' },
+      }));
+    }
+    if (!res.ok) {
+      let errorMessage = `Request failed (${res.status})`;
+      try {
+        const data = (await res.json()) as Record<string, unknown>;
+        if (data.error === 'PROXIED_DEBUG_ERROR' && data.rawBody && typeof data.rawBody === 'object') {
+          const raw = data.rawBody as Record<string, unknown>;
+          const inner = raw.error ?? raw.message;
+          if (typeof inner === 'string' && inner.trim()) {
+            errorMessage = inner;
+          } else {
+            errorMessage = `${errorMessage}: proxied upstream (${data.rawStatusCode ?? res.status})`;
+          }
+        } else {
+          const top = data.error ?? data.message;
+          errorMessage = typeof top === 'string' ? top : errorMessage;
+        }
+      } catch {
+        // response body wasn't JSON
+      }
+      throw new Error(errorMessage);
+    }
+    if (res.status === 204) return undefined as unknown as T;
+    return res.json();
+  } finally {
+    if (tid !== null) window.clearTimeout(tid);
   }
-  if (res.status === 204) return undefined as unknown as T;
-  return res.json();
 }
 
 // ---------------------------------------------------------------------------
@@ -353,6 +425,61 @@ export const financeApi = {
       method: 'POST',
       body: JSON.stringify({ message, history }),
     }),
+
+  streamAIChat: async (
+    message: string,
+    history: { role: string; content: string }[],
+    transactions: unknown[],
+    accounts: unknown[],
+    onDelta: (chunk: string) => void,
+    financeContext?: OracleFinanceContextPayload
+  ): Promise<void> => {
+    const res = await fetch(`${MIDDLEWARE_BASE}/api/ai/chat-stream`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, history, transactions, accounts, financeContext }),
+    });
+    if (!res.ok) {
+      let errorMessage = `Request failed (${res.status})`;
+      try {
+        const data = await res.json();
+        errorMessage = data.error || data.message || errorMessage;
+      } catch {
+        try {
+          errorMessage = await res.text();
+        } catch {
+          /* ignore */
+        }
+      }
+      throw new Error(errorMessage);
+    }
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error('No response stream');
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buffer.indexOf('\n')) >= 0) {
+        const rawLine = buffer.slice(0, nl);
+        buffer = buffer.slice(nl + 1);
+        const line = rawLine.trim();
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (payload === '[DONE]') continue;
+        try {
+          const json = JSON.parse(payload) as { choices?: { delta?: { content?: string } }[] };
+          const piece = json.choices?.[0]?.delta?.content;
+          if (typeof piece === 'string' && piece.length > 0) onDelta(piece);
+        } catch {
+          /* incomplete JSON line — wait for more chunks */
+        }
+      }
+    }
+  },
 
   getFamily: async (familyId: string): Promise<FamilyAccount> => {
     const res = await apiFetch<FamilyAccount>(`${MIDDLEWARE_BASE}/api/auth/family/${familyId}`);

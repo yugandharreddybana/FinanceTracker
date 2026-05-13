@@ -1,59 +1,124 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Command, Layout, CreditCard, PieChart, TrendingUp, Sparkles, Settings, LogOut, ChevronRight, X, Calendar, Wallet } from 'lucide-react';
+import {
+  Search, Command, LayoutDashboard, Receipt, CreditCard, PieChart, Target,
+  TrendingUp, Sparkles, Settings, ChevronRight, X, CalendarClock,
+  Briefcase, Calculator, HeartPulse, Leaf, Layers, FileText, ShieldCheck,
+  Users, LineChart, Tag, BarChart3, Plus, Wallet,
+} from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
   onNavigate: (tab: string) => void;
+  onSmartAdd?: () => void;
 }
 
-const ACTIONS = [
-  { id: 'dashboard', title: 'Dashboard', icon: Layout, category: 'Navigation', shortcut: 'G D' },
-  { id: 'transactions', title: 'Transactions', icon: CreditCard, category: 'Navigation', shortcut: 'G T' },
-  { id: 'accounts', title: 'Bank Accounts', icon: Wallet, category: 'Navigation', shortcut: 'G A' },
-  { id: 'budgets', title: 'Budgets', icon: PieChart, category: 'Navigation', shortcut: 'G B' },
-  { id: 'networth', title: 'Net Worth', icon: TrendingUp, category: 'Navigation', shortcut: 'G N' },
-  { id: 'insights', title: 'AI Insights', icon: Sparkles, category: 'Intelligence', shortcut: 'G I' },
-  { id: 'health', title: 'Health Score', icon: Sparkles, category: 'Intelligence', shortcut: 'G H' },
-  { id: 'income', title: 'Income Analytics', icon: TrendingUp, category: 'Analytics', shortcut: 'G Y' },
-  { id: 'recurring', title: 'Recurring Payments', icon: Calendar, category: 'Management', shortcut: 'G R' },
-  { id: 'settings', title: 'Settings', icon: Settings, category: 'System', shortcut: 'G S' },
+type PaletteEntry =
+  | { kind: 'page'; id: string; title: string; icon: typeof LayoutDashboard; category: string }
+  | { kind: 'action'; id: '__smart_add__'; title: string; icon: typeof Plus; category: string };
+
+const PAGES: Array<Omit<Extract<PaletteEntry, { kind: 'page' }>, 'kind'>> = [
+  { id: 'dashboard', title: 'Dashboard', icon: LayoutDashboard, category: 'Overview' },
+  { id: 'transactions', title: 'Transactions', icon: Receipt, category: 'Overview' },
+  { id: 'accounts', title: 'Accounts', icon: CreditCard, category: 'Money' },
+  { id: 'budgets', title: 'Budgets', icon: PieChart, category: 'Money' },
+  { id: 'savings', title: 'Savings Goals', icon: Target, category: 'Money' },
+  { id: 'investments', title: 'Investments', icon: TrendingUp, category: 'Money' },
+  { id: 'recurring', title: 'Recurring', icon: CalendarClock, category: 'Money' },
+  { id: 'loans', title: 'Loans', icon: Briefcase, category: 'Money' },
+  { id: 'networth', title: 'Net Worth', icon: Calculator, category: 'Analytics' },
+  { id: 'income', title: 'Income Analytics', icon: Wallet, category: 'Analytics' },
+  { id: 'review', title: 'Monthly Review', icon: FileText, category: 'Analytics' },
+  { id: 'forecasting', title: 'Forecasting', icon: LineChart, category: 'Analytics' },
+  { id: 'tax', title: 'Tax Engine', icon: Layers, category: 'Analytics' },
+  { id: 'reports', title: 'Reports', icon: BarChart3, category: 'Analytics' },
+  { id: 'categories', title: 'Categories', icon: Tag, category: 'Analytics' },
+  { id: 'health', title: 'Health Score', icon: HeartPulse, category: 'Intelligence' },
+  { id: 'carbon', title: 'Carbon Footprint', icon: Leaf, category: 'Intelligence' },
+  { id: 'insights', title: 'AI Oracle', icon: Sparkles, category: 'Intelligence' },
+  { id: 'family', title: 'Family', icon: Users, category: 'Workspace' },
+  { id: 'audit', title: 'Audit Log', icon: ShieldCheck, category: 'Workspace' },
+  { id: 'settings', title: 'Settings', icon: Settings, category: 'Workspace' },
 ];
 
-export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, onNavigate }) => {
+function buildActions(onSmartAdd?: () => void): PaletteEntry[] {
+  const pages: PaletteEntry[] = PAGES.map((p) => ({ kind: 'page', ...p }));
+  if (onSmartAdd) {
+    pages.unshift({
+      kind: 'action',
+      id: '__smart_add__',
+      title: 'Smart Add…',
+      icon: Plus,
+      category: 'Actions',
+    });
+  }
+  return pages;
+}
+
+export const CommandPalette: React.FC<CommandPaletteProps> = ({
+  isOpen,
+  onClose,
+  onNavigate,
+  onSmartAdd,
+}) => {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const ACTIONS = buildActions(onSmartAdd);
 
-  const filteredActions = ACTIONS.filter(action => 
-    action.title.toLowerCase().includes(query.toLowerCase()) ||
-    action.category.toLowerCase().includes(query.toLowerCase())
+  const filteredActions = ACTIONS.filter(
+    (action) =>
+      action.title.toLowerCase().includes(query.toLowerCase()) ||
+      action.category.toLowerCase().includes(query.toLowerCase()),
   );
 
   useEffect(() => {
     setSelectedIndex(0);
   }, [query]);
 
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (!isOpen) return;
+  useEffect(() => {
+    if (!isOpen || !panelRef.current) return;
+    const root = panelRef.current;
+    const focusables = root.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    );
+    focusables[0]?.focus();
+  }, [isOpen]);
 
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setSelectedIndex(prev => (prev + 1) % filteredActions.length);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setSelectedIndex(prev => (prev - 1 + filteredActions.length) % filteredActions.length);
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (filteredActions[selectedIndex]) {
-        onNavigate(filteredActions[selectedIndex].id);
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (!isOpen) return;
+      const len = filteredActions.length;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (len === 0) return;
+        setSelectedIndex((prev) => (prev + 1) % len);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (len === 0) return;
+        setSelectedIndex((prev) => (prev - 1 + len) % len);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const sel = filteredActions[selectedIndex];
+        if (!sel) return;
+        if (sel.kind === 'action' && sel.id === '__smart_add__') {
+          onSmartAdd?.();
+          onClose();
+          return;
+        }
+        if (sel.kind === 'page') {
+          onNavigate(sel.id);
+          onClose();
+        }
+      } else if (e.key === 'Escape') {
         onClose();
       }
-    } else if (e.key === 'Escape') {
-      onClose();
-    }
-  }, [isOpen, filteredActions, selectedIndex, onNavigate, onClose]);
+    },
+    [isOpen, filteredActions, selectedIndex, onNavigate, onClose, onSmartAdd],
+  );
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -63,99 +128,123 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[1000] flex items-start justify-center pt-[15vh] p-6">
+        <div className="fixed inset-0 z-[1000] flex items-start justify-center pt-[10vh] sm:pt-[15vh] p-4">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-black/60 backdrop-blur-md"
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
           />
-          
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: -20 }}
+            ref={panelRef}
+            data-testid="command-palette"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="command-palette-heading"
+            initial={{ opacity: 0, scale: 0.96, y: -12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: -20 }}
-            className="relative w-full max-w-2xl glass-card rounded-3xl overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.5)]"
+            exit={{ opacity: 0, scale: 0.96, y: -12 }}
+            className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden"
           >
-            <div className="flex items-center gap-4 p-6 border-b border-white/5">
-              <Search className="w-6 h-6 text-accent" />
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100">
+              <Search className="w-5 h-5 text-slate-400 shrink-0" aria-hidden />
               <input
                 autoFocus
+                id="command-palette-heading"
                 type="text"
-                placeholder="Search commands, pages, or tools..."
+                placeholder="Search pages and actions…"
                 value={query}
-                onChange={e => setQuery(e.target.value)}
-                className="flex-1 bg-transparent text-xl font-medium outline-none placeholder:text-white/20"
+                onChange={(e) => setQuery(e.target.value)}
+                className="flex-1 bg-transparent text-base font-medium text-slate-900 outline-none placeholder:text-slate-400"
               />
-              <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-[10px] font-bold text-white/40">
-                <Command className="w-3 h-3" />
+              <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-slate-100 border border-slate-200 text-[10px] font-semibold text-slate-500">
+                <Command className="w-3 h-3" aria-hidden />
                 <span>K</span>
               </div>
+              <button
+                type="button"
+                aria-label="Close command palette"
+                onClick={onClose}
+                className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+              >
+                <X className="w-4 h-4" aria-hidden />
+              </button>
             </div>
 
-            <div className="max-h-[400px] overflow-y-auto p-2 custom-scrollbar">
+            <div className="max-h-[min(60vh,420px)] overflow-y-auto py-2">
               {filteredActions.length === 0 ? (
-                <div className="p-12 text-center">
-                  <p className="text-white/20 font-medium">No results found for "{query}"</p>
+                <div className="p-12 text-center" data-testid="command-palette-empty">
+                  <p className="text-slate-400 font-medium">No matches for “{query}”</p>
                 </div>
               ) : (
-                <div className="space-y-1">
+                <div className="space-y-0.5 px-2">
                   {filteredActions.map((action, index) => (
                     <button
-                      key={action.id}
+                      key={`${action.kind}-${action.id}`}
+                      type="button"
                       onClick={() => {
-                        onNavigate(action.id);
-                        onClose();
+                        if (action.kind === 'action' && action.id === '__smart_add__') {
+                          onSmartAdd?.();
+                          onClose();
+                          return;
+                        }
+                        if (action.kind === 'page') {
+                          onNavigate(action.id);
+                          onClose();
+                        }
                       }}
                       onMouseEnter={() => setSelectedIndex(index)}
                       className={cn(
-                        "w-full flex items-center justify-between p-4 rounded-2xl transition-all group",
-                        selectedIndex === index ? "bg-accent/10 text-accent" : "text-white/40 hover:bg-white/5"
+                        'w-full flex items-center justify-between px-3 py-3 rounded-xl transition-all text-left',
+                        selectedIndex === index
+                          ? 'bg-emerald-50 text-emerald-900 border border-emerald-100'
+                          : 'text-slate-600 hover:bg-slate-50 border border-transparent',
                       )}
                     >
-                      <div className="flex items-center gap-4">
-                        <div className={cn(
-                          "w-10 h-10 rounded-xl flex items-center justify-center transition-all",
-                          selectedIndex === index ? "bg-accent text-white violet-glow" : "bg-white/5"
-                        )}>
-                          <action.icon className="w-5 h-5" />
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className={cn(
+                            'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
+                            selectedIndex === index ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500',
+                          )}
+                        >
+                          <action.icon className="w-5 h-5" aria-hidden />
                         </div>
-                        <div className="text-left">
-                          <p className={cn("font-bold", selectedIndex === index ? "text-white" : "text-white/60")}>{action.title}</p>
-                          <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">{action.category}</p>
+                        <div className="min-w-0">
+                          <p className={cn('font-semibold truncate', selectedIndex === index ? 'text-slate-900' : '')}>
+                            {action.title}
+                          </p>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            {action.category}
+                          </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-4">
-                        {action.shortcut && (
-                          <span className="text-[10px] font-mono font-bold opacity-20 group-hover:opacity-40">{action.shortcut}</span>
+                      <ChevronRight
+                        className={cn(
+                          'w-4 h-4 shrink-0 text-slate-300 transition-all',
+                          selectedIndex === index ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-1',
                         )}
-                        <ChevronRight className={cn(
-                          "w-4 h-4 transition-all",
-                          selectedIndex === index ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-2"
-                        )} />
-                      </div>
+                        aria-hidden
+                      />
                     </button>
                   ))}
                 </div>
               )}
             </div>
 
-            <div className="p-4 bg-white/[0.02] border-t border-white/5 flex justify-between items-center">
-              <div className="flex gap-4">
-                <div className="flex items-center gap-2 text-[10px] font-bold text-white/20 uppercase tracking-widest">
-                  <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10">↑↓</span>
-                  <span>Navigate</span>
-                </div>
-                <div className="flex items-center gap-2 text-[10px] font-bold text-white/20 uppercase tracking-widest">
-                  <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10">Enter</span>
-                  <span>Select</span>
-                </div>
+            <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 flex flex-wrap gap-4 justify-between items-center text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+              <div className="flex gap-3">
+                <span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-white border border-slate-200 font-mono">↑↓</kbd> Move
+                </span>
+                <span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-white border border-slate-200 font-mono">↵</kbd> Open
+                </span>
               </div>
-              <div className="flex items-center gap-2 text-[10px] font-bold text-white/20 uppercase tracking-widest">
-                <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10">Esc</span>
-                <span>Close</span>
-              </div>
+              <span>
+                <kbd className="px-1.5 py-0.5 rounded bg-white border border-slate-200 font-mono">Esc</kbd> Close
+              </span>
             </div>
           </motion.div>
         </div>

@@ -19,9 +19,13 @@
     "start:frontend": "npm --prefix packages/frontend run dev",
     "test": "npm test -w server && npm test -w packages/frontend",
     "test:backend": "cd backend && mvn -B test",
-    "test:all": "npm test && npm run test:backend"
+    "test:all": "npm test && npm run test:backend",
+    "test:e2e": "npx playwright test",
+    "test:e2e:smoke": "npx playwright test e2e/landing-page.spec.ts e2e/login.spec.ts e2e/signup.spec.ts e2e/auth.spec.ts e2e/forgot-password.spec.ts --project=chromium",
+    "test:e2e:comprehensive": "npx playwright test e2e/comprehensive --project=chromium"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "concurrently": "^8.2.0",
     "tsx": "^4.16.2",
     "typescript": "^5.8.2"

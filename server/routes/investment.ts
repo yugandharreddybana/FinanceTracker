@@ -20,6 +20,18 @@ investmentRouter.use(
 
 const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY;
 
+function mockPriceVariation(upper: string, basePrice: number): number {
+  if (process.env.INVESTMENT_MOCK_JITTER === "random") {
+    return (Math.random() - 0.5) * basePrice * 0.002;
+  }
+  let h = 0;
+  for (let i = 0; i < upper.length; i++) {
+    h = (h * 31 + upper.charCodeAt(i)) | 0;
+  }
+  const unit = (Math.abs(h % 1001) / 1000 - 0.5) * 2;
+  return unit * basePrice * 0.002;
+}
+
 // NSE mock prices in INR for when no API key is configured
 const NSE_MOCK: Record<string, { price: number; change: number }> = {
   RELIANCE:   { price: 2921.45,  change: 1.2  },
@@ -55,7 +67,7 @@ investmentRouter.get("/stock/:symbol", async (req, res) => {
   if (!ALPHA_VANTAGE_API_KEY) {
     const mock = NSE_MOCK[upper];
     if (mock) {
-      const variation = (Math.random() - 0.5) * mock.price * 0.002;
+      const variation = mockPriceVariation(upper, mock.price);
       return res.json({
         symbol: upper,
         price: Math.max(0, mock.price + variation),

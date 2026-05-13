@@ -14,6 +14,8 @@ import { TaxReport } from '../types';
 export const TaxEnginePage: React.FC = () => {
   const { transactions, userProfile, taxReports, addTaxReport, deleteTaxReport } = useFinance();
   const [suggestions, setSuggestions] = useState<TaxSuggestion[]>([]);
+  const [taxDisclaimer, setTaxDisclaimer] = useState('');
+  const [taxJurisdiction, setTaxJurisdiction] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [taxYear, setTaxYear] = useState('2024');
   const [expandedSuggestion, setExpandedSuggestion] = useState<number | null>(null);
@@ -84,17 +86,19 @@ export const TaxEnginePage: React.FC = () => {
   ];
   const analyzeTax = async () => {
     setIsLoading(true);
-    const data = await aiService.getTaxOptimizationSuggestions(transactions.slice(0, 50));
-    setSuggestions(data);
+    const result = await aiService.getTaxOptimizationSuggestions(transactions.slice(0, 50));
+    setSuggestions(result.suggestions);
+    setTaxDisclaimer(result.disclaimer);
+    setTaxJurisdiction(result.jurisdiction);
     setIsLoading(false);
 
     // U5: Persist the generated report
-    if (data.length > 0) {
+    if (result.suggestions.length > 0) {
       const report: TaxReport = {
         id: crypto.randomUUID(),
         year: parseInt(taxYear, 10),
         generatedAt: new Date().toISOString(),
-        summary: data.map(s => s.title).join('; '),
+        summary: result.suggestions.map(s => s.title).join('; '),
         totalIncome,
         estimatedTax,
         currency: currentCurrency,
@@ -108,8 +112,17 @@ export const TaxEnginePage: React.FC = () => {
   }, []);
 
   return (
-    <div className="space-y-10 pb-20">
+    <div data-testid="page-tax" className="space-y-10 pb-20">
       {/* Notification banner */}
+      {taxDisclaimer ? (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4 text-sm text-white/60 leading-relaxed">
+          <span className="text-white/90 font-semibold block mb-1">Important</span>
+          {taxDisclaimer}
+          {taxJurisdiction && taxJurisdiction !== 'UNSPECIFIED' ? (
+            <span className="block mt-2 text-white/40 text-xs">Jurisdiction hint: {taxJurisdiction}</span>
+          ) : null}
+        </div>
+      ) : null}
       <AnimatePresence>
         {notification && (
           <motion.div

@@ -39,6 +39,7 @@ Your job: Parse the input and return a JSON array of actions to perform.
 
 Each action must be one of these types:
 - "transaction" — user spent or received money
+- "bank_account" — user wants to create/open a NEW bank account (opening balance is NOT salary/income)
 - "budget" — user wants to create/set a spending budget for a category
 - "savings_goal" — user wants to create a new savings goal
 - "savings_contribute" — user wants to add money to an existing savings goal
@@ -50,12 +51,18 @@ Return ONLY valid JSON. No markdown, no explanation, just the array.
 
 For each action, include these fields:
 {
-  "actionType": "transaction|budget|savings_goal|savings_contribute|loan|recurring|investment",
+  "actionType": "transaction|bank_account|budget|savings_goal|savings_contribute|loan|recurring|investment",
   "description": "human readable description",
   "amount": number (in rupees, 0 if unknown),
   "type": "income|expense",
   "category": "one of: Salary, Freelance, Investments, Food, Groceries, Shopping, Transport, Entertainment, Utilities, Health, Housing, Education, Insurance, Savings, Loan",
   "date": "YYYY-MM-DD (today if not specified)",
+  
+  // Bank account (only if actionType=bank_account):
+  "newAccountName": "string",
+  "newAccountBank": "string optional",
+  "newAccountType": "Current|Savings|Credit",
+  "accountCurrency": "ISO code e.g. EUR",
   
   // Budget-specific (only if actionType=budget):
   "budgetLimit": number,
@@ -99,7 +106,8 @@ IMPORTANT RULES:
 6. Today's date is: ${new Date().toISOString().split('T')[0]}
 7. Default currency is INR (₹).
 8. "recurring monthly" means set up as recurring with monthly frequency.
-9. For budgets with "recurring for every month", set isRecurring=true and budgetPeriod="monthly".`;
+9. For budgets with "recurring for every month", set isRecurring=true and budgetPeriod="monthly".
+10. Opening balance on a **new** bank account → actionType bank_account (never Salary/income transaction).`;
 
 // ─── Call LLM API ───────────────────────────────────────────────
 async function callLLM(userMessage: string): Promise<string> {
@@ -186,6 +194,10 @@ function parseLLMResponse(raw: string): ParsedAction[] {
       investmentName: item.investmentName,
       investmentQty: item.investmentQty ? Number(item.investmentQty) : undefined,
       investmentPrice: item.investmentPrice ? Number(item.investmentPrice) : undefined,
+      newAccountName: item.newAccountName as string | undefined,
+      newAccountBank: item.newAccountBank as string | undefined,
+      newAccountType: item.newAccountType as ParsedAction['newAccountType'],
+      accountCurrency: item.accountCurrency as string | undefined,
       confidence: Number(item.confidence) || 0.8,
       needsClarification: item.needsClarification || false,
       clarificationQuestion: item.clarificationQuestion || '',

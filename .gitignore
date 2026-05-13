@@ -29,3 +29,8 @@ server/data/
 # Scratch/test files with potential secrets
 server/scratch/
 scratch/
+
+# Graphify, agent, and temporary assets
+graphify-out/
+.agent/
+*.zip

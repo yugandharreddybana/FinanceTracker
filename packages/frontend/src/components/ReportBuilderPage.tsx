@@ -297,7 +297,7 @@ export const ReportBuilderPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-10 pb-20 print:bg-white print:text-black">
+    <div data-testid="page-reports" className="space-y-10 pb-20 print:bg-white print:text-black">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 print:hidden">
         <div>

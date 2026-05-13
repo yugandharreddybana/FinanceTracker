@@ -4,6 +4,7 @@
 
 export type ActionType =
   | 'transaction'
+  | 'bank_account'
   | 'budget'
   | 'savings_goal'
   | 'savings_contribute'
@@ -40,6 +41,11 @@ export interface ParsedAction {
   confidence: number;
   needsClarification?: boolean;
   clarificationQuestion?: string;
+  accountId?: string;
+  newAccountName?: string;
+  newAccountBank?: string;
+  newAccountType?: 'Current' | 'Savings' | 'Credit';
+  accountCurrency?: string;
   rawText: string;
 }
 
@@ -125,6 +131,16 @@ const INTENT_SIGNALS: Record<ActionType, [RegExp, number][]> = {
     [/\bportfolio\b/i, 5],
     [/\bnifty|sensex|bse|nse\b/i, 7],
   ],
+  bank_account: [
+    [/\bnew\s+bank\s+account\b/i, 15],
+    [/\bcreate\b.*\bbank\s+account\b/i, 15],
+    [/\bopen\b.*\bbank\s+account\b/i, 14],
+    [/\badd\b.*\b(?:new\s+)?bank\s+account\b/i, 14],
+    [/\bbank\s+account\b.*\b(?:named|called)\b/i, 13],
+    [/\b(?:named|called)\b.*\bbank\s+account\b/i, 12],
+    [/\bopening\s+balance\b|\binitial\s+balance\b/i, 11],
+    [/\baccount\b.*\b(?:named|called)\b/i, 9],
+  ],
   transaction: [
     [/\bspent\b/i, 8],
     [/\bpaid\b/i, 7],
@@ -150,9 +166,12 @@ function extractAmounts(text: string): number[] {
   // Lakhs/crores
   for (const m of text.matchAll(/(\d[\d,]*(?:\.\d+)?)\s*(?:lakhs?|lacs?)/gi)) add(parseFloat(m[1].replace(/,/g, '')) * 100000);
   for (const m of text.matchAll(/(\d[\d,]*(?:\.\d+)?)\s*(?:crores?|cr)\b/gi)) add(parseFloat(m[1].replace(/,/g, '')) * 10000000);
-  // ₹/Rs patterns
+  // ₹/Rs/INR patterns
   for (const m of text.matchAll(/(?:₹|rs\.?\s*|inr\s*|rupees?\s*)(\d[\d,]*(?:\.\d{1,2})?)/gi)) add(parseFloat(m[1].replace(/,/g, '')));
   for (const m of text.matchAll(/(\d[\d,]*(?:\.\d{1,2})?)(?:\s*(?:₹|rs|rupees?|inr|\/-))/gi)) add(parseFloat(m[1].replace(/,/g, '')));
+  // €/EUR patterns
+  for (const m of text.matchAll(/(?:€|eur\s*|euros?\s*)(\d[\d,]*(?:\.\d{1,2})?)/gi)) add(parseFloat(m[1].replace(/,/g, '')));
+  for (const m of text.matchAll(/(\d[\d,]*(?:\.\d{1,2})?)(?:\s*(?:€|eur|euros?))/gi)) add(parseFloat(m[1].replace(/,/g, '')));
   // "of/for/limit 10000"
   for (const m of text.matchAll(/(?:of|for|amount|total|limit|worth|at|to|price|cost)\s+(\d[\d,]*(?:\.\d{1,2})?)/gi)) add(parseFloat(m[1].replace(/,/g, '')));
   // Plain numbers as fallback
@@ -233,10 +252,45 @@ function extractBudgetPeriod(text: string): { period: 'monthly'|'weekly'|'yearly
   return { period: 'monthly', isRecurring: isRec };
 }
 
+function extractCurrencyIso(text: string): string | undefined {
+  if (/\beuros?\b|€|\beur\b/i.test(text)) return 'EUR';
+  if (/\bdollars?\b|\$|\busd\b/i.test(text)) return 'USD';
+  if (/£|\bgbp\b/i.test(text)) return 'GBP';
+  if (/₹|\binr\b|\brupees?\b/i.test(text)) return 'INR';
+  return undefined;
+}
+
+function extractNewBankAccountName(text: string): string {
+  const quoted = /['"]([^'"]+)['"]/.exec(text);
+  if (quoted?.[1]) return quoted[1].trim();
+  const patterns = [
+    /(?:named|called)\s+([^,\n]+?)(?:\s+(?:in|with|,|\(|balance|currency|eur|usd|inr)|$)/i,
+    /(?:bank\s+)?account\s+(?:named|called)\s+([^,\n]+?)(?:\s+(?:in|with|,|balance)|$)/i,
+    /new\s+bank\s+account\s+(?:named|called)?\s*([^,\n]+?)(?:\s+(?:in|with|,|balance)|$)/i,
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m?.[1]) {
+      let n = m[1].replace(/\d[\d,]*/g, '').replace(/^(?:a|an|the|my)\s+/i, '').replace(/\s+/g, ' ').trim();
+      if (n.length > 0) return n.charAt(0).toUpperCase() + n.slice(1);
+    }
+  }
+  return '';
+}
+
 // ─── Scored Intent Detection ────────────────────────────────────
 function scoreIntents(text: string): { intent: ActionType; score: number; secondIntent: ActionType; secondScore: number } {
   const l = text.toLowerCase();
-  const scores: Record<ActionType, number> = { transaction: 0, budget: 0, savings_goal: 0, savings_contribute: 0, loan: 0, recurring: 0, investment: 0 };
+  const scores: Record<ActionType, number> = {
+    transaction: 0,
+    bank_account: 0,
+    budget: 0,
+    savings_goal: 0,
+    savings_contribute: 0,
+    loan: 0,
+    recurring: 0,
+    investment: 0,
+  };
   for (const [intent, signals] of Object.entries(INTENT_SIGNALS) as [ActionType, [RegExp,number][]][]) {
     for (const [re, w] of signals) if (re.test(l)) scores[intent] += w;
   }
@@ -262,7 +316,7 @@ function splitSentences(text: string): string[] {
       let buf = '';
       for (let i = 0; i < parts.length; i++) {
         const hasAmt = extractAmounts(parts[i]).length > 0;
-        const hasVerb = /\b(?:create|set|add|save|spent|paid|bought|invest|budget|loan|goal|recurring|deposit)\b/i.test(parts[i]);
+        const hasVerb = /\b(?:create|set|add|save|spent|paid|bought|invest|budget|loan|goal|recurring|deposit|open|named|called|account)\b/i.test(parts[i]);
         if ((hasAmt || hasVerb) && buf) { expanded.push(buf.trim()); buf = parts[i]; }
         else { buf = buf ? `${buf}, ${parts[i]}` : parts[i]; }
       }
@@ -386,6 +440,34 @@ export function parseUserInput(input: string): ParsedAction[] {
         });
         break;
       }
+      case 'bank_account': {
+        const accName = extractNewBankAccountName(seg);
+        const ccy = extractCurrencyIso(seg);
+        const amt = amounts[0] ?? 0;
+        const lt = seg.toLowerCase();
+        const accTyp: 'Current' | 'Savings' | 'Credit' = /\bcredit\b|\bcard\b/i.test(seg)
+          ? 'Credit'
+          : /\bsavings\b/i.test(lt)
+            ? 'Savings'
+            : 'Current';
+        results.push({
+          actionType: 'bank_account',
+          description: accName || 'New account',
+          newAccountName: accName,
+          newAccountBank: '',
+          newAccountType: accTyp,
+          amount: amt,
+          accountCurrency: ccy,
+          type: 'expense',
+          category: 'Others',
+          date,
+          confidence: accName ? 0.92 : 0.45,
+          needsClarification: isAmbiguous || !accName,
+          clarificationQuestion: !accName ? 'What should the new bank account be named?' : clarQ,
+          rawText: seg,
+        });
+        break;
+      }
       case 'investment': {
         const l = seg.toLowerCase();
         const iType = (/mutual\s*fund|sip/.test(l)?'mutual_fund':/stock|share|nifty|sensex/.test(l)?'stock':/fd|fixed\s*deposit/.test(l)?'fd':/gold/.test(l)?'gold':/crypto|bitcoin/.test(l)?'crypto':'mutual_fund') as 'stock'|'mutual_fund'|'fd'|'gold'|'crypto';
@@ -432,7 +514,16 @@ export function parseUserInput(input: string): ParsedAction[] {
 }
 
 function intentLabel(t: ActionType): string {
-  return { transaction:'Transaction', budget:'Budget', savings_goal:'Savings Goal', savings_contribute:'Goal Contribution', loan:'Loan', recurring:'Recurring Payment', investment:'Investment' }[t];
+  return {
+    transaction: 'Transaction',
+    bank_account: 'Bank Account',
+    budget: 'Budget',
+    savings_goal: 'Savings Goal',
+    savings_contribute: 'Goal Contribution',
+    loan: 'Loan',
+    recurring: 'Recurring Payment',
+    investment: 'Investment',
+  }[t];
 }
 
 // Receipt parser
@@ -444,7 +535,7 @@ export function parseReceiptText(text: string): ParsedAction[] {
     const amounts = extractAmounts(line);
     if (amounts.length > 0) {
       const { category, type } = detectCategory(line);
-      let desc = line.replace(/₹|rs\.?\s*/gi,'').replace(/\d[\d,]*/g,'').replace(/[:\-|]/g,' ').replace(/\s+/g,' ').trim();
+      let desc = line.replace(/[₹€]|rs\.?\s*|eur\s*/gi,'').replace(/\d[\d,]*/g,'').replace(/[:\-|]/g,' ').replace(/\s+/g,' ').trim();
       desc = desc ? desc.charAt(0).toUpperCase()+desc.slice(1) : `Item — ${category}`;
       results.push({ actionType: 'transaction', description: desc, amount: amounts[0], type, category, date: today, confidence: 0.75, rawText: line });
     }

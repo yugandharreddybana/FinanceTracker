@@ -49,6 +49,7 @@ export const HealthScorePage: React.FC<HealthScorePageProps> = ({ onNavigate }) 
   };
   return (
     <motion.div
+      data-testid="page-health"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
