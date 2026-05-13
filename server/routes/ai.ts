@@ -282,7 +282,7 @@ function buildChatSystemContent(
     `${txJson}\n\n` +
     `RULES:\n` +
     `- If the user asks about **current balance**, **total balance**, **bank balances**, **how much money I have**, **across accounts**, or similar: answer using BANK_ACCOUNTS_SNAPSHOT only. Sum balances **per currency**. List each account with name, type, balance, and currency.\n` +
-    `- Treat **Credit** accounts as debt: show them separately from Current/Savings when giving “cash” or “liquid” totals.\n` +
+    `- Treat **Credit** accounts as debt: show them separately from Current/Savings when giving "cash" or "liquid" totals.\n` +
     `- Budget / spending limits → USER_FINANCE_SNAPSHOT.budgets. Savings goals → savings_goals. Debt / EMI → loans. Subscriptions → recurring_payments. Portfolio → investments. Salary or income streams → income_sources. Net worth / wealth rollups → net_worth_by_currency (plus accounts where relevant). Financial health scores → health_metrics_by_currency. Category definitions → custom_categories. Recent multi-month cash-flow shape → monthly_trends. Prefer **preferences.currency** when picking a default currency to emphasize.\n` +
     `- Do **not** refuse balance questions because transactions are empty — rely on BANK_ACCOUNTS_SNAPSHOT.\n` +
     `- Do **not** claim the user has no budgets, goals, loans, etc. without confirming the matching array in USER_FINANCE_SNAPSHOT is empty.\n` +
@@ -628,6 +628,10 @@ router.post("/analyze-file", authMiddleware, aiLimiter, async (req, res) => {
       content = base64Data; // use as-is if not base64
     }
 
+    // Fix: expose truncation flag so the frontend can warn the user
+    const isTruncated = content.length > 8000;
+    const snippet = content.slice(0, 8000);
+
     const systemPrompt =
       type === "bill"
         ? `You are a bill/receipt parser. Extract the merchant, amount, date, and category from the provided text. Return ONLY a valid JSON array of transaction objects with fields: merchant (string), amount (number), date (YYYY-MM-DD), category (string), type ("expense"), confidence (0-1).`
@@ -636,7 +640,7 @@ router.post("/analyze-file", authMiddleware, aiLimiter, async (req, res) => {
     const { text } = await nvidiaChat(
       [
         { role: "system", content: systemPrompt },
-        { role: "user", content: `Parse this ${type}: ${content.slice(0, 8000)}` },
+        { role: "user", content: `Parse this ${type}: ${snippet}` },
       ],
       { jsonMode: true, temperature: 0.1, maxTokens: 3000 }
     );
@@ -644,7 +648,8 @@ router.post("/analyze-file", authMiddleware, aiLimiter, async (req, res) => {
     const parsed = safeJson(text);
     if (!parsed) return res.status(500).json({ error: "AI returned invalid JSON" });
     const result = Array.isArray(parsed) ? parsed : parsed.transactions || [];
-    res.json(result);
+    // Return truncation flag alongside results so the UI can surface a warning
+    res.json({ transactions: result, truncated: isTruncated });
   } catch (error: any) {
     console.error("AI File Analysis Error:", error.message);
     res.status(500).json({ error: aiPublicError(error) });
@@ -661,8 +666,16 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
     const history = rawHistory.slice(-MAX_HISTORY);
     const { message } = req.body;
     const { uid, name } = (req as any).user;
-    const token = req.headers.authorization?.split(" ")[1] ||
-      (req as any).cookies?.auth_token || "";
+
+    // Fix: guard against empty token before any callBackend invocation
+    const token =
+      req.headers.authorization?.split(" ")[1] ||
+      (req as any).cookies?.auth_token ||
+      "";
+    if (!token) {
+      return res.status(401).json({ error: "Missing token for backend call" });
+    }
+
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return res.status(400).json({ error: "Message is required" });
     }
@@ -755,7 +768,7 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
         `- You can draft new transactions (user must confirm).\n\n` +
         `CRITICAL TOOL USE:\n` +
         `- Questions about **balance**, **bank balances**, **total money**, **cash available**, **across accounts**, or **net liquid**: call **get_accounts** (not only get_transactions). Sum balances **per currency**. Treat **Credit** as debt — separate from deposit balances unless the user asks for one combined net figure.\n` +
-        `- Transaction history alone cannot prove current account balances — never claim balances are “unknown” solely because transactions are empty.\n\n` +
+        `- Transaction history alone cannot prove current account balances — never claim balances are "unknown" solely because transactions are empty.\n\n` +
         `RESPONSE GUIDELINES:\n` +
         `1. Be precise with numbers — always show exact amounts with currency symbols (€, $, £, ₹).\n` +
         `2. Use markdown formatting: **bold** for key figures, bullet points for lists, tables for comparisons.\n` +
@@ -805,7 +818,10 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
         try {
           const args = JSON.parse(toolCall.function?.arguments || "{}");
           if (fnName === "get_transactions") {
-            toolResult = await callBackend("/transactions", "GET", null, uid, token);
+            // Fix: slice to MAX_CONTEXT_TX so large transaction histories don't
+            // blow the NVIDIA NIM token budget during the tool-call loop.
+            const raw = await callBackend("/transactions", "GET", null, uid, token);
+            toolResult = Array.isArray(raw) ? raw.slice(-MAX_CONTEXT_TX) : [];
           } else if (fnName === "get_accounts") {
             toolResult = await callBackend("/accounts", "GET", null, uid, token);
           } else if (fnName === "get_budgets") {
