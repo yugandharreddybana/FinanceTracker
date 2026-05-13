@@ -156,6 +156,10 @@ export const financeSlice = createSlice({
       state.forecasts = [];
       state.userProfile = DEFAULT_USER_PROFILE;
       state.customCategories = DEFAULT_CUSTOM_CATEGORIES;
+      // Fix: reset data-load flags so the next login triggers a fresh fetch
+      // and no stuck loading spinner is left visible after logout.
+      state.isDataLoaded = false;
+      state.isLoading = false;
     }
   },
 });
