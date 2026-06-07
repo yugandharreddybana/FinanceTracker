@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  # ── Node.js Middleware ────────────────────────────────────────────────────
+  # ── Node.js Middleware ──────────────────────────────────────────────────
   node-build:
     name: Node Server — TypeScript Build
     runs-on: ubuntu-latest
@@ -21,16 +21,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: server/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: TypeScript compile check
         run: npx tsc --noEmit
 
-  # ── Frontend ──────────────────────────────────────────────────────────────
+  # ── Frontend ────────────────────────────────────────────────────────────
   frontend-build:
     name: Frontend — Vite Build
     runs-on: ubuntu-latest
@@ -55,7 +53,7 @@ jobs:
         env:
           VITE_MIDDLEWARE_URL: https://middleware-financetracker-production.up.railway.app
 
-  # ── Java Spring Boot Backend ──────────────────────────────────────────────
+  # ── Java Spring Boot Backend ────────────────────────────────────────────
   java-build:
     name: Java Backend — Maven Build
     runs-on: ubuntu-latest
@@ -75,7 +73,7 @@ jobs:
       - name: Maven compile (skip tests for speed)
         run: mvn compile -DskipTests --no-transfer-progress
 
-  # ── Secret Scanning ───────────────────────────────────────────────────────
+  # ── Secret Scanning ─────────────────────────────────────────────────────
   secret-scan:
     name: Secret Scan
     runs-on: ubuntu-latest
