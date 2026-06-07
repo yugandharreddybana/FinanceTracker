@@ -456,7 +456,7 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     let isActive = true;
 
-    authApi.me()
+        fetch(`${MIDDLEWARE_BASE}/api/auth/me`, { credentials: 'include', cache: 'no-store' })
       .then((session) => {
         if (!isActive) {
           return;
