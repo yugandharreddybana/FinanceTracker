@@ -271,7 +271,7 @@ const sensitiveLimiter = rateLimit({
 const cookieOptions = {
   httpOnly: true,
   sameSite: "none" as const,
-  secure: process.env.NODE_ENV === "production",
+  secure: true,
   maxAge: 86400000,
   ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
 };
@@ -408,7 +408,7 @@ router.post("/logout", sensitiveLimiter, (_req: Request, res: Response) => {
   res.clearCookie("auth_token", {
     httpOnly: true,
     sameSite: "none" as const,
-    secure: process.env.NODE_ENV === "production",
+    secure: true,
     ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
   });
   res.json({ ok: true });
@@ -590,7 +590,7 @@ router.delete("/account", sensitiveLimiter, async (req: Request, res: Response) 
   res.clearCookie("auth_token", {
     httpOnly: true,
     sameSite: "none" as const,
-    secure: process.env.NODE_ENV === "production",
+    secure: true,
     ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
   });
   res.json({ ok: true });
