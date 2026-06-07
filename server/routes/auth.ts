@@ -414,7 +414,7 @@ router.post("/logout", sensitiveLimiter, (_req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
-router.get("/me", sensitiveLimiter, (req: Request, res: Response) => {
+router.get("/me", sensitiveLimiter, (req: Request, res: Response) => {   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   let token: string | undefined;
   const authHeader = req.headers.authorization;
   if (authHeader?.startsWith("Bearer ")) {
