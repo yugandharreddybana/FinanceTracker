@@ -274,6 +274,7 @@ const sensitiveLimiter = rateLimit({
 });
 
 
+
 const router = Router();
 
 router.post("/register", authLimiter, async (req: Request, res: Response) => {
@@ -383,6 +384,7 @@ router.post("/logout", sensitiveLimiter, async (req: Request, res: Response) => 
 });
 
 router.get("/me", sensitiveLimiter, async (req: Request, res: Response) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   let token: string | undefined;
   const authHeader = req.headers.authorization;
   if (authHeader && /^bearer /i.test(authHeader)) {

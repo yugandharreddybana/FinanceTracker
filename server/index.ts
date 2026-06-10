@@ -9,6 +9,33 @@ import { financeRouter } from "./routes/finance.js";
 import { aiRouter } from "./routes/ai.js";
 import { investmentRouter } from "./routes/investment.js";
 import { authRouter } from "./routes/auth.js";
+import {
+  findUserByEmail,
+  registerUser,
+  markEmailVerified,
+} from "./lib/auth.js";
+
+// ── Demo user bootstrap ────────────────────────────────────────────────────
+// Ensures demo@yugifinance.com always exists in the user store so the
+// "Try Demo Account" button on the login page works in every environment.
+async function ensureDemoUser(): Promise<void> {
+  const DEMO_EMAIL = "demo@yugifinance.com";
+  const DEMO_PASSWORD = "demo123456";
+  const DEMO_NAME = "Demo User";
+  try {
+    const existing = findUserByEmail(DEMO_EMAIL);
+    if (existing) {
+      console.log("[demo] Demo user already exists — skipping seed.");
+      return;
+    }
+    await registerUser(DEMO_EMAIL, DEMO_PASSWORD, DEMO_NAME);
+    await markEmailVerified(DEMO_EMAIL);
+    console.log("[demo] Demo user seeded successfully.");
+  } catch (err) {
+    // Non-fatal: log and continue — don't block server startup
+    console.error("[demo] Failed to seed demo user:", err);
+  }
+}
 
 async function startServer() {
   // ── Startup environment validation ────────────────────────────────────────
@@ -35,9 +62,11 @@ async function startServer() {
     console.warn("[WARN] FRONTEND_URL not set — only localhost origins will be allowed by CORS.");
   }
 
+  // ── Seed demo user ─────────────────────────────────────────────────────────
+  await ensureDemoUser();
+
   const app = express();
   app.disable("x-powered-by");
-
   // Trust Railway's reverse proxy so rate-limit reads X-Forwarded-For correctly
   app.set("trust proxy", 1);
 
@@ -52,10 +81,9 @@ async function startServer() {
   console.log("- DB Mode:", process.env.DATABASE_URL ? "PostgreSQL" : "JSON file fallback");
   console.log("-------------------------------------------------------------------");
 
-  // ── CORS ──────────────────────────────────────────────────────────────────
+  // ── CORS ────────────────────────────────────────────────────────────────────
   const rawFrontendUrl = process.env.FRONTEND_URL || "";
   const extraOrigins = rawFrontendUrl.split(",").map(s => s.trim()).filter(Boolean);
-
   const ALLOWED_ORIGINS = [
     ...extraOrigins,
     "http://localhost:5173",
@@ -85,7 +113,7 @@ async function startServer() {
     next();
   });
 
-  // ── Security headers ──────────────────────────────────────────────────────
+  // ── Security headers ─────────────────────────────────────────────────────
   app.use((_req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
@@ -107,7 +135,7 @@ async function startServer() {
     next();
   });
 
-  // ── Request logger ────────────────────────────────────────────────────────
+  // ── Request logger ───────────────────────────────────────────────────────
   app.use((req, res, next) => {
     const start = Date.now();
     res.on("finish", () => {
@@ -118,24 +146,22 @@ async function startServer() {
     next();
   });
 
-  // ── Middleware ────────────────────────────────────────────────────────────
+  // ── Middleware ───────────────────────────────────────────────────────────
   app.use(cookieParser());
-
   // Phase3.0013: tight default body cap; specific routes that legitimately accept
   // large payloads (file analysis) opt-in to a larger limit at their own mount point.
   app.use(express.json({ limit: "256kb" }));
   app.use("/api/ai/analyze-file", express.json({ limit: "2mb" }));
 
-  // ── Routes ────────────────────────────────────────────────────────────────
+  // ── Routes ───────────────────────────────────────────────────────────────
   app.use("/api/auth", authRouter);
   app.use("/api/finance", financeRouter);
   app.use("/api/ai", aiRouter);
   app.use("/api/investment", investmentRouter);
 
-  // ── Health check ──────────────────────────────────────────────────────────
+  // ── Health check ─────────────────────────────────────────────────────────
   app.get("/api/health", async (_req, res) => {
     const checks: Record<string, string> = {};
-
     // Check Java backend
     try {
       const r = await fetch(
@@ -146,10 +172,8 @@ async function startServer() {
     } catch {
       checks.javaBackend = "down";
     }
-
     checks.ai = process.env.NVIDIA_API_KEY ? "ok" : "not_configured";
     checks.database = process.env.DATABASE_URL ? "postgresql" : "json_file_fallback";
-
     const overall = Object.values(checks).every(v => v === "ok" || v === "postgresql") ? "ok" : "degraded";
     res.json({
       status: overall,
@@ -172,16 +196,13 @@ async function startServer() {
         res.setHeader("Access-Control-Allow-Credentials", "true");
       }
     }
-
-    const payload: Record<string, string> = {
+    const payload: Record<string, unknown> = {
       error: "Server Error",
       correlationId,
     };
-
     if (!IS_PROD) {
       payload.message = err instanceof Error ? err.message : 'Server Error';
     }
-
     res.status(500).json(payload);
   });
 
@@ -197,7 +218,10 @@ async function startServer() {
       console.log("[shutdown] HTTP server closed.");
       process.exit(0);
     });
-    setTimeout(() => { console.error("[shutdown] Forced exit"); process.exit(1); }, 10000);
+    setTimeout(() => {
+      console.error("[shutdown] Forced exit");
+      process.exit(1);
+    }, 10000);
   }
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
