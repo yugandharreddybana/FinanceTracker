@@ -40,12 +40,7 @@ public class AuditLogService {
     @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
     public void anonymiseByUserId(String userId) {
         // ISSUE #8 FIX: Called on account deletion — replaces PII, preserves event records.
-        List<AuditLog> logs = repo.findAllByUserId(userId);
-        for (AuditLog log : logs) {
-            log.setUserId("[DELETED]");
-            log.setUserName("[DELETED]");
-            log.setDetails("[REDACTED]");
-            repo.save(log);
-        }
+        // ISSUE 4.041 FIX: Single batch update for better performance.
+        repo.anonymiseByUserId(userId);
     }
 }

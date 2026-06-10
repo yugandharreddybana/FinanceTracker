@@ -12,6 +12,10 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, String> {
     List<AuditLog> findAllByUserId(String userId);
 
     @Modifying
+    @org.springframework.data.jpa.repository.Query("UPDATE AuditLog a SET a.userId = '[DELETED]', a.userName = '[DELETED]', a.details = '[REDACTED]' WHERE a.userId = :userId")
+    void anonymiseByUserId(@org.springframework.data.repository.query.Param("userId") String userId);
+
+    @Modifying
     @Transactional
     void deleteByUserId(String userId);
 }

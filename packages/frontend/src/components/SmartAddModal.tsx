@@ -7,7 +7,8 @@ import { parseReceiptText } from '../lib/transactionParser';
 import type { ParsedAction, ActionType } from '../lib/transactionParser';
 import { smartParse, isAIAvailable } from '../lib/aiService';
 import {
-  concatSpeechResults,
+  buildLiveCaptionFromSpeechEvent,
+  resetSpeechSessionAccum,
   getSpeechRecognitionConstructor,
   pickSpeechRecognitionLang,
 } from '../lib/speechRecognition';
@@ -38,7 +39,7 @@ type InputMode = 'text' | 'voice' | 'receipt';
 interface Props { open: boolean; onClose: () => void; initialText?: string; }
 
 export function SmartAddModal({ open, onClose, initialText = '' }: Props) {
-  const { addManualTransaction, addBudget, addSavingsGoal, updateSavingsGoal, savingsGoals, addInvestment, addRecurringPayment, addLoan, addAccount, accounts, userProfile } = useFinance();
+  const { addManualTransaction, addBudget, addSavingsGoal, updateSavingsGoal, savingsGoals, addInvestment, addRecurringPayment, addLoan, addAccount, accounts, budgets, userProfile } = useFinance();
   const currSym = getCurrencySymbol(accounts[0]?.currency || userProfile.preferences?.currency || 'INR');
   const { toast } = useToast();
   const [mode, setMode] = useState<InputMode>('text');
@@ -58,6 +59,7 @@ export function SmartAddModal({ open, onClose, initialText = '' }: Props) {
   const listeningDesiredRef = useRef(false);
   const latestVoiceRef = useRef('');
   const sessionAnchorRef = useRef('');
+  const speechAccumRef = useRef(resetSpeechSessionAccum());
 
   useEffect(() => {
     latestVoiceRef.current = voiceTranscript;
@@ -119,11 +121,12 @@ export function SmartAddModal({ open, onClose, initialText = '' }: Props) {
 
     r.onstart = () => {
       sessionAnchorRef.current = latestVoiceRef.current.trimEnd();
+      speechAccumRef.current = resetSpeechSessionAccum();
       setIsListening(true);
     };
 
     r.onresult = (ev: SpeechRecognitionEvent) => {
-      const live = concatSpeechResults(ev.results).trim();
+      const live = buildLiveCaptionFromSpeechEvent(speechAccumRef.current, ev);
       const anchor = sessionAnchorRef.current;
       const spacer = anchor && live ? ' ' : '';
       const next = `${anchor}${spacer}${live}`.replace(/\s+/g, ' ').trim();
@@ -204,7 +207,65 @@ export function SmartAddModal({ open, onClose, initialText = '' }: Props) {
     } else {
       const text = mode === 'voice' ? voiceTranscript : rawInput;
       try {
-        const serverResults = await import('../services/api').then(m => m.financeApi.processAIInput(text, { savingsGoals: savingsGoals.map(g => ({ id: g.id, name: g.name })), accounts: accounts.map(a => ({ id: a.id, name: a.name, bank: a.bank, currency: a.currency, isPrimary: a.isPrimary })) }));
+        const serverResults = await import('../services/api').then((m) =>
+          m.financeApi.processAIInput(text, {
+            savingsGoals: savingsGoals.map((g) => ({ id: g.id, name: g.name })),
+            accounts: accounts.map((a) => ({
+              id: a.id,
+              name: a.name,
+              bank: a.bank,
+              currency: a.currency,
+              isPrimary: a.isPrimary,
+            })),
+            budgets: budgets.map((b) => ({
+              id: b.id,
+              category: b.category,
+              limit: b.limit,
+              currency: b.currency,
+            })),
+          })
+        );
+
+        const resolveAccountId = (hint: unknown): string | undefined => {
+          const raw = String(hint ?? '').trim();
+          if (!raw) return undefined;
+          const n = raw.toLowerCase();
+          const strip = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+          let m = accounts.find((a) => a.id === raw);
+          if (m) return m.id;
+          m = accounts.find((a) => (a.name || '').toLowerCase() === n);
+          if (m) return m.id;
+          m = accounts.find((a) => {
+            const an = (a.name || '').toLowerCase();
+            const bn = (a.bank || '').toLowerCase();
+            return an.includes(n) || n.includes(an) || bn.includes(n) || n.includes(bn);
+          });
+          if (m) return m.id;
+          const strippedNeedle = strip(raw);
+          if (strippedNeedle.length >= 2) {
+            m = accounts.find((a) => {
+              const an = strip(a.name || '');
+              const bn = strip(a.bank || '');
+              return (
+                an.includes(strippedNeedle) ||
+                strippedNeedle.includes(an) ||
+                bn.includes(strippedNeedle) ||
+                strippedNeedle.includes(bn)
+              );
+            });
+            if (m) return m.id;
+          }
+          if (/\brev\b/i.test(raw) || /revolut/i.test(raw)) {
+            m = accounts.find(
+              (a) =>
+                /\brev\b/i.test(a.name || '') ||
+                /revolut/i.test(a.name || '') ||
+                /revolut/i.test(a.bank || '')
+            );
+            if (m) return m.id;
+          }
+          return undefined;
+        };
         const normBankType = (t: unknown): 'Current' | 'Savings' | 'Credit' => {
           const s = String(t ?? '').toLowerCase();
           if (s.includes('saving')) return 'Savings';
@@ -213,7 +274,9 @@ export function SmartAddModal({ open, onClose, initialText = '' }: Props) {
         };
         const normalizeCurrencyCode = (c: unknown): string | undefined => {
           if (typeof c !== 'string') return undefined;
-          const u = c.trim().toUpperCase().replace(/[^A-Z]/g, '');
+          const trimmed = c.trim();
+          if (/€|\beuro?s?\b/i.test(trimmed)) return 'EUR';
+          const u = trimmed.toUpperCase().replace(/[^A-Z]/g, '');
           return u.length >= 3 ? u.slice(0, 3) : undefined;
         };
         const mapped: ParsedAction[] = serverResults.map((r: Record<string, unknown>) => {
@@ -243,6 +306,12 @@ export function SmartAddModal({ open, onClose, initialText = '' }: Props) {
             };
           }
           const legacy = r as Record<string, unknown>;
+          const acctId =
+            resolveAccountId(legacy.account) ??
+            accounts.find((a) => a.isPrimary)?.id ??
+            accounts[0]?.id;
+          const accObj = accounts.find((a) => a.id === acctId);
+          const txnCcy = normalizeCurrencyCode(legacy.currency) || accObj?.currency;
           return {
             actionType: (legacy.intent === 'TRANSACTION'
               ? 'transaction'
@@ -280,9 +349,15 @@ export function SmartAddModal({ open, onClose, initialText = '' }: Props) {
             confidence: typeof legacy.confidence === 'number' ? legacy.confidence : 0.9,
             needsClarification: false,
             rawText: text,
-            accountId: accounts.find((a) => a.name?.toLowerCase() === String(legacy.account ?? '').toLowerCase())?.id ?? accounts[0]?.id,
+            accountId: acctId,
+            transactionCurrency:
+              String(legacy.intent ?? 'TRANSACTION').toUpperCase() === 'TRANSACTION' && typeof txnCcy === 'string'
+                ? txnCcy
+                : undefined,
           };
         });
+        results = mapped;
+        didUseAI = mapped.length > 0;
       } catch (err) {
         console.error(err);
         toast('error', 'Smart Add AI unavailable', 'Using offline parsing. Check server AI configuration.');
@@ -333,7 +408,26 @@ export function SmartAddModal({ open, onClose, initialText = '' }: Props) {
           break;
         }
         case 'transaction':
-          if (a.amount > 0 && a.description.trim()) { addManualTransaction({ id: crypto.randomUUID(), merchant:a.description, amount:a.amount, type:a.type, category:a.category, date:a.date, status: 'confirmed', account: a.accountId || accounts[0]?.id }); inc('transaction'); }
+          if (a.amount > 0 && a.description.trim()) {
+            const ac = accounts.find((x) => x.id === (a.accountId || accounts[0]?.id));
+            const txCcy =
+              a.transactionCurrency ||
+              ac?.currency ||
+              userProfile.preferences?.currency ||
+              'INR';
+            addManualTransaction({
+              id: crypto.randomUUID(),
+              merchant: a.description,
+              amount: a.amount,
+              type: a.type,
+              category: a.category,
+              date: a.date,
+              status: 'confirmed',
+              account: a.accountId || accounts[0]?.id,
+              currency: typeof txCcy === 'string' ? txCcy.slice(0, 3).toUpperCase() : 'INR',
+            });
+            inc('transaction');
+          }
           break;
         case 'budget':
           if ((a.budgetLimit||a.amount) > 0) { addBudget({ id: crypto.randomUUID(), category:a.category, limit:a.budgetLimit||a.amount, spent:0, period:(a.budgetPeriod ? (a.budgetPeriod.charAt(0).toUpperCase() + a.budgetPeriod.slice(1)) : 'Monthly') as any, color:`hsl(${Math.random()*360},70%,50%)`, emoji: '📊' }); inc('budget'); }
@@ -518,14 +612,28 @@ export function SmartAddModal({ open, onClose, initialText = '' }: Props) {
                           })()}
 
                           {/* ── TRANSACTION ── */}
-                          {item.actionType==='transaction' && (<div className="grid grid-cols-2 sm:grid-cols-7 gap-2 sm:gap-3">
-                            <div className="col-span-1 sm:col-span-1"><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Type</label><button onClick={()=>updateItem(i,'type',item.type==='expense'?'income':'expense')} className={cn('w-full rounded-xl py-2 text-xs font-bold',item.type==='expense'?'bg-rose-100 text-rose-600':'bg-emerald-100 text-emerald-600')}>{item.type==='expense'?<span className="flex items-center justify-center gap-1"><ArrowDownRight className="h-3 w-3" />Exp</span>:<span className="flex items-center justify-center gap-1"><ArrowUpRight className="h-3 w-3" />Inc</span>}</button></div>
-                            <div className="col-span-1 sm:col-span-1"><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Amount {currSym}</label><input type="number" value={item.amount||''} onChange={e=>updateItem(i,'amount',parseFloat(e.target.value)||0)} className="w-full rounded-xl border border-slate-100 bg-slate-50/50 px-3 py-2 text-sm font-bold focus:border-emerald-300 focus:outline-none" min={0} /></div>
+                          {item.actionType==='transaction' && (() => {
+                            const selAcc = accounts.find((x) => x.id === (item.accountId || accounts[0]?.id));
+                            const rowSym = getCurrencySymbol(
+                              item.transactionCurrency || selAcc?.currency || userProfile.preferences?.currency || 'INR'
+                            );
+                            return (
+                          <div className="grid grid-cols-2 sm:grid-cols-7 gap-2 sm:gap-3">
+                            <div className="col-span-1 sm:col-span-1"><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Type</label><button type="button" onClick={()=>updateItem(i,'type',item.type==='expense'?'income':'expense')} className={cn('w-full rounded-xl py-2 text-xs font-bold',item.type==='expense'?'bg-rose-100 text-rose-600':'bg-emerald-100 text-emerald-600')}>{item.type==='expense'?<span className="flex items-center justify-center gap-1"><ArrowDownRight className="h-3 w-3" />Exp</span>:<span className="flex items-center justify-center gap-1"><ArrowUpRight className="h-3 w-3" />Inc</span>}</button></div>
+                            <div className="col-span-1 sm:col-span-1"><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Amount {rowSym}</label><input type="number" value={item.amount||''} onChange={e=>updateItem(i,'amount',parseFloat(e.target.value)||0)} className="w-full rounded-xl border border-slate-100 bg-slate-50/50 px-3 py-2 text-sm font-bold focus:border-emerald-300 focus:outline-none" min={0} /></div>
                             <div className="col-span-2 sm:col-span-2"><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Description</label><input value={item.description} onChange={e=>updateItem(i,'description',e.target.value)} className="w-full rounded-xl border border-slate-100 bg-slate-50/50 px-3 py-2 text-sm font-medium focus:border-emerald-300 focus:bg-white focus:outline-none" /></div>
-                            <div className="col-span-1 sm:col-span-1"><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Account</label><select value={item.accountId || accounts[0]?.id || ''} onChange={e=>updateItem(i,'accountId',e.target.value)} className="w-full rounded-xl border border-slate-100 bg-slate-50/50 px-2 py-2 text-sm font-medium appearance-none focus:outline-none">{accounts.map(acc=><option key={acc.id} value={acc.id}>{acc.name}</option>)}{!accounts.length && <option value="">Cash</option>}</select></div>
+                            <div className="col-span-1 sm:col-span-1"><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Account</label><select value={item.accountId || accounts[0]?.id || ''} onChange={(e)=>{
+                              const id = e.target.value;
+                              const acc = accounts.find((a) => a.id === id);
+                              setParsed((p) => p.map((t, ix) => ix !== i ? t : { ...t, accountId: id, transactionCurrency: acc?.currency ?? item.transactionCurrency }));
+                            }} className="w-full rounded-xl border border-slate-100 bg-slate-50/50 px-2 py-2 text-sm font-medium appearance-none focus:outline-none">{accounts.map(acc=><option key={acc.id} value={acc.id}>{acc.name}</option>)}{!accounts.length && <option value="">Cash</option>}</select>
+                            {selAcc ? <p className="text-[9px] text-slate-400 mt-0.5 truncate">{(selAcc.bank || '').trim() || 'Manual'} · {selAcc.currency || '—'}</p> : null}
+                            </div>
                             <div className="col-span-1 sm:col-span-1"><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Category</label><select value={item.category} onChange={e=>updateItem(i,'category',e.target.value)} className="w-full rounded-xl border border-slate-100 bg-slate-50/50 px-2 py-2 text-sm font-medium appearance-none focus:outline-none">{(item.type==='expense'?CATS_EXP:CATS_INC).map(c=><option key={c} value={c}>{c}</option>)}</select></div>
                             <div className="col-span-1 sm:col-span-1"><label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Date</label><input type="date" value={item.date} onChange={e=>updateItem(i,'date',e.target.value)} className="w-full rounded-xl border border-slate-100 bg-slate-50/50 px-2 py-2 text-sm font-medium focus:outline-none" /></div>
-                          </div>)}
+                          </div>
+                            );
+                          })()}
 
                           {/* ── BUDGET ── */}
                           {item.actionType==='budget' && (<div className="space-y-3">

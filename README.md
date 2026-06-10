@@ -62,10 +62,23 @@ Copy `.env.example` to `.env` and fill in all values:
 cp .env.example .env
 ```
 
+**Never commit `.env`, `.env.local`, or backups.** After `npm install`, a Git `pre-commit` hook is installed (`scripts/secrets-git-guard.mjs`) that blocks accidental `git add -f .env*` (excluding `.env.example`). Re-install anytime with `npm run git-hooks:install`.
+
+**CI:** [`.github/workflows/secrets.yml`](.github/workflows/secrets.yml) runs **Gitleaks** + **TruffleHog** on every PR/push to `main` and weekly on a schedule. **[Dependabot](.github/dependabot.yml)** opens weekly update PRs for npm (root, `packages/frontend`, `server`), Maven (`backend/`), and GitHub Actions.
+
+**Locally:** Install the [Gitleaks CLI](https://github.com/gitleaks/gitleaks#installing), then run `npm run secrets:scan`.
+
+Run `npm run env:lint` to ensure `.env.example` files do not duplicate keys (duplicate `KEY=` lines make the **last** value win and hide rotation bugs, e.g. two `NVIDIA_API_KEY` assignments).
+
+**Org settings:** In GitHub, enable **Secret scanning** + **Push protection**, and branch protection requiring the **Security — Secret scanning** workflow to pass ([`SECURITY.md`](SECURITY.md) checklist).
+
 Required variables:
 - `JWT_SECRET` — generate with: `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`
+- `KEY_ENCRYPTION_SECRET` — `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` (different per environment)
 - `NVIDIA_API_KEY` — get free at [build.nvidia.com](https://build.nvidia.com)
 - `DATABASE_URL` — Railway PostgreSQL (auto-injected when you add the addon)
+- `ALLOWED_ORIGINS` — frontend origins trusted by Express (`server/` CORS); comma-separated
+- `JAVA_ALLOWED_ORIGINS` — middleware origins only for Spring Boot CORS (`backend/`); defaults to `http://localhost:4000`
 - `JAVA_BACKEND_URL` — URL of your Spring Boot service on Railway
 - `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` — Supabase connection string
 
@@ -100,6 +113,8 @@ Java API: http://localhost:8080
 1. Add the `backend/` folder as a second Railway service
 2. It has `backend/nixpacks.toml` and `backend/railway.json`
 3. Set `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` from your Supabase project
+4. **`DDL_AUTO`** must be **`validate`** (omit or set explicitly). `update` / `create` / `create-drop` are refused at startup for PostgreSQL (`HibernateSchemaGuard`).
+5. Set **`JAVA_ALLOWED_ORIGINS`** to your deployed Node middleware URL (e.g. `https://your-middleware.up.railway.app`). Spring must only trust the middleware, not browser origins.
 
 ### Vercel (Frontend)
 

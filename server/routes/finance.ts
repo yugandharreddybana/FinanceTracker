@@ -2,12 +2,12 @@ import { Router, Request, Response } from "express";
 import { rateLimit } from "express-rate-limit";
 import fs from "fs";
 import path from "path";
-import { authMiddleware, verifiedEmailMiddleware } from "../routes/auth.js";
+import { authMiddleware } from "../middleware/auth.js";
 import { Redis } from "ioredis";
 import crypto from "crypto";
 
 const IS_PROD = process.env.NODE_ENV === "production";
-const DEBUG_PROXY = process.env.DEBUG_PROXY === "true";
+const DEBUG_PROXY = !IS_PROD && process.env.DEBUG_PROXY === "true";
 const STRICT_FINANCE_RATE_LIMIT =
   IS_PROD || process.env.STRICT_PROXY_RATE_LIMIT === "true";
 
@@ -37,7 +37,7 @@ function sanitizeUpstreamForClient(status: number, data: unknown): Record<string
 }
 
 function appendAgentDebugNdjson(payload: Record<string, unknown>) {
-  if (!DEBUG_PROXY) return;
+  if (IS_PROD || !DEBUG_PROXY) return;
   const line = JSON.stringify({ sessionId: "5c48c3", timestamp: Date.now(), ...payload }) + "\n";
   const tried: string[] = [];
   let cur = path.resolve(process.cwd());
@@ -58,7 +58,7 @@ function appendAgentDebugNdjson(payload: Record<string, unknown>) {
 }
 
 function proxyDebugIngest(payload: Record<string, unknown>) {
-  if (!DEBUG_PROXY) return;
+  if (IS_PROD || !DEBUG_PROXY) return;
   fetch("http://127.0.0.1:7877/ingest/45115c5e-d789-479b-b3a2-738882121ed7", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "5c48c3" },
@@ -70,7 +70,6 @@ const router = Router();
 
 // Auth guard — applied ONCE only (fix for FLAW #11: was applied twice)
 router.use(authMiddleware);
-router.use(verifiedEmailMiddleware);
 
 // General rate limit: 200 requests per 15 minutes per IP
 const financeLimiter = rateLimit({
@@ -452,13 +451,22 @@ router.delete("/user-profiles/by-email/:email", async (req, res) => {
     return res.status(403).json({ error: "Forbidden" });
   }
   try {
+    const authToken = req.headers.authorization ||
+      ((req as any).cookies?.auth_token ? `Bearer ${(req as any).cookies.auth_token}` : undefined);
+
     const del = await fetch(`${BACKEND_API}/user-profiles/by-email/${encodeURIComponent(req.params.email)}`, {
       method: "DELETE",
-      headers: { "X-User-Id": userId },
+      headers: { 
+        "X-User-Id": userId,
+        ...(authToken ? { "Authorization": authToken } : {})
+      },
     });
     await fetch(`${BACKEND_API}/user-profiles/purge/${encodeURIComponent(userId)}`, {
       method: "DELETE",
-      headers: { "X-User-Id": userId },
+      headers: { 
+        "X-User-Id": userId,
+        ...(authToken ? { "Authorization": authToken } : {})
+      },
     });
     res.status(del.status).send();
   } catch {

@@ -55,14 +55,16 @@ export function TopBar({
 }: Props) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { userProfile, getMonthlyIncome, getMonthlyExpenses } = useFinance();
+  const { userProfile, netWorthByCurrency, dashboardDisplayLens } = useFinance();
 
   const pageKey = location.pathname.split('/').pop() || 'dashboard';
   const page = PAGES[pageKey] ?? { title: pageLabel(pageKey), icon: LayoutDashboard };
   const PageIcon = page.icon;
 
-  const income = getMonthlyIncome();
-  const expenses = getMonthlyExpenses();
+  const barCurrency = dashboardDisplayLens;
+  const barNode = netWorthByCurrency[barCurrency];
+  const income = barNode?.income ?? 0;
+  const expenses = barNode?.expenses ?? 0;
 
   const initials = userProfile.name.split(' ').map((n) => n[0]).join('').toUpperCase();
 
@@ -99,9 +101,15 @@ export function TopBar({
 
       <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
         <div className="hidden xl:flex items-center gap-3 mr-2 text-xs font-bold">
-          <span className="text-emerald-600">↑{formatCurrency(income)}</span>
+          <span
+            className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 font-black text-[10px] text-slate-500 tabular-nums"
+            title={`This month in ${barCurrency}`}
+          >
+            {barCurrency}
+          </span>
+          <span className="text-emerald-600 tabular-nums">↑{formatCurrency(income, barCurrency)}</span>
           <span className="text-slate-200">|</span>
-          <span className="text-rose-500">↓{formatCurrency(expenses)}</span>
+          <span className="text-rose-500">↓{formatCurrency(expenses, barCurrency)}</span>
         </div>
 
         <button

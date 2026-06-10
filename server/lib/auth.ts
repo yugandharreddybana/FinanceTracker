@@ -1,45 +1,14 @@
 /**
- * auth.ts — Core authentication library
+ * auth.ts — Core authentication library proxying to Java Spring backend.
  *
- * Tokens: HS256 JWT signed with shared {@code JWT_SECRET}, interoperable with
+ * Tokens: HS256 JWT signed locally with shared {@code JWT_SECRET}, interoperable with
  * {@code JwtAuthenticationFilter} on the Java backend (same algorithm + secret).
- *
- * Optional per-request ECDSA request-signing (“Layer 2”) exists in
- * {@code server/middleware/auth.ts} for hardened deployments — clients must opt in.
  */
 
-import dotenv from "dotenv";
 import crypto from "crypto";
-import fs from "fs";
-import path from "path";
-import { getServerKeyPair, generateUserKeyPair, UserKeyPair } from "./keyManager.js";
-dotenv.config();
+import { redis } from "./redis.js";
 
-// Ensure env is loaded even when started from server subdirectory
-if (!process.env.KEY_ENCRYPTION_SECRET) {
-  const rootEnv = path.join(process.cwd(), "..", ".env");
-  const localEnv = path.join(process.cwd(), ".env");
-  if (fs.existsSync(rootEnv)) dotenv.config({ path: rootEnv });
-  else if (fs.existsSync(localEnv)) dotenv.config({ path: localEnv });
-}
-
-// Eagerly initialise the server keypair at module load — fail fast if config is missing
-getServerKeyPair();
-
-const IS_PROD = process.env.NODE_ENV === "production";
-const ALLOW_INSECURE_FILE_AUTH_STORE = process.env.ALLOW_INSECURE_FILE_AUTH_STORE === "true";
-const HAS_DATABASE_URL = !!process.env.DATABASE_URL;
-if (IS_PROD && !HAS_DATABASE_URL && !ALLOW_INSECURE_FILE_AUTH_STORE) {
-  throw new Error(
-    "Refusing to start in production without DATABASE_URL. Set ALLOW_INSECURE_FILE_AUTH_STORE=true only for a deliberate JSON fallback."
-  );
-}
-
-const USERS_FILE = path.join(process.cwd(), "data", "users.json");
-
-// PBKDF2 strength — OWASP 2023 minimum for SHA-512 is 210k; we use 600k for headroom.
-const PBKDF2_ITERATIONS = 600_000;
-const LEGACY_PBKDF2_ITERATIONS = 100_000;
+const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8081";
 
 export interface Authenticator {
   credentialID: string;
@@ -57,86 +26,86 @@ export interface StoredUser {
   passwordHash: string;
   salt: string;
   createdAt: string;
-  // ECDSA P-256 public key (SPKI PEM) — used to verify per-operation request signatures
-  ecPublicKey?: string;
   authenticators?: Authenticator[];
   hashIterations?: number;
   emailVerified?: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// In-memory user cache — populated once from disk on module load
-// ---------------------------------------------------------------------------
-let userCache: StoredUser[] = [];
-
-let isSaving = false;
-const writeQueue: Array<{ data: string; resolve: () => void; reject: (e: Error) => void }> = [];
-
-function processWriteQueue() {
-  if (writeQueue.length === 0) { isSaving = false; return; }
-  isSaving = true;
-  const { data, resolve, reject } = writeQueue.shift()!;
-  ensureDataDir();
-  fs.writeFile(USERS_FILE, data, "utf-8", (err) => {
-    if (err) { console.error("[auth] Failed to persist users:", err); reject(err); }
-    else { resolve(); }
-    processWriteQueue();
-  });
-}
-
-function ensureDataDir() {
-  const dir = path.dirname(USERS_FILE);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-}
-
-function loadUsers(): StoredUser[] { return userCache; }
-
-function saveUsers(users: StoredUser[]): Promise<void> {
-  userCache = [...users];
-  const data = JSON.stringify(users, null, 2);
-  return new Promise<void>((resolve, reject) => {
-    writeQueue.push({ data, resolve, reject });
-    if (!isSaving) processWriteQueue();
-  });
-}
-
-function initCache() {
-  ensureDataDir();
-  if (fs.existsSync(USERS_FILE)) {
-    try { userCache = JSON.parse(fs.readFileSync(USERS_FILE, "utf-8")); }
-    catch { userCache = []; }
-  }
-}
-initCache();
-
-function hashPassword(password: string, salt: string, iterations: number = PBKDF2_ITERATIONS): string {
-  return crypto.pbkdf2Sync(password, salt, iterations, 64, "sha512").toString("hex");
-}
-
-function safeHashEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a, "hex");
-  const bufB = Buffer.from(b, "hex");
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
+  passwordChangedAt?: string;
 }
 
 // ---------------------------------------------------------------------------
 // HS256 JWT — signed with shared secret for backend interoperability
 // ---------------------------------------------------------------------------
 
+export const cookieOptions = {
+  httpOnly: true,
+  sameSite: "lax" as const,
+  secure: process.env.NODE_ENV === "production",
+  maxAge: 900000, // Phase2.0008: 15 minutes (short-lived access tokens)
+  path: "/",
+  ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
+};
+
+export const refreshTokenCookieOptions = {
+  httpOnly: true,
+  sameSite: "lax" as const,
+  secure: process.env.NODE_ENV === "production",
+  maxAge: 604800000, // Phase2.0008: 7 days (rotating refresh tokens)
+  path: "/",
+  ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
+};
+
 /**
  * Issues an HS256 JWT signed with the shared process.env.JWT_SECRET.
  * Matches the Java backend configuration in JwtAuthenticationFilter.java.
- * The token carries: uid, email, name, iat, exp.
+ * The token carries: uid, email, name, iat, exp, and rolling lastActivityAt.
  */
-export function createToken(payload: { uid: string; email: string; name: string }): string {
+export function createToken(payload: { uid: string; email: string; name: string }, lastActivityAt?: number): string {
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error("JWT_SECRET is not configured in environment.");
   
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
   const now = Math.floor(Date.now() / 1000);
   const body = Buffer.from(
-    JSON.stringify({ ...payload, iat: now, exp: now + 86400 })
+    JSON.stringify({
+      ...payload,
+      iat: now,
+      nbf: now, // Phase2.0007: Not Before claim
+      exp: now + 900, // Phase2.0008: shortened to 15 minutes for access token
+      lastActivityAt: lastActivityAt || now, // CRITICAL FIX for 2.012: Server-side Inactivity Claim
+      iss: "finance-tracker-auth",
+      aud: "finance-tracker-api",
+    })
+  ).toString("base64url");
+  
+  const signingInput = `${header}.${body}`;
+  const signature = crypto.createHmac("sha256", secret)
+    .update(signingInput)
+    .digest("base64url");
+    
+  return `${header}.${body}.${signature}`;
+}
+
+/**
+ * Phase3.0004: Issues a short-lived (60s) system-to-system JWT token to authenticate
+ * internal Node-to-Java API calls using the shared JWT_SECRET.
+ */
+export function createSystemToken(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error("JWT_SECRET is not configured in environment.");
+  
+  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+  const now = Math.floor(Date.now() / 1000);
+  const body = Buffer.from(
+    JSON.stringify({
+      uid: "system-internal",
+      email: "system-internal@financetracker.local",
+      name: "System Internal Service",
+      iat: now,
+      nbf: now,
+      exp: now + 60, // 60 seconds
+      iss: "finance-tracker-auth",
+      aud: "finance-tracker-api",
+    })
   ).toString("base64url");
   
   const signingInput = `${header}.${body}`;
@@ -151,7 +120,7 @@ export function createToken(payload: { uid: string; email: string; name: string 
  * Verifies an HS256 JWT using the shared secret.
  * Performs timing-safe signature comparison and validation of timestamps and schema.
  */
-export function verifyToken(token: string): { uid: string; email: string; name: string } | null {
+export function verifyToken(token: string): { uid: string; email: string; name: string; iat?: number; lastActivityAt?: number } | null {
   try {
     const secret = process.env.JWT_SECRET;
     if (!secret) {
@@ -163,11 +132,10 @@ export function verifyToken(token: string): { uid: string; email: string; name: 
     if (parts.length !== 3) return null;
     const [header, body, signature] = parts;
 
-    // Verify algorithm claim matches expected HS256
+    // Verify algorithm claim matches expected HS256 and typ matches JWT if present
     const headerObj = JSON.parse(Buffer.from(header, "base64url").toString());
-    if (headerObj.alg !== "HS256") {
-      return null;
-    }
+    if (headerObj.alg !== "HS256") return null;
+    if (!headerObj.typ || headerObj.typ.toUpperCase() !== "JWT") return null;
 
     const signingInput = `${header}.${body}`;
     const sigDecoded = Buffer.from(signature, "base64url");
@@ -184,32 +152,39 @@ export function verifyToken(token: string): { uid: string; email: string; name: 
     // Guard against slight clock drift on iat (max 60 sec into the future)
     if (typeof p.iat !== "number" || p.iat > now + 60) return null;
     
+    // Phase2.0007: Token must not be used before its nbf (Not Before) claim
+    if (typeof p.nbf === "number" && p.nbf > now + 60) return null;
+    
+    // CRITICAL FIX for 2.012: Server-side Inactivity Check (1 hour max idle)
+    if (typeof p.lastActivityAt === "number") {
+      const idleSeconds = now - p.lastActivityAt;
+      if (idleSeconds > 3600) {
+        console.warn(`[verifyToken] Token for ${p.email} rejected due to inactivity (${idleSeconds}s idle)`);
+        return null;
+      }
+    }
+
+    // Validate iss and aud claims
+    if (p.iss !== "finance-tracker-auth") return null;
+    if (p.aud !== "finance-tracker-api") return null;
+    
     if (typeof p.uid !== "string" || p.uid.length === 0) return null;
     if (typeof p.email !== "string" || p.email.length === 0) return null;
     if (typeof p.name !== "string") return null;
 
-    return { uid: p.uid, email: p.email, name: p.name };
+    return { uid: p.uid, email: p.email, name: p.name, iat: p.iat, lastActivityAt: p.lastActivityAt };
   } catch {
     return null;
   }
 }
 
 // ---------------------------------------------------------------------------
-// User registration / login
+// User registration / login proxied to Spring Backend
 // ---------------------------------------------------------------------------
 
 export interface RegisterResult {
   user: { uid: string; email: string; name: string };
   token: string;
-  /**
-   * ECDSA P-256 private key (PKCS8 PEM) for the user's own keypair.
-   * Returned EXACTLY ONCE on registration — never stored server-side.
-   * The client must store this securely (e.g., encrypted in localStorage or
-   * a hardware-backed key store). It is used to sign per-operation requests.
-   */
-  userPrivateKey: string;
-  /** SPKI PEM of the user's public key — stored server-side for signature verification. */
-  userPublicKey: string;
 }
 
 export async function registerUser(
@@ -217,175 +192,299 @@ export async function registerUser(
   password: string,
   name: string
 ): Promise<RegisterResult> {
-  const users = loadUsers();
-  if (users.find((u) => u.email === email)) {
-    throw new Error("An account with this email already exists");
+  const res = await fetch(`${BACKEND_URL}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, name }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Registration failed");
   }
-  const salt = crypto.randomBytes(32).toString("hex");
-  const uid = crypto.randomUUID();
-
-  // Generate user's ECDSA P-256 keypair — analogous to a blockchain wallet
-  const userKeys: UserKeyPair = generateUserKeyPair();
-
-  const user: StoredUser = {
-    uid,
-    email,
-    name,
-    passwordHash: hashPassword(password, salt, PBKDF2_ITERATIONS),
-    salt,
-    createdAt: new Date().toISOString(),
-    hashIterations: PBKDF2_ITERATIONS,
-    emailVerified: false,
-    ecPublicKey: userKeys.publicKey, // stored; used for per-op signature verification
-  };
-  users.push(user);
-  await saveUsers(users);
-  const token = createToken({ uid, email, name });
-  return {
-    user: { uid, email, name },
-    token,
-    userPrivateKey: userKeys.privateKey, // issued once — not stored server-side
-    userPublicKey: userKeys.publicKey,
-  };
+  const user: any = await res.json();
+  const mappedUser = { uid: user.id, email: user.email, name: user.displayName || "" };
+  const token = createToken(mappedUser);
+  return { user: mappedUser, token };
 }
 
 export interface LoginResult {
   user: { uid: string; email: string; name: string };
   token: string;
-  /**
-   * The user's ECDSA public key is returned on login so the client can confirm
-   * it holds the corresponding private key.  The private key itself is NEVER
-   * returned post-registration — the client is responsible for its custody.
-   */
-  userPublicKey: string;
 }
 
 export async function loginUser(email: string, password: string): Promise<LoginResult> {
-  const users = loadUsers();
-  const idx = users.findIndex((u) => u.email === email);
-  if (idx === -1) {
-    hashPassword(password, "dummy-salt-for-timing-equalisation", PBKDF2_ITERATIONS);
+  const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) {
     throw new Error("Invalid email or password");
   }
-  const user = users[idx];
-  const iterations = user.hashIterations ?? LEGACY_PBKDF2_ITERATIONS;
-  const hash = hashPassword(password, user.salt, iterations);
-  if (!safeHashEqual(hash, user.passwordHash)) {
-    throw new Error("Invalid email or password");
+  const user: any = await res.json();
+  const mappedUser = { uid: user.id, email: user.email, name: user.displayName || "" };
+  const token = createToken(mappedUser);
+  return { user: mappedUser, token };
+}
+
+async function extractErrorText(res: any, fallback: string): Promise<string> {
+  try {
+    const text = await res.text();
+    try {
+      const parsed = JSON.parse(text);
+      return parsed.error || parsed.message || text || fallback;
+    } catch {
+      return text || fallback;
+    }
+  } catch {
+    return fallback;
   }
-  // Lazy rehash: upgrade legacy hashes to current iteration count
-  if (iterations < PBKDF2_ITERATIONS) {
-    const newSalt = crypto.randomBytes(32).toString("hex");
-    users[idx] = {
-      ...user,
-      salt: newSalt,
-      passwordHash: hashPassword(password, newSalt, PBKDF2_ITERATIONS),
-      hashIterations: PBKDF2_ITERATIONS,
-    };
-    await saveUsers(users);
-  }
-  const token = createToken({ uid: user.uid, email: user.email, name: user.name });
-  return {
-    user: { uid: user.uid, email: user.email, name: user.name },
-    token,
-    userPublicKey: user.ecPublicKey ?? "",
-  };
 }
 
 export async function changeUserPassword(
-  email: string,
-  currentPassword: string,
+  userId: string,
+  oldPassword: string,
   newPassword: string
 ): Promise<void> {
-  const users = loadUsers();
-  const idx = users.findIndex((u) => u.email === email);
-  if (idx === -1) throw new Error("User not found");
-  const user = users[idx];
-  const iterations = user.hashIterations ?? LEGACY_PBKDF2_ITERATIONS;
-  const currentHash = hashPassword(currentPassword, user.salt, iterations);
-  if (!safeHashEqual(currentHash, user.passwordHash)) {
-    throw new Error("Current password is incorrect");
+  const res = await fetch(`${BACKEND_URL}/api/auth/change-password`, {
+    method: "POST",
+    headers: { 
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${createSystemToken()}`
+    },
+    body: JSON.stringify({ userId, oldPassword, newPassword }),
+  });
+  if (!res.ok) {
+    const errMessage = await extractErrorText(res, "Password update failed");
+    throw new Error(errMessage);
   }
-  const newSalt = crypto.randomBytes(32).toString("hex");
-  users[idx] = {
-    ...user,
-    salt: newSalt,
-    passwordHash: hashPassword(newPassword, newSalt, PBKDF2_ITERATIONS),
-    hashIterations: PBKDF2_ITERATIONS,
-  };
-  await saveUsers(users);
 }
 
 export async function resetUserPassword(email: string, newPassword: string): Promise<void> {
-  const users = loadUsers();
-  const idx = users.findIndex((u) => u.email === email);
-  if (idx === -1) throw new Error("User not found");
-  const newSalt = crypto.randomBytes(32).toString("hex");
-  users[idx] = {
-    ...users[idx],
-    salt: newSalt,
-    passwordHash: hashPassword(newPassword, newSalt, PBKDF2_ITERATIONS),
-    hashIterations: PBKDF2_ITERATIONS,
-  };
-  await saveUsers(users);
+  const res = await fetch(`${BACKEND_URL}/api/auth/reset-password`, {
+    method: "POST",
+    headers: { 
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${createSystemToken()}`
+    },
+    body: JSON.stringify({ email, newPassword }),
+  });
+  if (!res.ok) {
+    const errMessage = await extractErrorText(res, "Password reset failed");
+    throw new Error(errMessage);
+  }
 }
+
 
 export async function deleteUserByEmail(email: string): Promise<boolean> {
-  const users = loadUsers();
-  const next = users.filter((u) => u.email !== email);
-  if (next.length === users.length) return false;
-  await saveUsers(next);
-  return true;
+  const res = await fetch(`${BACKEND_URL}/api/auth/by-email?email=${encodeURIComponent(email)}`, {
+    method: "DELETE",
+    headers: {
+      "Authorization": `Bearer ${createSystemToken()}`
+    }
+  });
+  return res.ok;
 }
 
-export function findUserByEmail(email: string): StoredUser | undefined {
-  return loadUsers().find((u) => u.email === email);
+export async function findUserByEmail(email: string): Promise<StoredUser | undefined> {
+  const res = await fetch(`${BACKEND_URL}/api/auth/find-user?email=${encodeURIComponent(email)}`, {
+    headers: {
+      "Authorization": `Bearer ${createSystemToken()}`
+    }
+  });
+  if (res.status === 404) return undefined;
+  if (!res.ok) return undefined;
+  const user: any = await res.json();
+  return {
+    uid: user.id,
+    email: user.email,
+    name: user.displayName || "",
+    passwordHash: user.passwordHash || "",
+    salt: user.salt || "",
+    createdAt: user.createdAt || "",
+    hashIterations: user.hashIterations,
+    emailVerified: user.emailVerified,
+    passwordChangedAt: user.passwordChangedAt,
+  };
 }
 
-export function findUserById(uid: string): StoredUser | undefined {
-  return loadUsers().find((u) => u.uid === uid);
+export async function findUserById(uid: string): Promise<StoredUser | undefined> {
+  const res = await fetch(`${BACKEND_URL}/api/auth/find-user-by-id?id=${encodeURIComponent(uid)}`, {
+    headers: {
+      "Authorization": `Bearer ${createSystemToken()}`
+    }
+  });
+  if (res.status === 404) return undefined;
+  if (!res.ok) return undefined;
+  const user: any = await res.json();
+  return {
+    uid: user.id,
+    email: user.email,
+    name: user.displayName || "",
+    passwordHash: user.passwordHash || "",
+    salt: user.salt || "",
+    createdAt: user.createdAt || "",
+    hashIterations: user.hashIterations,
+    emailVerified: user.emailVerified,
+    passwordChangedAt: user.passwordChangedAt,
+  };
 }
 
 export async function markEmailVerified(email: string): Promise<boolean> {
-  const users = loadUsers();
-  const idx = users.findIndex((u) => u.email === email);
-  if (idx === -1) return false;
-  users[idx] = { ...users[idx], emailVerified: true };
-  await saveUsers(users);
-  return true;
+  const res = await fetch(`${BACKEND_URL}/api/auth/verify-email`, {
+    method: "POST",
+    headers: { 
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${createSystemToken()}`
+    },
+    body: JSON.stringify({ email }),
+  });
+  return res.ok;
 }
 
-export function saveUserAuthenticator(email: string, authenticator: Authenticator): void {
-  const users = loadUsers();
-  const idx = users.findIndex((u) => u.email === email);
-  if (idx === -1) throw new Error("User not found");
-  if (!users[idx].authenticators) users[idx].authenticators = [];
-  const existingIdx = users[idx].authenticators!.findIndex(a => a.credentialID === authenticator.credentialID);
-  if (existingIdx !== -1) users[idx].authenticators![existingIdx] = authenticator;
-  else users[idx].authenticators!.push(authenticator);
-  saveUsers(users);
+// ---------------------------------------------------------------------------
+// Rotating Refresh Tokens — State stored in Redis with local memory fallback
+// ---------------------------------------------------------------------------
+
+interface RefreshTokenData {
+  uid: string;
+  email: string;
+  name: string;
+  createdAt: number;
+  lastActivityAt: number;
 }
 
-export function deleteUserAuthenticators(email: string): void {
-  const users = loadUsers();
-  const idx = users.findIndex((u) => u.email === email);
-  if (idx === -1) return;
-  users[idx].authenticators = [];
-  saveUsers(users);
+const devRefreshTokens = new Map<string, RefreshTokenData>();
+
+// Map user ID -> list of active refresh tokens for revocation
+const devUserTokens = new Map<string, Set<string>>();
+
+export async function createRefreshToken(payload: { uid: string; email: string; name: string }): Promise<string> {
+  const token = crypto.randomBytes(32).toString("hex");
+  const now = Math.floor(Date.now() / 1000);
+  const data: RefreshTokenData = {
+    ...payload,
+    createdAt: now,
+    lastActivityAt: now
+  };
+
+  if (redis) {
+    const pipeline = redis.pipeline();
+    pipeline.setex(`rt:${token}`, 7 * 86400, JSON.stringify(data));
+    pipeline.sadd(`user_tokens:${payload.uid}`, token);
+    pipeline.expire(`user_tokens:${payload.uid}`, 7 * 86400);
+    await pipeline.exec();
+  } else {
+    devRefreshTokens.set(token, data);
+    if (!devUserTokens.has(payload.uid)) {
+      devUserTokens.set(payload.uid, new Set());
+    }
+    devUserTokens.get(payload.uid)!.add(token);
+    
+    // Local TTL emulation (cleanup expired tokens periodically or inline)
+    setTimeout(() => {
+      devRefreshTokens.delete(token);
+      devUserTokens.get(payload.uid)?.delete(token);
+    }, 7 * 86400 * 1000);
+  }
+
+  return token;
 }
 
-/**
- * Rotates the user's ECDSA keypair.
- * Returns the new private key (issued once — client must store securely).
- * Called after a compromised-key event or on explicit user request.
- */
-export async function rotateUserKeyPair(uid: string): Promise<{ userPrivateKey: string; userPublicKey: string }> {
-  const users = loadUsers();
-  const idx = users.findIndex((u) => u.uid === uid);
-  if (idx === -1) throw new Error("User not found");
-  const { generateUserKeyPair: genKP } = await import("./keyManager.js");
-  const newKeys = genKP();
-  users[idx] = { ...users[idx], ecPublicKey: newKeys.publicKey };
-  await saveUsers(users);
-  return { userPrivateKey: newKeys.privateKey, userPublicKey: newKeys.publicKey };
+export async function verifyAndRotateRefreshToken(oldToken: string): Promise<{ payload: { uid: string; email: string; name: string }; newToken: string } | null> {
+  let data: RefreshTokenData | null = null;
+  
+  if (redis) {
+    const raw = await redis.get(`rt:${oldToken}`);
+    if (raw) {
+      try { data = JSON.parse(raw); } catch {}
+    }
+  } else {
+    const d = devRefreshTokens.get(oldToken);
+    if (d) data = d;
+  }
+
+  if (!data) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  
+  // Enforce Phase2.012: 1-hour server-side inactivity limit
+  if (now - data.lastActivityAt > 3600) {
+    console.warn(`[refresh] Revoking session for ${data.email} due to 1-hour inactivity`);
+    await revokeRefreshToken(oldToken, data.uid);
+    return null;
+  }
+
+  // Delete old token (Rotation!)
+  await revokeRefreshToken(oldToken, data.uid);
+
+  // Check if user exists and hasn't rotated password (Phase2.0009)
+  const user = await findUserByEmail(data.email);
+  if (!user) return null;
+  
+  // Phase2.0009: check password rotation / reset
+  if (user.passwordChangedAt) {
+    const changedTime = new Date(user.passwordChangedAt).getTime() / 1000;
+    if (data.createdAt < changedTime - 5) {
+      console.warn(`[refresh] Revoking session for ${data.email} due to password change`);
+      await revokeAllUserSessions(data.uid);
+      return null;
+    }
+  }
+
+  // Generate new refresh token with updated lastActivityAt
+  const newToken = await createRefreshToken({ uid: data.uid, email: data.email, name: data.name });
+  
+  // Update the lastActivityAt state explicitly for the newly created token
+  if (redis) {
+    const updatedData = { ...data, lastActivityAt: now };
+    await redis.setex(`rt:${newToken}`, 7 * 86400, JSON.stringify(updatedData));
+  } else {
+    const entry = devRefreshTokens.get(newToken);
+    if (entry) entry.lastActivityAt = now;
+  }
+
+  return {
+    payload: { uid: data.uid, email: data.email, name: data.name },
+    newToken
+  };
 }
+
+export async function revokeRefreshToken(token: string, uid?: string) {
+  if (redis) {
+    const pipeline = redis.pipeline();
+    pipeline.del(`rt:${token}`);
+    if (uid) {
+      pipeline.srem(`user_tokens:${uid}`, token);
+    }
+    await pipeline.exec();
+  } else {
+    devRefreshTokens.delete(token);
+    if (uid) {
+      devUserTokens.get(uid)?.delete(token);
+    }
+  }
+}
+
+export async function revokeAllUserSessions(uid: string) {
+  if (redis) {
+    const tokens = await redis.smembers(`user_tokens:${uid}`);
+    if (tokens.length > 0) {
+      const pipeline = redis.pipeline();
+      for (const t of tokens) {
+        pipeline.del(`rt:${t}`);
+      }
+      pipeline.del(`user_tokens:${uid}`);
+      await pipeline.exec();
+    }
+  } else {
+    const tokens = devUserTokens.get(uid);
+    if (tokens) {
+      for (const t of tokens) {
+        devRefreshTokens.delete(t);
+      }
+      devUserTokens.delete(uid);
+    }
+  }
+}
+

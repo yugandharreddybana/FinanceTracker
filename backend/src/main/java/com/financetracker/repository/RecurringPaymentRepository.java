@@ -15,7 +15,7 @@ public interface RecurringPaymentRepository extends JpaRepository<RecurringPayme
     // ISSUE #2 FIX: Finds all active payments whose dueDate is on or before today
     @Query("SELECT r FROM RecurringPayment r WHERE r.deleted = false " +
         "AND r.status != 'CANCELLED' " +
-        "AND CAST(r.dueDate AS java.time.LocalDate) <= :today")
+        "AND r.dueDate <= :today")
     List<RecurringPayment> findAllDueOn(@Param("today") LocalDate today);
 
     @Modifying

@@ -11,7 +11,13 @@ import {
   createToken,
   markEmailVerified,
   findUserByEmail,
+  cookieOptions,
+  refreshTokenCookieOptions,
+  createRefreshToken,
+  revokeRefreshToken,
+  revokeAllUserSessions,
 } from "../lib/auth.js";
+import { authMiddleware } from "../middleware/auth.js";
 import { Redis } from "ioredis";
 
 const IS_PROD = process.env.NODE_ENV === "production";
@@ -56,12 +62,15 @@ async function storeOtp(email: string, otp: string): Promise<void> {
 async function validateOtp(email: string, otp: string): Promise<boolean> {
   const incoming = crypto.createHash("sha256").update(otp).digest("hex");
   if (redis) {
-    const stored = await redis.get(`otp:${email}`);
+    const key = `otp:${email}`;
+    // Phase2.014: burn code atomically using GETDEL to guarantee strict single-use property and prevent race conditions
+    const stored = await (redis as any).getdel(key);
     if (!stored) return false;
     return crypto.timingSafeEqual(Buffer.from(stored, "utf8"), Buffer.from(incoming, "utf8"));
   }
   const record = memOtpStore.get(email);
   if (!record || Date.now() > record.expires) return false;
+  memOtpStore.delete(email); // Phase2.014: burn in-memory token immediately on retrieval
   return crypto.timingSafeEqual(Buffer.from(record.otpHash, "utf8"), Buffer.from(incoming, "utf8"));
 }
 
@@ -160,10 +169,8 @@ async function storeVerificationToken(email: string): Promise<string> {
 
 async function consumeVerificationToken(token: string): Promise<string | null> {
   if (redis) {
-    const email = await redis.get(`verify:${token}`);
-    if (!email) return null;
-    await redis.del(`verify:${token}`);
-    return email;
+    // Phase2.014: atomic check-and-burn via GETDEL to prevent concurrency bypasses
+    return await (redis as any).getdel(`verify:${token}`);
   }
   const rec = memVerifyTokenStore.get(token);
   if (!rec || rec.expires < Date.now()) return null;
@@ -186,10 +193,8 @@ async function storeResetToken(email: string): Promise<string> {
 
 async function consumeResetToken(token: string): Promise<string | null> {
   if (redis) {
-    const email = await redis.get(`reset_tok:${token}`);
-    if (!email) return null;
-    await redis.del(`reset_tok:${token}`);
-    return email;
+    // Phase2.014: atomic check-and-burn via GETDEL to prevent concurrency bypasses
+    return await (redis as any).getdel(`reset_tok:${token}`);
   }
   const rec = memResetTokenStore.get(token);
   if (!rec || rec.expires < Date.now()) return null;
@@ -268,58 +273,6 @@ const sensitiveLimiter = rateLimit({
   message: { error: "Too many requests, please try again later" },
 });
 
-const cookieOptions = {
-  httpOnly: true,
-  sameSite: "strict" as const,
-  secure: process.env.NODE_ENV === "production",
-  maxAge: 86400000,
-  ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
-};
-
-export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  let token: string | undefined;
-  const authHeader = req.headers.authorization;
-  if (authHeader?.startsWith("Bearer ")) {
-    token = authHeader.slice(7);
-  } else if ((req as any).cookies?.auth_token) {
-    token = (req as any).cookies.auth_token;
-  }
-  if (!token) {
-    res.status(401).json({ error: "Unauthorized: missing token" });
-    return;
-  }
-  const payload = verifyToken(token);
-  if (!payload) {
-    res.status(401).json({ error: "Unauthorized: invalid or expired token" });
-    return;
-  }
-  (req as any).user = payload;
-  next();
-};
-
-export const verifiedEmailMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  const payload = (req as any).user as { email?: string } | undefined;
-  if (!payload?.email) {
-    res.status(401).json({ error: "Unauthorized: missing user context" });
-    return;
-  }
-
-  const allowDemoBypass =
-    payload.email === "demo@yugifinance.com" &&
-    (!IS_PROD || process.env.ALLOW_DEMO_EMAIL_VERIFICATION_BYPASS === "true");
-  if (allowDemoBypass) {
-    next();
-    return;
-  }
-
-  const stored = findUserByEmail(payload.email);
-  if (stored?.emailVerified === false) {
-    res.status(403).json({ error: "Email verification required" });
-    return;
-  }
-
-  next();
-};
 
 const router = Router();
 
@@ -356,7 +309,9 @@ router.post("/register", authLimiter, async (req: Request, res: Response) => {
       }
     }
 
+    const rfToken = await createRefreshToken({ uid: result.user.uid, email: result.user.email, name: result.user.name });
     res.cookie("auth_token", result.token, cookieOptions);
+    res.cookie("refresh_token", rfToken, refreshTokenCookieOptions);
     res.json({ user: result.user });
   } catch (err: any) {
     if (err.message === "An account with this email already exists") {
@@ -385,7 +340,9 @@ router.post("/login", authLimiter, async (req: Request, res: Response) => {
     try {
       const result = await loginUser(email, password);
       await clearFailureCount(email);
+      const rfToken = await createRefreshToken({ uid: result.user.uid, email: result.user.email, name: result.user.name });
       res.cookie("auth_token", result.token, cookieOptions);
+      res.cookie("refresh_token", rfToken, refreshTokenCookieOptions);
       res.json({ user: result.user });
     } catch (err: any) {
       if (err.message === "Invalid email or password") {
@@ -404,20 +361,31 @@ router.post("/login", authLimiter, async (req: Request, res: Response) => {
   }
 });
 
-router.post("/logout", sensitiveLimiter, (_req: Request, res: Response) => {
-  res.clearCookie("auth_token", {
-    httpOnly: true,
-    sameSite: "strict" as const,
-    secure: process.env.NODE_ENV === "production",
-    ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
-  });
+router.post("/logout", sensitiveLimiter, async (req: Request, res: Response) => {
+  const rt = (req as any).cookies?.refresh_token;
+  if (rt) {
+    try {
+      let token: string | undefined = (req as any).cookies?.auth_token;
+      let uid: string | undefined;
+      if (token) {
+        const payload = verifyToken(token);
+        if (payload) uid = payload.uid;
+      }
+      await revokeRefreshToken(rt, uid);
+    } catch (e) {
+      console.error("[logout] Refresh token revocation failed:", e);
+    }
+  }
+
+  res.clearCookie("auth_token", cookieOptions);
+  res.clearCookie("refresh_token", refreshTokenCookieOptions);
   res.json({ ok: true });
 });
 
-router.get("/me", sensitiveLimiter, (req: Request, res: Response) => {
+router.get("/me", sensitiveLimiter, async (req: Request, res: Response) => {
   let token: string | undefined;
   const authHeader = req.headers.authorization;
-  if (authHeader?.startsWith("Bearer ")) {
+  if (authHeader && /^bearer /i.test(authHeader)) {
     token = authHeader.slice(7);
   } else if ((req as any).cookies?.auth_token) {
     token = (req as any).cookies.auth_token;
@@ -434,7 +402,7 @@ router.get("/me", sensitiveLimiter, (req: Request, res: Response) => {
     return;
   }
 
-  const stored = findUserByEmail(payload.email);
+  const stored = await findUserByEmail(payload.email);
   res.json({
     user: {
       uid: payload.uid,
@@ -467,6 +435,7 @@ router.post("/verify-email", authLimiter, async (req: Request, res: Response) =>
 // to stdout — that would leak to log aggregators if NODE_ENV is misconfigured.
 // Operators in dev can read the OTP via Redis CLI: `GET otp:<email>`.
 router.post("/forgot-password", forgotPasswordLimiter, async (req: Request, res: Response) => {
+  const startTime = Date.now();
   const { email } = req.body;
   if (!email) {
     res.status(400).json({ error: "Email is required" });
@@ -475,20 +444,31 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req: Request, res:
   if (IS_PROD && !emailDeliveryConfigured()) {
     return res.status(503).json({ error: "Password reset is temporarily unavailable" });
   }
-  const otp = String(crypto.randomInt(100000, 1000000));
-  await storeOtp(email, otp);
-  const resetToken = await storeResetToken(email);
-  const frontendBase = (process.env.FRONTEND_URL || "").split(",")[0].trim();
-  const resetPath = `/reset-password?token=${encodeURIComponent(resetToken)}`;
-  const resetLink = frontendBase ? `${frontendBase.replace(/\/$/, "")}${resetPath}` : resetPath;
+  const user = await findUserByEmail(email);
 
-  if (emailDeliveryConfigured()) {
-    try {
-      await sendPasswordResetEmail(email, otp, resetLink);
-    } catch (e) {
-      console.error("[auth] password reset email failed:", e);
-      return res.status(502).json({ error: "Could not send reset email. Please try again shortly." });
+  if (user) {
+    const otp = String(crypto.randomInt(100000, 1000000));
+    await storeOtp(email, otp);
+    const resetToken = await storeResetToken(email);
+    const frontendBase = (process.env.FRONTEND_URL || "").split(",")[0].trim();
+    const resetPath = `/reset-password?token=${encodeURIComponent(resetToken)}`;
+    const resetLink = frontendBase ? `${frontendBase.replace(/\/$/, "")}${resetPath}` : resetPath;
+
+    if (emailDeliveryConfigured()) {
+      try {
+        await sendPasswordResetEmail(email, otp, resetLink);
+      } catch (e) {
+        console.error("[auth] password reset email failed:", e);
+        // Phase2.010: swallow provider errors to avoid leaking account existence differential responses
+      }
     }
+  }
+
+  // Phase2.010: Introduce randomized timing delay to mask user lookup & email delivery execution variance
+  const elapsed = Date.now() - startTime;
+  const targetDelay = 400 + crypto.randomInt(0, 250);
+  if (elapsed < targetDelay) {
+    await new Promise((resolve) => setTimeout(resolve, targetDelay - elapsed));
   }
 
   res.json({ 
@@ -537,24 +517,26 @@ router.post("/reset-password", forgotPasswordLimiter, async (req: Request, res: 
   // 3. Execute Payload Commitment
   try {
     await resetUserPassword(targetEmail, newPassword);
+    const user = await findUserByEmail(targetEmail);
+    if (user) {
+      await revokeAllUserSessions(user.uid);
+    }
     if (!token) {
       await deleteOtp(targetEmail);
     }
     res.json({ ok: true });
   } catch (err: any) {
     if (err.message === "User not found") {
-      res.status(404).json({ error: "User not found" });
+      res.status(400).json({ error: "Invalid or expired reset request" });
     } else {
       res.status(500).json({ error: "Password reset failed" });
     }
   }
 });
 
-router.post("/change-password", sensitiveLimiter, async (req: Request, res: Response) => {
+router.post("/change-password", authMiddleware, sensitiveLimiter, async (req: Request, res: Response) => {
   try {
-    const token = (req as any).cookies?.auth_token || req.headers.authorization?.replace(/^Bearer\s+/i, "");
-    const payload = token ? verifyToken(token) : null;
-    if (!payload) return res.status(401).json({ error: "Unauthorized" });
+    const payload = (req as any).user;
     const { currentPassword, newPassword } = req.body || {};
     const email = payload.email;
     if (!currentPassword || !newPassword) {
@@ -563,18 +545,35 @@ router.post("/change-password", sensitiveLimiter, async (req: Request, res: Resp
     if (newPassword.length < 8) {
       return res.status(400).json({ error: "New password must be at least 8 characters" });
     }
-    await changeUserPassword(email, currentPassword, newPassword);
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ error: "New password must differ from the current password" });
+    }
+    await changeUserPassword(payload.uid, currentPassword, newPassword);
+    if (payload && payload.uid) {
+      await revokeAllUserSessions(payload.uid);
+      // Phase2.0008: Issue new tokens for the active session to remain logged in seamlessly
+      const rfToken = await createRefreshToken({ uid: payload.uid, email: payload.email, name: payload.name });
+      const accessToken = createToken({ uid: payload.uid, email: payload.email, name: payload.name });
+      res.cookie("auth_token", accessToken, cookieOptions);
+      res.cookie("refresh_token", rfToken, refreshTokenCookieOptions);
+    }
     res.json({ ok: true });
   } catch (err: any) {
-    if (err.message === "Current password is incorrect") return res.status(401).json({ error: err.message });
-    if (err.message === "User not found") return res.status(404).json({ error: err.message });
+    if (err.message === "Current password is incorrect" || err.message === "Invalid current password") {
+      return res.status(401).json({ error: "Current password is incorrect" });
+    }
+    if (err.message === "New password must differ from the current password") {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err.message === "User not found") {
+      return res.status(404).json({ error: err.message });
+    }
     res.status(500).json({ error: "Password change failed" });
   }
 });
 
-router.delete("/account", sensitiveLimiter, async (req: Request, res: Response) => {
-  const token = (req as any).cookies?.auth_token || req.headers.authorization?.replace(/^Bearer\s+/i, "");
-  const payload = token ? verifyToken(token) : null;
+router.delete("/account", authMiddleware, sensitiveLimiter, async (req: Request, res: Response) => {
+  const payload = (req as any).user;
   const email = payload?.email;
   if (!email) return res.status(401).json({ error: "Unauthorized" });
   const uid = payload?.uid;
@@ -582,17 +581,14 @@ router.delete("/account", sensitiveLimiter, async (req: Request, res: Response) 
   if (!ok) return res.status(404).json({ error: "User not found" });
   try {
     if (uid) {
-      await fetch(`${BACKEND_URL}/api/finance/user-profiles/purge/${encodeURIComponent(uid)}`, { method: "DELETE" });
+      // Phase2.0008: Invalidate all refresh sessions on account deletion!
+      await revokeAllUserSessions(uid);
     }
   } catch (err) {
-    console.error("Backend purge failed during account deletion:", err);
+    console.error("Session revocation failed during account deletion:", err);
   }
-  res.clearCookie("auth_token", {
-    httpOnly: true,
-    sameSite: "strict" as const,
-    secure: process.env.NODE_ENV === "production",
-    ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
-  });
+  res.clearCookie("auth_token", cookieOptions);
+  res.clearCookie("refresh_token", refreshTokenCookieOptions);
   res.json({ ok: true });
 });
 
@@ -608,7 +604,7 @@ async function proxyFamilyToBackend(req: Request, res: Response, path: string, m
     req.headers.authorization ||
     ((req as any).cookies?.auth_token ? `Bearer ${(req as any).cookies.auth_token}` : undefined);
   try {
-    const url = `${BACKEND_URL}/api/family${path}`;
+    const url = `${BACKEND_URL}/api/finance/family${path}`;
     const options: RequestInit = {
       method: method || req.method,
       headers: {
@@ -637,49 +633,146 @@ router.delete('/family/:id', authMiddleware, sensitiveLimiter, (req, res) => pro
 
 // ---------------------------------------------------------------------------
 // WebAuthn passthrough proxy
-// ---------------------------------------------------------------------------
+// Fallback in-memory store for WebAuthn challenges (matching the OTP fallback pattern)
+const memChallengeStore = new Map<string, { sdkOptions: string; expires: number }>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, record] of memChallengeStore.entries()) {
+    if (now > record.expires) memChallengeStore.delete(key);
+  }
+}, 60 * 1000);
 
-async function proxyWebAuthn(req: Request, res: Response, subPath: string) {
-  try {
-    const url = `${BACKEND_URL}/api/auth/webauthn${subPath}`;
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (req.headers.cookie) headers.cookie = req.headers.cookie as string;
-    const upstream = await fetch(url, {
-      method: "POST",
-      headers,
-      body: typeof req.body === "string" ? req.body : JSON.stringify(req.body),
-    });
-    const setCookie = upstream.headers.get("set-cookie");
-    if (setCookie) res.setHeader("Set-Cookie", setCookie);
-    const text = await upstream.text();
-    res.status(upstream.status);
-    res.setHeader("Content-Type", upstream.headers.get("content-type") || "application/json");
-    res.send(text);
-  } catch (err: any) {
-    res.status(503).json({ error: 'Passkey authentication is not available', available: false });
+async function saveChallenge(flowToken: string, sdkOptions: string): Promise<void> {
+  if (redis) {
+    await redis.setex(`webauthn:challenge:${flowToken}`, 300, sdkOptions); // 5 min TTL
+  } else {
+    memChallengeStore.set(flowToken, { sdkOptions, expires: Date.now() + 300000 });
   }
 }
 
-router.post("/webauthn/register/options", (req, res) => proxyWebAuthn(req, res, "/register/options"));
-router.post("/webauthn/register/verify", (req, res) => proxyWebAuthn(req, res, "/register/verify"));
-router.post("/webauthn/login/options", (req, res) => proxyWebAuthn(req, res, "/login/options"));
+async function consumeChallenge(flowToken: string): Promise<string | null> {
+  if (redis) {
+    // Phase2.014: atomic check-and-burn via GETDEL to prevent concurrency bypasses
+    return await (redis as any).getdel(`webauthn:challenge:${flowToken}`);
+  } else {
+    const record = memChallengeStore.get(flowToken);
+    if (record && Date.now() <= record.expires) {
+      memChallengeStore.delete(flowToken);
+      return record.sdkOptions;
+    }
+    return null;
+  }
+}
 
-// Phase2.0010: WebAuthn login/verify must mint the JWT here — Spring backend does
-// not share JWT_SECRET. Without this, the frontend believes login succeeded but
-// every subsequent finance call returns 401.
-router.post("/webauthn/login/verify", async (req: Request, res: Response) => {
+router.post("/webauthn/register/options", authMiddleware, sensitiveLimiter, async (req: Request, res: Response) => {
+  const userId = (req as any).user?.uid;
+  const authToken =
+    req.headers.authorization ||
+    ((req as any).cookies?.auth_token ? `Bearer ${(req as any).cookies.auth_token}` : undefined);
+
   try {
-    const url = `${BACKEND_URL}/api/auth/webauthn/login/verify`;
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (req.headers.cookie) headers.cookie = req.headers.cookie as string;
-    const upstream = await fetch(url, {
+    const upstream = await fetch(`${BACKEND_URL}/api/auth/webauthn/register/options`, {
       method: "POST",
-      headers,
-      body: typeof req.body === "string" ? req.body : JSON.stringify(req.body),
+      headers: {
+        "Content-Type": "application/json",
+        ...(authToken ? { Authorization: authToken } : {}),
+        ...(userId ? { "X-User-Id": userId } : {}),
+      },
+      body: JSON.stringify(req.body),
     });
 
-    const setCookie = upstream.headers.get("set-cookie");
-    if (setCookie) res.setHeader("Set-Cookie", setCookie);
+    if (!upstream.ok) {
+      return res.status(upstream.status).send(await upstream.text());
+    }
+
+    const data = (await upstream.json()) as { browserOptions: string; sdkOptions: string };
+    const flowToken = crypto.randomBytes(32).toString("hex");
+    await saveChallenge(flowToken, data.sdkOptions);
+
+    res.json({
+      publicKey: JSON.parse(data.browserOptions),
+      flowToken,
+    });
+  } catch (err) {
+    res.status(503).json({ error: "Passkey authentication is not available", available: false });
+  }
+});
+
+router.post("/webauthn/register/verify", authMiddleware, sensitiveLimiter, async (req: Request, res: Response) => {
+  const userId = (req as any).user?.uid;
+  const authToken =
+    req.headers.authorization ||
+    ((req as any).cookies?.auth_token ? `Bearer ${(req as any).cookies.auth_token}` : undefined);
+
+  const { responseJson, flowToken } = req.body;
+  if (!responseJson || !flowToken) {
+    return res.status(400).json({ error: "responseJson and flowToken are required" });
+  }
+
+  const sdkOptions = await consumeChallenge(flowToken);
+  if (!sdkOptions) {
+    return res.status(400).json({ error: "Invalid or expired registration flow token" });
+  }
+
+  try {
+    const upstream = await fetch(`${BACKEND_URL}/api/auth/webauthn/register/verify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(authToken ? { Authorization: authToken } : {}),
+        ...(userId ? { "X-User-Id": userId } : {}),
+      },
+      body: JSON.stringify({ responseJson, sdkOptions }),
+    });
+
+    res.status(upstream.status).send(await upstream.text());
+  } catch (err) {
+    res.status(503).json({ error: "Passkey verification failed" });
+  }
+});
+
+router.post("/webauthn/login/options", authLimiter, async (req: Request, res: Response) => {
+  try {
+    const upstream = await fetch(`${BACKEND_URL}/api/auth/webauthn/login/options`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+
+    if (!upstream.ok) {
+      return res.status(upstream.status).send(await upstream.text());
+    }
+
+    const data = (await upstream.json()) as { browserOptions: string; sdkOptions: string };
+    const flowToken = crypto.randomBytes(32).toString("hex");
+    await saveChallenge(flowToken, data.sdkOptions);
+
+    res.json({
+      publicKey: JSON.parse(data.browserOptions),
+      flowToken,
+    });
+  } catch (err) {
+    res.status(503).json({ error: "Passkey authentication is not available", available: false });
+  }
+});
+
+router.post("/webauthn/login/verify", authLimiter, async (req: Request, res: Response) => {
+  const { responseJson, flowToken } = req.body;
+  if (!responseJson || !flowToken) {
+    return res.status(400).json({ error: "responseJson and flowToken are required" });
+  }
+
+  const sdkOptions = await consumeChallenge(flowToken);
+  if (!sdkOptions) {
+    return res.status(400).json({ error: "Invalid or expired login flow token" });
+  }
+
+  try {
+    const upstream = await fetch(`${BACKEND_URL}/api/auth/webauthn/login/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ responseJson, sdkOptions }),
+    });
 
     if (!upstream.ok) {
       const text = await upstream.text();
@@ -709,9 +802,12 @@ router.post("/webauthn/login/verify", async (req: Request, res: Response) => {
         : user.email;
 
     const token = createToken({ uid: user.id, email: user.email, name: displayName });
+    await clearFailureCount(user.email); // Phase2.013: reset lockout count upon successful passkey login
+    const rfToken = await createRefreshToken({ uid: user.id, email: user.email, name: displayName });
     res.cookie("auth_token", token, cookieOptions);
+    res.cookie("refresh_token", rfToken, refreshTokenCookieOptions);
     res.json({ user: { uid: user.id, email: user.email, name: displayName } });
-  } catch {
+  } catch (err) {
     res.status(503).json({ error: "Passkey authentication is not available", available: false });
   }
 });

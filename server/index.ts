@@ -1,17 +1,9 @@
+import "./lib/env.js";
 import express from "express";
 import { randomUUID } from "crypto";
-import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import fs from "fs";
 import path from "path";
-
-// Ensure environment variables are loaded even if started from server subdirectory
-if (!process.env.JWT_SECRET) {
-  const rootEnv = path.join(process.cwd(), "..", ".env");
-  const localEnv = path.join(process.cwd(), ".env");
-  if (fs.existsSync(rootEnv)) dotenv.config({ path: rootEnv });
-  else if (fs.existsSync(localEnv)) dotenv.config({ path: localEnv });
-}
 
 import { financeRouter } from "./routes/finance.js";
 import { aiRouter } from "./routes/ai.js";

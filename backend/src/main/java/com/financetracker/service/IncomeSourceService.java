@@ -7,6 +7,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
+import java.time.Instant;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -15,13 +17,15 @@ public class IncomeSourceService {
 
     @Transactional(readOnly = true)
     public List<IncomeSource> findAllByUserId(String userId) {
-        return repo.findAllByUserId(userId);
+        // ISSUE 4.053 FIX: Filter out soft-deleted income sources.
+        return repo.findAllByUserIdAndDeletedFalse(userId);
     }
 
     @Transactional
     public IncomeSource create(IncomeSource income) {
+        // Phase4.027: Defend against concurrent ID allocation collisions by leveraging UUIDs.
         if (income.getId() == null || income.getId().isBlank()) {
-            income.setId("income-" + System.currentTimeMillis());
+            income.setId("income-" + UUID.randomUUID());
         }
         return repo.save(income);
     }
@@ -45,6 +49,9 @@ public class IncomeSourceService {
     public void delete(String id, String requestUserId) {
         IncomeSource existing = repo.findById(id).orElseThrow(() -> new com.financetracker.exception.NotFoundException("Income source not found: " + id));
         Guards.assertOwner(existing.getUserId(), requestUserId);
-        repo.deleteById(id);
+        // Phase4.026: Soft-delete instead of hard purging to maintain transaction linkages and history.
+        existing.setDeleted(true);
+        existing.setDeletedAt(Instant.now());
+        repo.save(existing);
     }
 }

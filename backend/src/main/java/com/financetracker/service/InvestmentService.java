@@ -22,8 +22,18 @@ public class InvestmentService {
         return repo.findAllByUserId(userId);
     }
 
+    private static final java.util.regex.Pattern SYMBOL_PATTERN = 
+        java.util.regex.Pattern.compile("^[A-Z0-9.\\-]{1,12}$");
+
+    private void validateSymbol(String symbol) {
+        if (symbol != null && !SYMBOL_PATTERN.matcher(symbol.toUpperCase()).matches()) {
+            throw new IllegalArgumentException("Invalid ticker symbol format");
+        }
+    }
+
     @Transactional
     public Investment create(Investment inv) {
+        validateSymbol(inv.getSymbol());
         // ISSUE #16 FIX: UUID-based ID
         inv.setId("inv-" + UUID.randomUUID());
         inv.setLastUpdated(Instant.now());
@@ -35,7 +45,10 @@ public class InvestmentService {
         Investment existing = repo.findById(id)
             .orElseThrow(() -> new com.financetracker.exception.NotFoundException("Investment not found"));
         Guards.assertOwner(existing.getUserId(), requestUserId);
-        if (updates.getSymbol() != null) existing.setSymbol(updates.getSymbol());
+        if (updates.getSymbol() != null) {
+            validateSymbol(updates.getSymbol());
+            existing.setSymbol(updates.getSymbol());
+        }
         if (updates.getName() != null) existing.setName(updates.getName());
         if (updates.getType() != null) existing.setType(updates.getType());
         if (updates.getQuantity() != null) existing.setQuantity(updates.getQuantity());

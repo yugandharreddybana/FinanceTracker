@@ -37,7 +37,9 @@ public class RecurringPayment {
     @JsonProperty("date")
     private Integer dayOfMonth;
 
-    private String dueDate;
+    private java.time.LocalDate dueDate;
+    private java.time.LocalDate lastFailedDate;
+    private Integer retryCount;
 
     private String category;
     private String frequency;

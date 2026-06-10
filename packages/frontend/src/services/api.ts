@@ -101,6 +101,7 @@ async function apiFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
 
   const agentDebug =
     typeof import.meta.env !== 'undefined' &&
+    import.meta.env.PROD !== true &&
     import.meta.env.DEV === true &&
     import.meta.env.VITE_AGENT_DEBUG === 'true';
 
@@ -402,10 +403,18 @@ export const financeApi = {
   // Server-side AI endpoints (ISSUE-001 fix — no Gemini key on client)
   // ---------------------------------------------------------------------------
 
-  processAIInput: (input: string, context: { savingsGoals: any[]; accounts?: any[] }): Promise<any[]> =>
+  processAIInput: (
+    input: string,
+    context: { savingsGoals: unknown[]; accounts?: unknown[]; budgets?: unknown[] }
+  ): Promise<unknown[]> =>
     apiFetch(`${MIDDLEWARE_BASE}/api/ai/process-input`, {
       method: 'POST',
-      body: JSON.stringify({ input, savingsGoals: context.savingsGoals, accounts: context.accounts || [] }),
+      body: JSON.stringify({
+        input,
+        savingsGoals: context.savingsGoals,
+        accounts: context.accounts || [],
+        budgets: context.budgets || [],
+      }),
     }),
 
   categorizeAI: (targets: { id: string; merchant: string; amount: number; currentCategory?: string }[]): Promise<Record<string, { category: string; confidence: number }[]>> =>
@@ -420,7 +429,10 @@ export const financeApi = {
       body: JSON.stringify({ base64Data, mimeType, type, accounts }),
     }),
 
-  oracleChat: (message: string, history: { role: string; content: string }[]): Promise<{ content: string }> =>
+  oracleChat: (
+    message: string,
+    history: { role: string; content: string }[]
+  ): Promise<{ content: string; financeMutations?: boolean }> =>
     apiFetch(`${MIDDLEWARE_BASE}/api/ai/oracle`, {
       method: 'POST',
       body: JSON.stringify({ message, history }),

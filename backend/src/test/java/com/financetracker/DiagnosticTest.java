@@ -15,7 +15,9 @@ import java.util.UUID;
 @org.springframework.test.context.TestPropertySource(properties = {
     "spring.datasource.url=jdbc:h2:mem:diagnostic_db;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;DATABASE_TO_UPPER=false;INIT=CREATE SCHEMA IF NOT EXISTS finance_app",
     "spring.datasource.driver-class-name=org.h2.Driver",
-    "spring.jpa.hibernate.ddl-auto=create-drop"
+    "spring.jpa.hibernate.ddl-auto=create-drop",
+    "spring.flyway.enabled=false",
+    "JWT_SECRET=test-environment-only-dummy-signing-secret-minimum-length-check-satisfied-here"
 })
 public class DiagnosticTest {
 
@@ -55,7 +57,7 @@ public class DiagnosticTest {
         tx.setStatus("confirmed");
         
         // Simulating the date setter
-        tx.setDate("2026-05-10");
+        tx.setTransactionDate(LocalDate.parse("2026-05-10"));
 
         System.out.println("Attempting to save transaction...");
         try {

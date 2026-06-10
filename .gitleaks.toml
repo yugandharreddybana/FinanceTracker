@@ -1,0 +1,15 @@
+title = "FinanceTracker"
+
+[extend]
+useDefault = true
+
+# Keep template + local guard script from tripping generic-key heuristics when edited.
+[[allowlist]]
+description = "Env templates and pre-commit guard (no live secrets)"
+paths = [
+  "(?i)\\.env\\.example$",
+  "(?i)\\.env\\.sample$",
+  "(?i)\\.env\\.template$",
+  "(?i)packages/frontend/\\.env\\.example$",
+  "scripts/secrets-git-guard\\.mjs$",
+]

@@ -16,16 +16,22 @@ public class BudgetService {
 
     @Transactional(readOnly = true)
     public List<Budget> findAllByUserId(String userId) {
-        return repo.findAllByUserId(userId);
+        return repo.findAllByUserIdAndDeletedFalse(userId);
     }
 
     @Transactional
-    public Budget create(Budget budget) {
+    public Budget create(Budget budget, String requestUserId) {
+        // Phase4.010: Enforce server-managed userId boundary strictly in service logic.
+        budget.setUserId(requestUserId);
         if (budget.getId() == null || budget.getId().isBlank()) {
             budget.setId("budget-" + UUID.randomUUID());
         }
+        // ISSUE 5.018 FIX: Normalise category casing/trimming.
+        if (budget.getCategory() != null) {
+            budget.setCategory(budget.getCategory().trim());
+        }
         // FLAW #4 FIX: Ignore any client-supplied 'spent' value at creation — starts at zero
-        budget.setSpentInternal(java.math.BigDecimal.ZERO);
+        budget.resetSpent();
         return repo.save(budget);
     }
 
@@ -34,7 +40,9 @@ public class BudgetService {
     public Budget update(String id, Budget updates, String requestUserId) {
         Budget existing = repo.findById(id).orElseThrow(() -> new com.financetracker.exception.NotFoundException("Budget not found: " + id));
         Guards.assertOwner(existing.getUserId(), requestUserId);
-        if (updates.getCategory() != null) existing.setCategory(updates.getCategory());
+        if (updates.getCategory() != null) {
+            existing.setCategory(updates.getCategory().trim());
+        }
         if (updates.getEmoji() != null) existing.setEmoji(updates.getEmoji());
         if (updates.getLimit() != null) existing.setLimit(updates.getLimit());
         // FLAW #4 FIX: 'spent' is intentionally NOT updated from client input here.
@@ -56,6 +64,9 @@ public class BudgetService {
     public void delete(String id, String requestUserId) {
         Budget existing = repo.findById(id).orElseThrow(() -> new com.financetracker.exception.NotFoundException("Budget not found: " + id));
         Guards.assertOwner(existing.getUserId(), requestUserId);
-        repo.deleteById(id);
+        // Phase4.011: Enforce uniform soft-delete.
+        existing.setDeleted(true);
+        existing.setDeletedAt(java.time.Instant.now());
+        repo.save(existing);
     }
 }

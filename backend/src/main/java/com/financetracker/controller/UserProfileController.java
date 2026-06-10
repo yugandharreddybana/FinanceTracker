@@ -18,7 +18,7 @@ public class UserProfileController {
     @GetMapping("/{id}")
     public ResponseEntity<UserProfile> getById(@PathVariable String id, @RequestHeader("X-User-Id") String userId) {
         Guards.assertOwner(id, userId);
-        return service.findById(id)
+        return service.findById(id, userId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -32,11 +32,8 @@ public class UserProfileController {
     @GetMapping("/by-email/{email}")
     public ResponseEntity<UserProfile> getByEmail(@PathVariable String email,
                                                   @RequestHeader("X-User-Id") String userId) {
-        return service.findByEmail(email)
-                .map(profile -> {
-                    Guards.assertOwner(profile.getId(), userId);
-                    return ResponseEntity.ok(profile);
-                })
+        return service.findByEmail(email, userId)
+                .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
@@ -52,13 +49,13 @@ public class UserProfileController {
     @PutMapping("/{id}")
     public UserProfile update(@PathVariable String id, @RequestBody UserProfile updates, @RequestHeader("X-User-Id") String userId) {
         Guards.assertOwner(id, userId);
-        return service.update(id, updates);
+        return service.update(id, updates, userId);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable String id, @RequestHeader("X-User-Id") String userId) {
         Guards.assertOwner(id, userId);
-        service.delete(id);
+        service.delete(id, userId);
         return ResponseEntity.noContent().build();
     }
 

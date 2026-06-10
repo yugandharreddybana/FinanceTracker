@@ -10,8 +10,13 @@ import java.util.List;
 import java.util.Optional;
 
 public interface TransactionRepository extends JpaRepository<Transaction, String> {
-    List<Transaction> findAllByUserId(String userId);
+    List<Transaction> findAllByUserIdOrderByTransactionDateDesc(String userId);
     List<Transaction> findAllByIdInAndUserId(List<String> ids, String userId);
+
+    @Query("SELECT t FROM Transaction t WHERE t.userId = :userId AND t.id NOT IN :ids AND t.status != 'VOIDED'")
+    List<Transaction> findToVoid(@Param("userId") String userId, @Param("ids") List<String> ids);
+    List<Transaction> findAllByUserIdAndTransactionDateBetweenAndStatusNot(
+        String userId, java.time.LocalDate start, java.time.LocalDate end, String excludeStatus);
 
     @Modifying
     @Query("UPDATE Transaction t SET t.status = 'VOIDED' WHERE t.userId = :userId")
@@ -23,8 +28,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
 
     Optional<Transaction> findByUserIdAndIdempotencyKey(String userId, String idempotencyKey);
 
-    // ISSUE #1 FIX: Sum transactions for a savings goal (used by SavingsGoalService.recalculate)
+    // ISSUE #1 + Phase5.0015 FIX: Sum transactions for a savings goal, strictly filtering by currency alignment.
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t " +
-        "WHERE t.savingsGoalId = :goalId AND t.status != 'VOIDED'")
-    BigDecimal sumBySavingsGoalId(@Param("goalId") String goalId);
+        "WHERE t.savingsGoalId = :goalId AND t.status != 'VOIDED' " +
+        "AND (:currency IS NULL OR UPPER(t.currency) = UPPER(:currency))")
+    BigDecimal sumBySavingsGoalId(@Param("goalId") String goalId, @Param("currency") String currency);
 }

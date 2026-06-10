@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { cn, formatCurrency } from '../lib/utils';
+import { cn, formatCurrency, resolveDashboardChartCurrency, transactionCurrency } from '../lib/utils';
 import { isAIAvailable } from '../lib/aiService';
 import { useFinance } from '../context/FinanceContext';
 import { financeApi } from '../services/api';
@@ -67,8 +67,6 @@ export function AIInsightsPage({ compact, onClose }: AIInsightsPageProps = {}) {
     netWorthByCurrency,
     customCategories,
     monthlyTrends,
-    getMonthlyIncome,
-    getMonthlyExpenses,
     healthMetricsByCurrency,
     userProfile,
   } = useFinance();
@@ -108,12 +106,14 @@ export function AIInsightsPage({ compact, onClose }: AIInsightsPageProps = {}) {
     ]
   );
 
-  const currency = userProfile.preferences?.currency || 'INR';
+  const chartCcy = resolveDashboardChartCurrency(netWorthByCurrency);
+  const nwMonth = netWorthByCurrency[chartCcy] || { income: 0, expenses: 0 };
+  const currency = chartCcy;
   const hm = healthMetricsByCurrency[currency] ?? Object.values(healthMetricsByCurrency)[0];
 
   const healthCards = useMemo(() => {
-    const inc = getMonthlyIncome();
-    const exp = Math.abs(getMonthlyExpenses());
+    const inc = nwMonth.income;
+    const exp = Math.abs(nwMonth.expenses);
     const srPct = inc > 0 ? ((inc - exp) / inc) * 100 : 0;
     const onTrack = savingsGoals.filter((g) => g.target > 0 && g.current / g.target >= 0.35).length;
     const goalTotal = savingsGoals.length;
@@ -128,13 +128,18 @@ export function AIInsightsPage({ compact, onClose }: AIInsightsPageProps = {}) {
         gradient: 'from-blue-500 to-cyan-600',
       },
     ];
-  }, [getMonthlyIncome, getMonthlyExpenses, savingsGoals, hm]);
+  }, [savingsGoals, hm, nwMonth]);
 
   const localInsights = useMemo(() => {
-    const inc = getMonthlyIncome();
-    const exp = getMonthlyExpenses();
+    const inc = nwMonth.income;
+    const exp = nwMonth.expenses;
     const sr = inc > 0 ? ((inc - exp) / inc * 100) : 0;
-    const topCats = transactions.filter(t => t.type === 'expense').reduce((a, t) => { a[t.category] = (a[t.category] || 0) + Math.abs(t.amount); return a; }, {} as Record<string, number>);
+    const topCats = transactions
+      .filter((t) => t.type === 'expense' && transactionCurrency(t, chartCcy) === chartCcy)
+      .reduce((a, t) => {
+        a[t.category] = (a[t.category] || 0) + Math.abs(t.amount);
+        return a;
+      }, {} as Record<string, number>);
     const sorted = Object.entries(topCats).sort((a, b) => b[1] - a[1]);
     const topCat = sorted[0];
     const overBudget = budgets.find(b => b.spent > b.limit * 0.7);
@@ -143,7 +148,7 @@ export function AIInsightsPage({ compact, onClose }: AIInsightsPageProps = {}) {
     if (topCat) items.push({ id: 'l1', icon: Lightbulb, title: `Top Spending: ${topCat[0]}`, desc: `${formatCurrency(topCat[1], currency)} spent on ${topCat[0]} this month.`, color: 'amber' });
     if (sr >= 20) items.push({ id: 'l2', icon: CheckCircle2, title: 'Great Savings Rate!', desc: `Your ${sr.toFixed(0)}% savings rate beats the 20% benchmark.`, color: 'emerald' });
     else if (inc > 0) items.push({ id: 'l2', icon: Target, title: 'Savings Opportunity', desc: `Your savings rate is ${sr.toFixed(0)}%. Try to reach 20%.`, color: 'blue' });
-    if (overBudget) items.push({ id: 'l3', icon: AlertTriangle, title: `${overBudget.category} Budget Alert`, desc: `${Math.round(overBudget.spent / overBudget.limit * 100)}% used — be mindful of overspending.`, color: 'rose' });
+    if (overBudget) items.push({ id: 'l3', icon: AlertTriangle, title: `${overBudget.category} Budget Alert`, desc: `${Math.round(overBudget.spent / overBudget.limit * 100)}% used (${formatCurrency(overBudget.spent, overBudget.currency || currency)} of ${formatCurrency(overBudget.limit, overBudget.currency || currency)}) — be mindful of overspending.`, color: 'rose' });
     if (investments.length > 0) items.push({ id: 'l4', icon: TrendingUp, title: 'Portfolio Active', desc: `${investments.length} investments tracked.`, color: 'violet' });
     if (loans.length > 0) items.push({ id: 'l6', icon: AlertTriangle, title: 'Debt Overview', desc: `${loans.length} active loan(s) — review payoff strategy in Loans.`, color: 'rose' });
     if (savingsGoals.length > 0) {
@@ -152,7 +157,7 @@ export function AIInsightsPage({ compact, onClose }: AIInsightsPageProps = {}) {
     }
     if (items.length === 0) items.push({ id: 'l1', icon: Sparkles, title: 'Get Started', desc: 'Add transactions to unlock personalized insights.', color: 'cyan' });
     return items;
-  }, [transactions, budgets, savingsGoals, investments, loans, getMonthlyIncome, getMonthlyExpenses, currency]);
+  }, [transactions, budgets, savingsGoals, investments, loans, chartCcy, currency, nwMonth]);
 
   const refreshRemoteInsights = useCallback(async () => {
     setRefreshing(true);

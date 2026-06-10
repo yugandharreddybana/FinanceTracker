@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useFinance } from '../context/FinanceContext';
-import { formatCurrency, formatDate, cn } from '../lib/utils';
+import { formatCurrency, formatDate, cn, transactionCurrency } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { SmartAddModal } from './SmartAddModal';
 import { useToast } from './Toast';
@@ -43,10 +43,48 @@ export function TransactionsPage() {
     return result;
   }, [transactions, search, filterType, filterCategory, sortBy, sortDir]);
 
-  const totalIncome = filtered.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const totalExpenses = filtered.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const totalsByCurrency = useMemo(() => {
+    const map = new Map<string, { income: number; expense: number }>();
+    for (const t of filtered) {
+      const key = transactionCurrency(t);
+      if (!map.has(key)) map.set(key, { income: 0, expense: 0 });
+      const b = map.get(key)!;
+      if (t.type === 'income') b.income += t.amount;
+      else b.expense += t.amount;
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [filtered]);
 
-  // Group by date
+  const PRIMARY_STAT_CCY = ['INR', 'EUR'] as const;
+
+  const ledgerIncomeExpense = useMemo(() => {
+    const inc: Record<string, number> = {};
+    const exp: Record<string, number> = {};
+    for (const [c, v] of totalsByCurrency) {
+      inc[c] = v.income;
+      exp[c] = v.expense;
+    }
+    return { inc, exp };
+  }, [totalsByCurrency]);
+
+  const buildStatLines = (bucket: 'income' | 'expense') => {
+    const src = bucket === 'income' ? ledgerIncomeExpense.inc : ledgerIncomeExpense.exp;
+    const lines: { code: string; amount: number }[] = [];
+    for (const code of PRIMARY_STAT_CCY) {
+      lines.push({ code, amount: src[code] ?? 0 });
+    }
+    const rest = Object.keys(src)
+      .filter((c) => !(PRIMARY_STAT_CCY as readonly string[]).includes(c) && (bucket === 'income' ? src[c]! > 0 : src[c]! > 0))
+      .sort((a, b) => a.localeCompare(b));
+    for (const code of rest) {
+      lines.push({ code, amount: src[code]! });
+    }
+    return lines;
+  };
+
+  const incomeStatLines = buildStatLines('income');
+  const expenseStatLines = buildStatLines('expense');
+
   const grouped = useMemo(() => {
     const map = new Map<string, typeof filtered>();
     for (const t of filtered) {
@@ -64,7 +102,7 @@ export function TransactionsPage() {
         className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl md:text-3xl font-black text-slate-900">Transactions</h1>
-          <p className="text-slate-400 font-medium">Track every rupee in and out</p>
+          <p className="text-slate-400 font-medium">Track income and expenses in every currency</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <motion.button type="button" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
@@ -116,21 +154,61 @@ export function TransactionsPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {[
-          { label: 'Transactions', value: filtered.length.toString(), sub: `of ${transactions.length} total`, icon: Tag, color: 'text-blue-600 bg-blue-50' },
-          { label: 'Total Income', value: formatCurrency(totalIncome), sub: `${filtered.filter(t => t.type === 'income').length} entries`, icon: ArrowUpRight, color: 'text-emerald-600 bg-emerald-50' },
-          { label: 'Total Expenses', value: formatCurrency(totalExpenses), sub: `${filtered.filter(t => t.type === 'expense').length} entries`, icon: ArrowDownRight, color: 'text-rose-500 bg-rose-50' },
-        ].map((s, i) => (
-          <motion.div key={i} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 + i * 0.05 }}
-            className="rounded-2xl bg-white p-5 shadow-sm border border-slate-100">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">{s.label}</p>
-              <div className={cn('flex h-8 w-8 items-center justify-center rounded-xl', s.color)}><s.icon className="h-4 w-4" /></div>
-            </div>
-            <p className="text-2xl font-black text-slate-900">{s.value}</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">{s.sub}</p>
-          </motion.div>
-        ))}
+        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+          className="rounded-2xl bg-white p-5 shadow-sm border border-slate-100">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Transactions</p>
+            <div className={cn('flex h-8 w-8 items-center justify-center rounded-xl', 'text-blue-600 bg-blue-50')}><Tag className="h-4 w-4" /></div>
+          </div>
+          <p className="text-2xl font-black text-slate-900">{filtered.length}</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">of {transactions.length} total</p>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+          className="rounded-2xl bg-white p-5 shadow-sm border border-slate-100">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Total Income</p>
+            <div className={cn('flex h-8 w-8 items-center justify-center rounded-xl', 'text-emerald-600 bg-emerald-50')}><ArrowUpRight className="h-4 w-4" /></div>
+          </div>
+          <div className="space-y-1">
+            {incomeStatLines.map(({ code, amount }, ii) => (
+              <motion.div
+                key={`inc-${code}`}
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.05 * ii, duration: 0.25 }}
+                className="flex items-baseline justify-between gap-2"
+              >
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 tabular-nums">{code}</span>
+                <p className="text-xl sm:text-2xl font-black tabular-nums text-slate-900">{formatCurrency(amount, code)}</p>
+              </motion.div>
+            ))}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-0.5">{filtered.filter(t => t.type === 'income').length} entries</p>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
+          className="rounded-2xl bg-white p-5 shadow-sm border border-slate-100">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Total Expenses</p>
+            <div className={cn('flex h-8 w-8 items-center justify-center rounded-xl', 'text-rose-500 bg-rose-50')}><ArrowDownRight className="h-4 w-4" /></div>
+          </div>
+          <div className="space-y-1">
+            {expenseStatLines.map(({ code, amount }, ei) => (
+              <motion.div
+                key={`exp-${code}`}
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.05 * ei, duration: 0.25 }}
+                className="flex items-baseline justify-between gap-2"
+              >
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 tabular-nums">{code}</span>
+                <p className="text-xl sm:text-2xl font-black tabular-nums text-slate-900">{formatCurrency(amount, code)}</p>
+              </motion.div>
+            ))}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-0.5">{filtered.filter(t => t.type === 'expense').length} entries</p>
+        </motion.div>
       </div>
 
       {/* Filters */}
@@ -206,7 +284,7 @@ export function TransactionsPage() {
                       </div>
                       <div className="flex items-center gap-3">
                         <span className={cn('text-base font-black tabular-nums', t.type === 'income' ? 'text-emerald-600' : 'text-rose-500')}>
-                          {t.type === 'income' ? '+' : '−'}{formatCurrency(t.amount)}
+                          {t.type === 'income' ? '+' : '−'}{formatCurrency(t.amount, transactionCurrency(t))}
                         </span>
                         <button type="button" aria-label={`Delete ${t.merchant}`} onClick={() => { deleteTransaction(t.id); toast('info', 'Transaction deleted', t.merchant); }}
                           className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-500 transition-all sm:opacity-0 sm:group-hover:opacity-100 opacity-100">

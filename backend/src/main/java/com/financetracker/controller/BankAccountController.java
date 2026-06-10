@@ -24,8 +24,7 @@ public class BankAccountController {
     @PostMapping
     public ResponseEntity<BankAccount> create(@RequestBody BankAccount account, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
-        account.setUserId(userId);
-        return ResponseEntity.ok(service.create(account));
+        return ResponseEntity.ok(service.create(account, userId));
     }
 
     @PutMapping("/{id}")

@@ -22,6 +22,19 @@ public final class AgentDebugLog {
             return;
         }
         try {
+            String envFile = System.getenv("FINANCE_TRACKER_DEBUG_LOG");
+            if (envFile == null || envFile.isBlank()) {
+                return;
+            }
+            Path p = Path.of(envFile).toAbsolutePath().normalize();
+            // Phase4.005: Gate behind strict pre-existence check so the debug
+            // flag cannot be used as an arbitrary file write primitive.
+            if (!Files.exists(p)) {
+                return;
+            }
+            if (Files.size(p) > 10_000_000L) {
+                return; // Guard against unbounded disk consumption
+            }
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("sessionId", "5c48c3");
             payload.put("hypothesisId", hypothesisId);
@@ -29,34 +42,10 @@ public final class AgentDebugLog {
             payload.put("message", message);
             payload.put("data", data);
             payload.put("timestamp", System.currentTimeMillis());
-            String line = MAPPER.writeValueAsString(payload);
-            String envFile = System.getenv("FINANCE_TRACKER_DEBUG_LOG");
-            IOException last = null;
-            if (envFile != null && !envFile.isBlank()) {
-                try {
-                    Files.writeString(Path.of(envFile), line + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-                    return;
-                } catch (IOException e) {
-                    last = e;
-                }
-            }
-            Path start = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
-            Path cur = start;
-            for (int depth = 0; depth < 12 && cur != null; depth++) {
-                Path p = cur.resolve("debug-5c48c3.log");
-                try {
-                    Files.writeString(p, line + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-                    return;
-                } catch (IOException e) {
-                    last = e;
-                }
-                cur = cur.getParent();
-            }
-            if (last != null) {
-                throw last;
-            }
+            String line = MAPPER.writeValueAsString(payload) + "\n";
+            Files.writeString(p, line, StandardOpenOption.APPEND);
         } catch (Exception ex) {
-            LOG.warn("[agent-debug] append debug-5c48c3 failed: {}", ex.toString());
+            LOG.warn("[agent-debug] append debug log failed: {}", ex.toString());
         }
     }
 }

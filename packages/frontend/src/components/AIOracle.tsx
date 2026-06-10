@@ -11,7 +11,8 @@ import DeleteModal from './DeleteModal';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  concatSpeechResults,
+  buildLiveCaptionFromSpeechEvent,
+  resetSpeechSessionAccum,
   getSpeechRecognitionConstructor,
   pickSpeechRecognitionLang,
 } from '../lib/speechRecognition';
@@ -28,7 +29,7 @@ function makeMessage(role: 'user' | 'ai', content: string): OracleMessage {
 }
 
 const GREETING_CONTENT =
-  "Greetings. I am the Yugi Oracle. I've connected to your real-time transaction stream via MCP. How may I assist your journey today?";
+  'Hi — I\'m your finance copilot here. Ask about spending, cash flow, goals, debt, or investments. Press **/** anytime to reopen this panel.';
 
 function buildDefaultMessages(): OracleMessage[] {
   return [makeMessage('ai', GREETING_CONTENT)];
@@ -45,8 +46,18 @@ function speakSafe(text: string): void {
   }
 }
 
+const MESSAGE_VARIANTS = {
+  initial: { opacity: 0, y: 12, scale: 0.98 },
+  animate: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { type: 'spring' as const, stiffness: 420, damping: 28 },
+  },
+};
+
 export const AIOracle: React.FC = () => {
-  const { userProfile } = useFinance();
+  const { userProfile, refreshData } = useFinance();
   const oracleStorageKey =
     userProfile.email && userProfile.email !== 'guest@example.com'
       ? `ft_oracle_messages_${userProfile.email}`
@@ -63,17 +74,23 @@ export const AIOracle: React.FC = () => {
   });
   const [messages, setMessages] = useState<OracleMessage[]>(buildDefaultMessages);
 
-  // --- Refs ---
+  const quickPrompts = [
+    { label: 'Spending pulse', prompt: 'Analyze my spending' },
+    { label: 'Net worth', prompt: 'Net worth forecast' },
+    { label: 'Trim costs', prompt: 'Optimization tips' },
+    { label: 'Debt plan', prompt: 'Debt strategy' },
+  ];
+
   const mcpClientRef = useRef<MCPClient | null>(null);
   const isInitializingRef = useRef(false);
-  // Fix: track whether the proactive analysis has already fired (avoids stale-closure bug)
   const hasProactiveRunRef = useRef(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const listeningDesiredRef = useRef(false);
   const latestInputRef = useRef('');
   const sessionAnchorRef = useRef('');
+  const speechAccumRef = useRef(resetSpeechSessionAccum());
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  // --- Persist / restore messages ---
   useEffect(() => {
     if (!oracleStorageKey) {
       setMessages(buildDefaultMessages());
@@ -83,8 +100,7 @@ export const AIOracle: React.FC = () => {
     if (saved) {
       try {
         const parsed: unknown[] = JSON.parse(saved);
-        // Migrate legacy messages that lack an id field
-        const migrated: OracleMessage[] = parsed.map((m: any) => ({
+        const migrated: OracleMessage[] = parsed.map((m: OracleMessage & { id?: string }) => ({
           id: m.id ?? crypto.randomUUID(),
           role: m.role ?? 'ai',
           content: m.content ?? '',
@@ -103,22 +119,28 @@ export const AIOracle: React.FC = () => {
     localStorage.setItem(oracleStorageKey, JSON.stringify(messages));
   }, [messages, oracleStorageKey]);
 
-  // --- Sync latestInputRef ---
   useEffect(() => {
     latestInputRef.current = input;
   }, [input]);
 
-  // --- Stop speech recognition when Oracle closes ---
   useEffect(() => {
     if (!isOpen) {
       listeningDesiredRef.current = false;
-      try { recognitionRef.current?.stop(); } catch { /* */ }
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        /* ignore */
+      }
       recognitionRef.current = null;
       setIsListening(false);
     }
   }, [isOpen]);
 
-  // --- MCP init + keyboard shortcut ---
+  useEffect(() => {
+    if (!isOpen || !scrollRef.current) return;
+    scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+  }, [messages, isLoading, isOpen]);
+
   useEffect(() => {
     const initAI = async () => {
       if (isInitializingRef.current || mcpClientRef.current) return;
@@ -129,7 +151,6 @@ export const AIOracle: React.FC = () => {
         await mcp.connect();
         mcpClientRef.current = mcp;
 
-        // Fix: use ref instead of reading messages state (avoids stale closure)
         if (!hasProactiveRunRef.current) {
           hasProactiveRunRef.current = true;
           setIsLoading(true);
@@ -137,7 +158,8 @@ export const AIOracle: React.FC = () => {
             'Perform a quick proactive analysis of my recent transactions and give me one high-impact insight or suggestion.',
             []
           );
-          setMessages(prev => [...prev, makeMessage('ai', result.content)]);
+          setMessages((prev) => [...prev, makeMessage('ai', result.content)]);
+          if (result.financeMutations) void refreshData();
         }
       } catch (err) {
         console.error('Failed to initialize AI Oracle:', err);
@@ -152,7 +174,13 @@ export const AIOracle: React.FC = () => {
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === '/' && !isOpen) {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const isTypingField =
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        Boolean(target?.isContentEditable);
+      if (e.key === '/' && !isOpen && !isTypingField) {
         e.preventDefault();
         setIsOpen(true);
       }
@@ -160,18 +188,20 @@ export const AIOracle: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      // Only disconnect on component unmount (not every open/close toggle)
       if (!isOpen) {
         mcpClientRef.current?.disconnect();
         mcpClientRef.current = null;
       }
     };
-  }, [isOpen]);
+  }, [isOpen, refreshData]);
 
-  // --- Speech helpers ---
   const stopListening = useCallback(() => {
     listeningDesiredRef.current = false;
-    try { recognitionRef.current?.stop(); } catch { /* */ }
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      /* ignore */
+    }
     recognitionRef.current = null;
     setIsListening(false);
   }, []);
@@ -198,14 +228,15 @@ export const AIOracle: React.FC = () => {
 
     recognition.onstart = () => {
       sessionAnchorRef.current = latestInputRef.current.trimEnd();
+      speechAccumRef.current = resetSpeechSessionAccum();
       setIsListening(true);
     };
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const live = concatSpeechResults(event.results).trim();
+      const sessionText = buildLiveCaptionFromSpeechEvent(speechAccumRef.current, event);
       const anchor = sessionAnchorRef.current;
-      const spacer = anchor && live ? ' ' : '';
-      const next = `${anchor}${spacer}${live}`.replace(/\s+/g, ' ').trim();
+      const spacer = anchor && sessionText ? ' ' : '';
+      const next = `${anchor}${spacer}${sessionText}`.replace(/\s+/g, ' ').trim();
       flushSync(() => setInput(next));
     };
 
@@ -263,34 +294,31 @@ export const AIOracle: React.FC = () => {
     else void startListening();
   }, [isListening, startListening, stopListening]);
 
-  // --- Chat helpers ---
-
-  /**
-   * Fix: chip buttons now call this instead of the setTimeout/getElementById hack.
-   * Sends a specific message directly without relying on React state timing.
-   */
-  const handleSendWithMessage = useCallback(async (msg: string) => {
-    if (!msg.trim() || isLoading) return;
-    setMessages(prev => [...prev, makeMessage('user', msg)]);
-    setInput('');
-    setIsLoading(true);
-    try {
-      // Fix: exclude greeting from history to avoid sending ~30 extra tokens per call
-      const history = messages
-        .filter(m => m.content !== GREETING_CONTENT)
-        .map(m => ({ role: m.role, content: m.content }));
-      const result = await financeApi.oracleChat(msg, history);
-      setMessages(prev => [...prev, makeMessage('ai', result.content)]);
-    } catch (err) {
-      console.error('Oracle Error:', err);
-      setMessages(prev => [
-        ...prev,
-        makeMessage('ai', 'Forgive me, my connection to the financial stream was interrupted. Please try again.'),
-      ]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [isLoading, messages]);
+  const handleSendWithMessage = useCallback(
+    async (msg: string) => {
+      if (!msg.trim() || isLoading) return;
+      setMessages((prev) => [...prev, makeMessage('user', msg)]);
+      setInput('');
+      setIsLoading(true);
+      try {
+        const history = messages
+          .filter((m) => m.content !== GREETING_CONTENT)
+          .map((m) => ({ role: m.role, content: m.content }));
+        const result = await financeApi.oracleChat(msg, history);
+        setMessages((prev) => [...prev, makeMessage('ai', result.content)]);
+        if (result.financeMutations) void refreshData();
+      } catch (err) {
+        console.error('Oracle Error:', err);
+        setMessages((prev) => [
+          ...prev,
+          makeMessage('ai', 'Forgive me, my connection to the financial stream was interrupted. Please try again.'),
+        ]);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [isLoading, messages, refreshData]
+  );
 
   const handleSend = useCallback(() => {
     if (!input.trim()) return;
@@ -306,149 +334,267 @@ export const AIOracle: React.FC = () => {
     }
   };
 
-  // --- Render ---
   return (
     <>
-      {/* Floating Trigger Button */}
-      {!isOpen && (
-        <motion.button
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          onClick={() => setIsOpen(true)}
-          className="fixed bottom-32 right-8 w-16 h-16 bg-accent rounded-full flex items-center justify-center shadow-[0_8px_32px_rgba(124,110,250,0.4)] violet-glow z-[100] pointer-events-auto"
-        >
-          <Sparkles className="w-8 h-8 text-white animate-pulse" />
-        </motion.button>
-      )}
+      <AnimatePresence>
+        {!isOpen && (
+          <motion.button
+            key="oracle-fab"
+            type="button"
+            aria-label="Open AI Oracle"
+            exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.15 } }}
+            initial={{ opacity: 0, scale: 0.88 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.94 }}
+            onClick={() => setIsOpen(true)}
+            className="fixed bottom-28 right-6 sm:right-10 z-[139] pointer-events-auto isolate"
+          >
+            <motion.span
+              aria-hidden
+              className="absolute inset-[-4px] -z-10 rounded-full bg-gradient-to-br from-emerald-400/50 via-indigo-500/45 to-fuchsia-500/40 blur-md"
+              animate={{ opacity: [0.65, 1, 0.65], scale: [1, 1.06, 1] }}
+              transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
+            />
+            <span className="relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-white shadow-[0_22px_50px_-10px_rgba(79,70,229,0.55)] ring-1 ring-white/12">
+              <Sparkles className="h-6 w-6" strokeWidth={1.75} />
+            </span>
+          </motion.button>
+        )}
+      </AnimatePresence>
 
-      <div className="fixed inset-0 pointer-events-none z-[101]">
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-full max-w-3xl px-6 pointer-events-auto">
-          <AnimatePresence>
-            {isOpen && (
+      <AnimatePresence mode="sync">
+        {isOpen && (
+          <>
+            <motion.div
+              key="oracle-backdrop"
+              role="presentation"
+              aria-hidden
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22 }}
+              className="fixed inset-0 z-[140] bg-slate-950/60 backdrop-blur-md pointer-events-auto"
+              onClick={() => setIsOpen(false)}
+            />
+            <div className="fixed inset-0 z-[141] pointer-events-none flex flex-col lg:flex-row lg:justify-end lg:items-end lg:p-6 p-3 sm:p-4">
               <motion.div
-                initial={{ opacity: 0, y: 40, scale: 0.95, filter: 'blur(10px)' }}
-                animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
-                exit={{ opacity: 0, y: 40, scale: 0.95, filter: 'blur(10px)' }}
-                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                className="glass-card mb-6 flex flex-col h-[600px] shadow-[0_32px_128px_rgba(0,0,0,0.8)] border-accent/30 bg-card/90 backdrop-blur-3xl overflow-hidden"
+                key="oracle-panel"
+                role="dialog"
+                aria-modal
+                aria-label="AI Oracle assistant"
+                layout
+                initial={{ opacity: 0, x: 48, scale: 0.96 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                exit={{ opacity: 0, x: 32, scale: 0.98, transition: { duration: 0.18 } }}
+                transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+                onClick={(e) => e.stopPropagation()}
+                className={cn(
+                  'pointer-events-auto relative flex flex-col overflow-hidden rounded-[1.85rem]',
+                  'w-full lg:max-w-[min(30rem,calc(100vw-6rem))] lg:ml-auto',
+                  'h-[min(92dvh,760px)] lg:h-[calc(100dvh-7rem)]',
+                  'border border-white/[0.09] shadow-[0_40px_120px_-28px_rgba(0,0,0,0.85)]',
+                  'backdrop-blur-3xl bg-[radial-gradient(120%_80%_at_0%_-10%,rgba(99,102,241,0.18),transparent_52%),linear-gradient(165deg,#0b0f17f2_0%,#06080ef2_42%,#0a0c12f5_100%)]'
+                )}
               >
-                {/* Oracle Header */}
-                <div className="p-6 border-b border-white/5 flex justify-between items-center bg-gradient-to-r from-accent/10 to-transparent">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center violet-glow">
-                      <Sparkles className="w-6 h-6 text-accent animate-pulse" />
-                    </div>
-                    <div>
-                      <h2 className="font-display font-bold text-xl tracking-tight">AI Oracle</h2>
-                      <p className="text-[10px] text-accent font-bold uppercase tracking-[0.2em]">Financial Intelligence</p>
-                    </div>
+                <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                  <motion.div
+                    className="absolute -top-28 -left-20 h-56 w-56 rounded-full bg-violet-500/20 blur-3xl"
+                    animate={{ opacity: [0.35, 0.55, 0.35] }}
+                    transition={{ duration: 5.5, repeat: Infinity, ease: 'easeInOut' }}
+                  />
+                  <motion.div
+                    className="absolute -bottom-32 -right-16 h-64 w-64 rounded-full bg-emerald-500/12 blur-3xl"
+                    animate={{ opacity: [0.25, 0.45, 0.25] }}
+                    transition={{ duration: 6.2, repeat: Infinity, ease: 'easeInOut', delay: 0.8 }}
+                  />
+                </div>
+
+                <header className="relative z-10 flex shrink-0 items-start justify-between gap-4 px-6 pt-5 pb-4 border-b border-white/[0.06]">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-indigo-300/90">Oracle</p>
+                    <h2 className="mt-1 text-lg sm:text-xl font-black tracking-tight text-white truncate">Finance cockpit</h2>
+                    <p className="mt-0.5 text-xs text-slate-400 leading-snug max-w-[22rem]">
+                      Grounded answers from your synced data — concise, actionable, calm.
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 shrink-0">
                     <button
+                      type="button"
                       onClick={clearHistory}
-                      title="Clear Chat History"
-                      className="w-10 h-10 flex items-center justify-center hover:bg-negative/10 rounded-xl transition-colors group"
+                      title="Clear chat history"
+                      className="rounded-xl p-2.5 text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-rose-300"
                     >
-                      <Trash2 className="w-5 h-5 text-white/40 group-hover:text-negative transition-colors" />
+                      <Trash2 className="h-5 w-5" aria-hidden />
                     </button>
                     <button
+                      type="button"
                       onClick={() => setIsOpen(false)}
-                      aria-label="Close"
-                      className="w-10 h-10 flex items-center justify-center hover:bg-white/5 rounded-xl transition-colors group"
+                      aria-label="Close Oracle"
+                      className="rounded-xl p-2.5 text-slate-500 transition-colors hover:bg-white/[0.06] hover:text-white"
                     >
-                      <X className="w-5 h-5 text-white/20 group-hover:text-white transition-colors" />
+                      <X className="h-5 w-5" aria-hidden />
                     </button>
                   </div>
-                </div>
+                </header>
 
-                {/* Chat Area */}
-                <div className="flex-1 overflow-y-auto p-8 space-y-8 no-scrollbar">
-                  {messages.map((msg) => (
-                    // Fix: use stable msg.id (UUID) instead of array index
-                    <motion.div
-                      key={msg.id}
-                      initial={{ opacity: 0, x: msg.role === 'ai' ? -20 : 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      className={cn('flex gap-6', msg.role === 'user' ? 'flex-row-reverse' : '')}
-                    >
-                      <div
-                        className={cn(
-                          'w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border border-white/5',
-                          msg.role === 'ai' ? 'bg-accent/10 text-accent' : 'bg-white/5 text-white/20'
-                        )}
+                <div
+                  ref={scrollRef}
+                  className="relative z-10 flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6 scroll-smooth [scrollbar-width:thin] [scrollbar-color:rgba(148,163,184,.35)_transparent]"
+                >
+                  <div className="flex flex-col gap-6 pb-4">
+                    {messages.map((msg, i) => (
+                      <motion.article
+                        key={msg.id}
+                        variants={MESSAGE_VARIANTS}
+                        initial="initial"
+                        animate="animate"
+                        transition={{ delay: Math.min(i, 12) * 0.03 }}
+                        className={cn('flex gap-3', msg.role === 'user' ? 'flex-row-reverse' : '')}
                       >
-                        {msg.role === 'ai' ? <Sparkles className="w-5 h-5" /> : <MessageSquare className="w-5 h-5" />}
-                      </div>
-                      <div
-                        className={cn(
-                          'max-w-[85%] p-5 rounded-[24px] text-sm leading-relaxed shadow-xl overflow-hidden',
-                          msg.role === 'ai'
-                            ? 'bg-white/[0.03] border border-white/5 text-white/80'
-                            : 'bg-accent text-white font-medium violet-glow'
-                        )}
-                      >
-                        <div className="markdown-body prose prose-invert prose-sm max-w-none">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-
-                {/* Input area */}
-                <div className="p-6 border-t border-white/5 bg-white/[0.02]">
-                  <div className="flex gap-2 mb-6 overflow-x-auto pb-2 no-scrollbar">
-                    {['Analyze my spending', 'Net worth forecast', 'Optimization tips', 'Debt strategy'].map(
-                      (chip) => (
-                        // Fix: call handleSendWithMessage directly — no setTimeout/DOM hack
-                        <button
-                          key={chip}
-                          onClick={() => void handleSendWithMessage(chip)}
-                          disabled={isLoading}
-                          className="px-4 py-2 rounded-xl bg-white/5 border border-white/5 text-[10px] font-bold uppercase tracking-widest whitespace-nowrap hover:bg-accent/20 hover:border-accent/40 transition-all hover:scale-105 disabled:opacity-50"
+                        <div
+                          className={cn(
+                            'mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border text-[13px]',
+                            msg.role === 'ai'
+                              ? 'border-white/[0.08] bg-white/[0.04] text-indigo-200'
+                              : 'border-emerald-500/25 bg-emerald-500/10 text-emerald-200'
+                          )}
                         >
-                          {chip}
-                        </button>
-                      )
-                    )}
+                          {msg.role === 'ai' ? (
+                            <Sparkles className="h-5 w-5 shrink-0" strokeWidth={1.6} aria-hidden />
+                          ) : (
+                            <MessageSquare className="h-5 w-5 shrink-0" strokeWidth={1.6} aria-hidden />
+                          )}
+                        </div>
+                        <div
+                          className={cn(
+                            'max-w-[min(100%,22rem)] sm:max-w-[min(100%,26rem)] rounded-[1.25rem] px-4 py-3.5 text-[13px] leading-relaxed shadow-lg',
+                            msg.role === 'ai'
+                              ? 'rounded-tl-md border border-white/[0.08] bg-slate-900/78 text-slate-100 backdrop-blur-sm'
+                              : 'rounded-tr-md border border-emerald-400/20 bg-gradient-to-bl from-emerald-500 via-emerald-600 to-teal-600 text-white'
+                          )}
+                        >
+                          <div className="prose prose-sm prose-invert max-w-none [&_strong]:font-bold [&_a]:text-indigo-300 [&_li]:marker:text-indigo-400/80 prose-p:my-1.5 prose-headings:font-bold prose-ul:my-2">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                          </div>
+                        </div>
+                      </motion.article>
+                    ))}
+                    <AnimatePresence>
+                      {isLoading && (
+                        <motion.div
+                          key="thinking"
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0 }}
+                          className="flex gap-3 pl-[3.25rem]"
+                        >
+                          <div className="flex gap-1.5 rounded-2xl border border-white/[0.08] bg-slate-900/72 px-4 py-3">
+                            {[0, 1, 2].map((n) => (
+                              <motion.span
+                                key={n}
+                                className="inline-block h-2 w-2 rounded-full bg-indigo-400/85"
+                                animate={{ opacity: [0.3, 1, 0.3], scale: [0.92, 1, 0.92] }}
+                                transition={{
+                                  duration: 1.05,
+                                  repeat: Infinity,
+                                  delay: n * 0.18,
+                                  ease: 'easeInOut',
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
-                  <div className="relative group/input">
-                    <div className="absolute -inset-1 bg-gradient-to-r from-accent/20 to-positive/20 rounded-2xl blur opacity-0 group-focus-within/input:opacity-100 transition-opacity duration-500" />
-                    <div className="relative flex items-center">
-                      <input
-                        type="text"
+                </div>
+
+                <footer className="relative z-10 shrink-0 border-t border-white/[0.06] bg-slate-950/45 px-4 py-4 sm:px-5 backdrop-blur-xl">
+                  <motion.div
+                    className="mb-3 flex gap-2 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch]"
+                    layout
+                  >
+                    {quickPrompts.map(({ label, prompt }, idx) => (
+                      <motion.button
+                        key={prompt}
+                        type="button"
+                        disabled={isLoading}
+                        onClick={() => void handleSendWithMessage(prompt)}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.97 }}
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: idx * 0.04 }}
+                        className={cn(
+                          'inline-flex shrink-0 items-center rounded-full border px-3.5 py-2 text-[11px] font-bold uppercase tracking-[0.12em]',
+                          'border-white/[0.1] bg-white/[0.04] text-slate-200 transition-colors hover:border-indigo-400/35 hover:bg-indigo-500/12 hover:text-white',
+                          'disabled:opacity-45 disabled:pointer-events-none'
+                        )}
+                      >
+                        {label}
+                      </motion.button>
+                    ))}
+                  </motion.div>
+
+                  <div className="relative rounded-2xl border border-white/[0.07] bg-slate-950/55 p-1.5 shadow-inner shadow-black/30">
+                    <div
+                      className="pointer-events-none absolute inset-x-4 top-1 h-px bg-gradient-to-r from-transparent via-emerald-400/20 to-transparent rounded-full opacity-70"
+                      aria-hidden
+                    />
+                    <div className="flex gap-2">
+                      <textarea
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                        placeholder="Ask the Oracle anything..."
-                        className="w-full bg-card border border-white/10 rounded-2xl py-4 pl-6 pr-28 outline-none focus:border-accent/50 transition-all text-lg placeholder:text-white/10"
+                        rows={2}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSend();
+                          }
+                        }}
+                        placeholder="Ask anything… (Shift+Enter for newline)"
+                        className="flex-1 min-h-[2.85rem] max-h-[7rem] resize-none rounded-xl bg-transparent px-3 py-3 text-[15px] text-slate-100 placeholder:text-slate-600 outline-none"
                       />
-                      <div className="absolute right-2 flex items-center gap-2">
+                      <div className="flex flex-col gap-2 pr-1 pt-2 pb-1">
                         <button
                           type="button"
                           onClick={toggleListening}
+                          aria-pressed={isListening}
                           className={cn(
-                            'p-3 rounded-xl transition-all border',
+                            'inline-flex items-center justify-center rounded-xl border p-2.5 transition-all',
                             isListening
-                              ? 'bg-negative/20 border-negative/30 text-negative animate-pulse'
-                              : 'bg-white/5 border-white/10 text-white/40 hover:text-white'
+                              ? 'border-rose-400/40 bg-rose-500/15 text-rose-200'
+                              : 'border-white/10 bg-white/[0.04] text-slate-400 hover:text-white'
                           )}
+                          title={isListening ? 'Stop voice' : 'Voice input'}
                         >
-                          {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                          {isListening ? (
+                            <MicOff className="h-5 w-5 shrink-0" aria-hidden />
+                          ) : (
+                            <Mic className="h-5 w-5 shrink-0" aria-hidden />
+                          )}
                         </button>
-                        <button
-                          onClick={handleSend}
+                        <motion.button
+                          type="button"
                           disabled={isLoading}
-                          className="p-3 bg-accent text-white rounded-xl hover:bg-accent/80 transition-all hover:scale-105 shadow-lg active:scale-95 disabled:opacity-50 disabled:scale-100"
+                          aria-label="Send message"
+                          onClick={handleSend}
+                          whileHover={{ scale: 1.03 }}
+                          whileTap={{ scale: 0.95 }}
+                          className="inline-flex min-h-[2.75rem] min-w-[2.75rem] items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg shadow-indigo-900/35 disabled:opacity-45 disabled:scale-100"
                         >
-                          {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                        </button>
+                          {isLoading ? (
+                            <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                          ) : (
+                            <Send className="h-5 w-5" aria-hidden />
+                          )}
+                        </motion.button>
                       </div>
                     </div>
                   </div>
-                </div>
+                </footer>
 
                 <DeleteModal
                   isOpen={errorModal.isOpen}
@@ -466,10 +612,10 @@ export const AIOracle: React.FC = () => {
                   isDestructive={false}
                 />
               </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </div>
+            </div>
+          </>
+        )}
+      </AnimatePresence>
     </>
   );
 };

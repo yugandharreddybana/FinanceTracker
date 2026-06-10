@@ -34,6 +34,10 @@ public class AuditLog {
     private String entityType;
     private String entityId;
 
-    // ISSUE #7 FIX: no delete method exists on this entity.
-    // Rows are append-only at service layer and DB layer (V2 migration rules).
+    @PrePersist
+    void onCreate() {
+        if (timestamp == null) {
+            timestamp = Instant.now();
+        }
+    }
 }

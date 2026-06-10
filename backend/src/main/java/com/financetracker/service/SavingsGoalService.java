@@ -69,7 +69,7 @@ public class SavingsGoalService {
     @Transactional
     public void recalculateAndCheckCompletion(String goalId) {
         repo.findById(goalId).ifPresent(goal -> {
-            BigDecimal total = txRepo.sumBySavingsGoalId(goalId);
+            BigDecimal total = txRepo.sumBySavingsGoalId(goalId, goal.getCurrency());
             BigDecimal newCurrent = total != null ? total.max(BigDecimal.ZERO) : BigDecimal.ZERO;
             boolean justCompleted = goal.getTarget() != null
                 && newCurrent.compareTo(goal.getTarget()) >= 0

@@ -34,12 +34,35 @@ public class BudgetRolloverScheduler {
     @Scheduled(cron = "0 0 * * * *", zone = "UTC")
     @Transactional
     public void rolloverBudgets() {
-        List<UserProfile> users = userRepo.findAll();
+        java.util.List<String> validZones = new java.util.ArrayList<>();
+        boolean utcIsRolling = false;
+
+        for (String zoneId : ZoneId.getAvailableZoneIds()) {
+            try {
+                ZoneId idObj = ZoneId.of(zoneId);
+                ZonedDateTime localNow = ZonedDateTime.now(idObj);
+                if (localNow.getDayOfMonth() == 1 && localNow.getHour() == 0) {
+                    validZones.add(zoneId);
+                    if (java.time.ZoneOffset.UTC.equals(idObj.getRules().getOffset(java.time.Instant.now())) || "UTC".equalsIgnoreCase(zoneId)) {
+                        utcIsRolling = true;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (validZones.isEmpty() && !utcIsRolling) {
+            return; // No zone is currently in the rollover window
+        }
+
+        // If validZones is empty but utcIsRolling is true, pass a placeholder string to avoid empty SQL IN lists
+        java.util.List<String> queryZones = validZones.isEmpty() ? java.util.List.of("DUMMY_ZONE_HOLDER") : validZones;
+
+        List<UserProfile> users = userRepo.findByTimezoneInOrNull(queryZones, utcIsRolling);
         int rolled = 0;
         for (UserProfile user : users) {
             ZoneId zone = parseZone(user.getTimezone());
             ZonedDateTime localNow = ZonedDateTime.now(zone);
-            // Only fire when the user's local clock just rolled into the 1st.
+            // Extra safety guard to ensure double-execution prevention
             if (localNow.getDayOfMonth() != 1 || localNow.getHour() != 0) continue;
             rolled += rolloverForUser(user.getId(), localNow.toLocalDate());
         }
@@ -48,7 +71,8 @@ public class BudgetRolloverScheduler {
 
     private int rolloverForUser(String userId, LocalDate newStart) {
         LocalDate newEnd = newStart.plusMonths(1).minusDays(1);
-        List<Budget> budgets = budgetRepo.findAllByUserId(userId).stream()
+        // ISSUE 4.056 FIX: Query only active budgets to avoid redundant processing of deleted ones.
+        List<Budget> budgets = budgetRepo.findAllByUserIdAndDeletedFalse(userId).stream()
             .filter(b -> b.getPeriodType() == Budget.PeriodType.MONTHLY)
             // Idempotency: don't re-roll if already on this period
             .filter(b -> b.getPeriodStart() == null || !b.getPeriodStart().equals(newStart))
@@ -60,7 +84,7 @@ public class BudgetRolloverScheduler {
             if (Boolean.TRUE.equals(b.getRolloverEnabled())) {
                 b.setRolloverAmount(unspent);
             }
-            b.setSpentInternal(BigDecimal.ZERO);
+            b.resetSpent();
             b.setPeriodStart(newStart);
             b.setPeriodEnd(newEnd);
             budgetRepo.save(b);

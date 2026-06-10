@@ -67,15 +67,26 @@ public class Budget {
     @Column(name = "period_end")
     private LocalDate periodEnd;
 
+    // Phase4.011: Soft-delete
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean deleted = false;
+
+    @Column(name = "deleted_at")
+    private java.time.Instant deletedAt;
+
     public enum PeriodType {
         MONTHLY, WEEKLY, CUSTOM
     }
 
-    // Server-only mutator — name signals the only legitimate writers
-    // (TransactionService, BudgetRolloverScheduler). Jackson can never reach this
-    // method (READ_ONLY on the field), and Lombok's setSpent is package-private
-    // by AccessLevel.PACKAGE so cross-package mass-assignment is blocked too.
-    public void setSpentInternal(BigDecimal spent) {
-        this.spent = spent;
+    // Server-only mutators for safer domain updates (Phase4.024).
+    // Drops naked public setSpentInternal setter to prevent arbitrary rewrites.
+    public void applySpentDelta(BigDecimal delta) {
+        BigDecimal cur = this.spent != null ? this.spent : BigDecimal.ZERO;
+        this.spent = cur.add(delta);
+    }
+
+    public void resetSpent() {
+        this.spent = BigDecimal.ZERO;
     }
 }

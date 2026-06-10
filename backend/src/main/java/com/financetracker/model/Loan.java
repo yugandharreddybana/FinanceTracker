@@ -62,6 +62,14 @@ public class Loan {
     @Column(columnDefinition = "jsonb")
     private List<LoanPayment> payments;
 
+    // ISSUE #22 / 4.054 FIX: Soft-delete support
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean deleted = false;
+
+    @Column(name = "deleted_at")
+    private java.time.Instant deletedAt;
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor

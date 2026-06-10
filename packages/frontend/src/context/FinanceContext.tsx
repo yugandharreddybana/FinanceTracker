@@ -20,7 +20,14 @@ import {
   ForecastResult 
 } from '../types';
 import { financeApi, familyApi, auditApi, authApi, MIDDLEWARE_BASE } from '../services/api';
-import { safeStorage, sanitizeFinanceText } from '../lib/utils';
+import {
+  safeStorage,
+  sanitizeFinanceText,
+  DASHBOARD_LENS_STORAGE_KEY,
+  readStoredDashboardLens,
+  defaultDashboardDisplayLens,
+  type DashboardDisplayLens,
+} from '../lib/utils';
 import { currencyService } from '../services/currencyService';
 
 interface FinanceContextType {
@@ -85,6 +92,8 @@ interface FinanceContextType {
   /** Non-fatal refresh error (stale data may still be shown). */
   dataRefreshError: string | null;
   clearDataRefreshError: () => void;
+  dashboardDisplayLens: DashboardDisplayLens;
+  setDashboardDisplayLens: (lens: DashboardDisplayLens) => void;
   addTransactions: (input: string | any[]) => Promise<void>;
   previewSmartAdd: (input: string) => Promise<any[]>;
   addManualTransaction: (tx: Transaction) => void;
@@ -446,6 +455,8 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
     safeStorage.remove(`yugi_finance_forecasts_${email}`);
     safeStorage.remove(`yugi_ai_chat_history_${email}`);
     safeStorage.remove(`ft_oracle_messages_${email}`);
+    safeStorage.remove('yugi_finance_notifications');
+    safeStorage.remove('ft_oracle_messages');
   }, []);
 
   const clearDataForNewUser = useCallback((email?: string) => {
@@ -664,6 +675,16 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
     } finally {
       setIsLoggedIn(false);
       clearDataForNewUser(email);
+
+      // Clear all Cache Storage buckets to purge offline-cached API responses
+      if ('caches' in window) {
+        try {
+          const cacheNames = await caches.keys();
+          await Promise.all(cacheNames.map(name => caches.delete(name)));
+        } catch (e) {
+          console.error('Failed to clear browser caches on logout:', e);
+        }
+      }
     }
   }, [clearDataForNewUser]);
 
@@ -866,6 +887,21 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
 
     return result;
   }, [accounts, loans, transactions, investments]);
+
+  const [dashboardDisplayLens, setDashboardDisplayLensState] = useState<DashboardDisplayLens>(() =>
+    readStoredDashboardLens() ??
+      defaultDashboardDisplayLens(userProfile.preferences?.currency ?? '', netWorthByCurrency)
+  );
+
+  useEffect(() => {
+    if (readStoredDashboardLens()) return;
+    setDashboardDisplayLensState(defaultDashboardDisplayLens(userProfile.preferences?.currency ?? '', netWorthByCurrency));
+  }, [userProfile.preferences?.currency, netWorthByCurrency]);
+
+  const setDashboardDisplayLens = useCallback((next: DashboardDisplayLens) => {
+    setDashboardDisplayLensState(next);
+    safeStorage.setItem(DASHBOARD_LENS_STORAGE_KEY, next);
+  }, []);
 
   const monthlyTrends = React.useMemo(() => {
     const last6Months = Array.from({ length: 6 }).map((_, i) => {
@@ -1098,8 +1134,9 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
     return financeApi.processAIInput(input, {
       savingsGoals: savingsGoals.map(g => ({ id: g.id, name: g.name })),
       accounts: acctCtx,
+      budgets: budgets.map(b => ({ id: b.id, category: b.category, limit: b.limit, currency: b.currency })),
     });
-  }, [accounts, savingsGoals, guardAccounts]);
+  }, [accounts, savingsGoals, budgets, guardAccounts]);
 
   const deleteTransaction = useCallback(async (id: string) => {
     const snapshot = transactionsRef.current;
@@ -1108,7 +1145,7 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
     
     if (txToDelete && txToDelete.account) {
       const amt = Math.abs(txToDelete.amount);
-      const income = txToDelete.type === 'INCOME';
+      const income = txToDelete.type === 'income';
       const balanceDeltaOnRemove = income ? -amt : amt;
       setAccounts(prev => prev.map(acc => {
         if (acc.name === txToDelete.account || acc.id === txToDelete.account) {
@@ -1125,7 +1162,7 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
       setTransactions(snapshot);
       if (txToDelete && txToDelete.account) {
         const amt = Math.abs(txToDelete.amount);
-        const income = txToDelete.type === 'INCOME';
+        const income = txToDelete.type === 'income';
         const balanceDeltaOnRemove = income ? -amt : amt;
         setAccounts(prev => prev.map(acc => {
           if (acc.name === txToDelete.account || acc.id === txToDelete.account) {
@@ -1818,6 +1855,8 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
       financeHydrated,
       dataRefreshError,
       clearDataRefreshError,
+      dashboardDisplayLens,
+      setDashboardDisplayLens,
       addTransactions,
       previewSmartAdd,
       addManualTransaction,

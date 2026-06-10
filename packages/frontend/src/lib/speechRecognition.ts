@@ -24,7 +24,32 @@ export function pickSpeechRecognitionLang(): string {
   return 'en-US';
 }
 
-/** Concatenate every hypothesis in this session (interim + final) — reliable live captions in Chromium. */
+export type SpeechSessionAccum = { prefix: string };
+
+export function resetSpeechSessionAccum(): SpeechSessionAccum {
+  return { prefix: '' };
+}
+
+/**
+ * Concatenating full `SpeechRecognitionResultList` on every `result` repeats prior finals in Chromium.
+ * Only process from `resultIndex`, append finalized segments to `prefix`, and append one interim tail.
+ */
+export function buildLiveCaptionFromSpeechEvent(accum: SpeechSessionAccum, ev: SpeechRecognitionEvent): string {
+  let display = accum.prefix;
+  for (let i = ev.resultIndex; i < ev.results.length; i++) {
+    const res = ev.results[i];
+    const piece = res[0]?.transcript ?? '';
+    if (res.isFinal) {
+      accum.prefix += piece;
+      display = accum.prefix;
+    } else {
+      display = accum.prefix + piece;
+    }
+  }
+  return display.replace(/\s+/g, ' ').trim();
+}
+
+/** @deprecated Prefer `buildLiveCaptionFromSpeechEvent` for live captions; this duplicates text on Chromium. */
 export function concatSpeechResults(results: SpeechRecognitionResultList): string {
   let out = '';
   for (let i = 0; i < results.length; i++) {

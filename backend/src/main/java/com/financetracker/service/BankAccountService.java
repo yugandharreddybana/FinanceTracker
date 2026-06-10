@@ -16,11 +16,13 @@ public class BankAccountService {
 
     @Transactional(readOnly = true)
     public List<BankAccount> findAllByUserId(String userId) {
-        return repo.findAllByUserId(userId);
+        return repo.findAllByUserIdAndDeletedFalse(userId);
     }
 
     @Transactional
-    public BankAccount create(BankAccount account) {
+    public BankAccount create(BankAccount account, String requestUserId) {
+        // Phase4.010: Enforce server-managed userId boundary strictly in service logic.
+        account.setUserId(requestUserId);
         if (account.getId() == null || account.getId().isBlank()) {
             // Phase5.0013: UUID — millisecond timestamps collide under burst
             // creation (two accounts in the same ms → DB integrity violation).
@@ -47,7 +49,11 @@ public class BankAccountService {
         if (updates.getBank() != null) existing.setBank(updates.getBank());
         if (updates.getColor() != null) existing.setColor(updates.getColor());
         if (updates.getLastSynced() != null) existing.setLastSynced(updates.getLastSynced());
-        if (updates.getCurrency() != null) existing.setCurrency(updates.getCurrency());
+        // Phase4.012: Currency modification is blocked after creation to maintain ledger and transaction integrity.
+        if (updates.getCurrency() != null && !updates.getCurrency().equalsIgnoreCase(existing.getCurrency())) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST, "Bank account currency cannot be modified after creation");
+        }
         if (updates.getCreditLimit() != null) existing.setCreditLimit(updates.getCreditLimit());
         if (updates.getDueDate() != null) existing.setDueDate(updates.getDueDate());
         if (updates.getApr() != null) existing.setApr(updates.getApr());
@@ -68,7 +74,10 @@ public class BankAccountService {
     public void delete(String id, String requestUserId) {
         BankAccount existing = repo.findById(id).orElseThrow(() -> new com.financetracker.exception.NotFoundException("Account not found: " + id));
         Guards.assertOwner(existing.getUserId(), requestUserId);
-        repo.deleteById(id);
+        // Phase4.011: Enforce uniform soft-delete to preserve referral audit integrity.
+        existing.setDeleted(true);
+        existing.setDeletedAt(java.time.Instant.now());
+        repo.save(existing);
     }
 
     // Enforce: at most one primary per (user, currency). Promoting one demotes siblings sharing the same currency.

@@ -24,8 +24,7 @@ public class BudgetController {
     @PostMapping
     public ResponseEntity<Budget> create(@RequestBody Budget budget, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
-        budget.setUserId(userId);
-        return ResponseEntity.ok(service.create(budget));
+        return ResponseEntity.ok(service.create(budget, userId));
     }
 
     @PutMapping("/{id}")

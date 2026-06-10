@@ -8,8 +8,10 @@ import java.util.List;
 
 public interface BudgetRepository extends JpaRepository<Budget, String> {
     List<Budget> findAllByUserId(String userId);
-    // ISSUE #9 FIX: Query used by BudgetRolloverScheduler
-    List<Budget> findAllByPeriodType(Budget.PeriodType periodType);
+    List<Budget> findAllByUserIdAndDeletedFalse(String userId);
+    // ISSUE #9 / 4.056 FIX: Query only active budgets for rollover.
+    List<Budget> findAllByPeriodTypeAndDeletedFalse(Budget.PeriodType periodType);
+    List<Budget> findAllByUserIdAndCategoryIgnoreCaseAndCurrencyAndDeletedFalse(String userId, String category, String currency);
 
     @Modifying
     @Transactional

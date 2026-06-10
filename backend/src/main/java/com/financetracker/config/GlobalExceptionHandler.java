@@ -49,9 +49,19 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<Map<String, String>> handleConstraint(ConstraintViolationException e) {
+    public ResponseEntity<Map<String, Object>> handleConstraint(ConstraintViolationException e) {
+        Map<String, String> fieldErrors = e.getConstraintViolations().stream()
+            .collect(Collectors.toMap(
+                violation -> {
+                    String path = violation.getPropertyPath().toString();
+                    int lastDot = path.lastIndexOf('.');
+                    return lastDot == -1 ? path : path.substring(lastDot + 1);
+                },
+                violation -> violation.getMessage() != null ? violation.getMessage() : "Invalid value",
+                (a, b) -> a
+            ));
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-            .body(Map.of("error", "Validation failed: " + e.getMessage()));
+            .body(Map.of("error", "Validation failed", "fields", fieldErrors));
     }
 
     // Phase4.0007: typed 404 signal — replaces fragile string matching on
@@ -146,15 +156,14 @@ public class GlobalExceptionHandler {
         String correlationId = UUID.randomUUID().toString();
         log.error("[{}] Unhandled RuntimeException: {}", correlationId, e.getMessage(), e);
         // #region agent log
-        String em = e.getMessage() != null ? e.getMessage() : "";
+        // Phase4.005: Suppress 'msg' serialization to strictly avoid PII leakage in flat-file logs.
         com.financetracker.debug.AgentDebugLog.log(
             "H2",
             "GlobalExceptionHandler.handleRuntime",
             "runtime→500",
             java.util.Map.of(
                 "correlationId", correlationId,
-                "ex", e.getClass().getSimpleName(),
-                "msg", em.length() > 220 ? em.substring(0, 220) : em
+                "ex", e.getClass().getSimpleName()
             )
         );
         // #endregion

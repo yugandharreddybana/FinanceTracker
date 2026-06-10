@@ -1,14 +1,24 @@
 import { useFinance } from '../context/FinanceContext';
-import { formatCurrency, formatShortDate, cn } from '../lib/utils';
+import {
+  formatCurrency,
+  formatShortDate,
+  cn,
+  transactionCurrency,
+} from '../lib/utils';
 import { motion } from 'motion/react';
 import {
-  TrendingUp, TrendingDown, Wallet, CreditCard, Target, ArrowUpRight, ArrowDownRight, Sparkles, BarChart3, Eye, EyeOff,
+  TrendingUp, Wallet, CreditCard, Target, ArrowUpRight, ArrowDownRight, Sparkles, BarChart3, Eye, EyeOff,
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+function investmentPortfolioCurrency(inv: { currency?: string }): string {
+  const raw = (inv.currency || '').trim().toUpperCase().replace(/[^A-Z]/g, '');
+  return raw.length >= 3 ? raw.slice(0, 3) : 'INR';
+}
 
 const COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EC4899', '#8B5CF6', '#06B6D4', '#EF4444', '#F97316'];
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
@@ -17,26 +27,32 @@ const fadeUp = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transi
 export function Dashboard() {
   const nav = useNavigate();
   const [hidden, setHidden] = useState(false);
-  const { transactions, budgets, investments, userProfile, netWorthByCurrency } = useFinance();
+  const {
+    transactions,
+    budgets,
+    investments,
+    userProfile,
+    netWorthByCurrency,
+    dashboardDisplayLens,
+    setDashboardDisplayLens,
+  } = useFinance();
 
-  // Filter active buckets ensuring valid financial footprints
-  const currencies = Object.keys(netWorthByCurrency || {});
-  const displayCurrencies = currencies.filter(c => 
-    netWorthByCurrency[c].assets > 0 || 
-    netWorthByCurrency[c].liabilities > 0 ||
-    netWorthByCurrency[c].income > 0 ||
-    netWorthByCurrency[c].expenses > 0
-  );
-  const finalCurrencies = displayCurrencies.length > 0 ? displayCurrencies : ['INR'];
+  const lensCurrency = dashboardDisplayLens;
 
-  // Dynamically resolve active chart base currency based on user primary stack
-  const chartCurrency = displayCurrencies.includes('INR') ? 'INR' : (displayCurrencies[0] || 'INR');
-  const chartSym = formatCurrency(0, chartCurrency).replace(/[0-9.,\s\-]/g, '');
+  const chartSym = formatCurrency(0, lensCurrency).replace(/[0-9.,\s\-]/g, '');
 
-  const baseNode = netWorthByCurrency[chartCurrency] || { income: 0, expenses: 0 };
+  const baseNode = netWorthByCurrency[lensCurrency] || { income: 0, expenses: 0, total: 0, assets: 0, liabilities: 0, change: 0 };
   const sr = baseNode.income > 0 ? ((baseNode.income - baseNode.expenses) / baseNode.income) * 100 : 0;
 
-  const catSpend = transactions.filter(t => t.type === 'expense').reduce((a, t) => { a[t.category] = (a[t.category] || 0) + t.amount; return a; }, {} as Record<string, number>);
+  const inLensCc = (t: (typeof transactions)[number]) =>
+    transactionCurrency(t, lensCurrency) === lensCurrency;
+
+  const catSpend = transactions
+    .filter((t) => t.type === 'expense' && inLensCc(t))
+    .reduce((a, t) => {
+      a[t.category] = (a[t.category] || 0) + t.amount;
+      return a;
+    }, {} as Record<string, number>);
   const pie = Object.entries(catSpend).sort((a, b) => b[1] - a[1]).map(([name, value]) => ({ name, value }));
 
   const trend = (() => {
@@ -47,29 +63,59 @@ export function Dashboard() {
       const label = d.toLocaleString('default', { month: 'short' });
       const mo = d.getMonth();
       const yr = d.getFullYear();
-      const inc = transactions.filter(t => { const td = new Date(t.date); return t.type === 'income' && td.getMonth() === mo && td.getFullYear() === yr; }).reduce((s, t) => s + Math.abs(t.amount), 0);
-      const exp = transactions.filter(t => { const td = new Date(t.date); return t.type === 'expense' && td.getMonth() === mo && td.getFullYear() === yr; }).reduce((s, t) => s + Math.abs(t.amount), 0);
+      const inc = transactions
+        .filter((t) => {
+          const td = new Date(t.date);
+          return (
+            t.type === 'income' &&
+            td.getMonth() === mo &&
+            td.getFullYear() === yr &&
+            inLensCc(t)
+          );
+        })
+        .reduce((s, t) => s + Math.abs(t.amount), 0);
+      const exp = transactions
+        .filter((t) => {
+          const td = new Date(t.date);
+          return (
+            t.type === 'expense' &&
+            td.getMonth() === mo &&
+            td.getFullYear() === yr &&
+            inLensCc(t)
+          );
+        })
+        .reduce((s, t) => s + Math.abs(t.amount), 0);
       months.push({ m: label, inc, exp });
     }
     return months;
   })();
 
-  const invVal = investments.reduce((s, i) => {
+  const investmentsInLens = investments.filter(
+    (i) => investmentPortfolioCurrency(i) === lensCurrency
+  );
+
+  const invVal = investmentsInLens.reduce((s, i) => {
     const val = (typeof i.quantity === 'number' && typeof i.currentPrice === 'number') 
       ? (i.quantity * i.currentPrice) 
-      : ((i as any).currentValue || 0);
+      : (((i as unknown) as Record<string, unknown>).currentValue as number) || 0;
     return s + (Number(val) || 0);
   }, 0);
   
-  const invCost = investments.reduce((s, i) => {
+  const invCost = investmentsInLens.reduce((s, i) => {
     const cost = (typeof i.quantity === 'number' && typeof i.averagePrice === 'number')
       ? (i.quantity * i.averagePrice)
-      : ((i as any).amount || 0);
+      : (((i as unknown) as Record<string, unknown>).amount as number) || 0;
     return s + (Number(cost) || 0);
   }, 0);
 
   const invGain = invVal - invCost;
   const invPct = invCost > 0 ? (invGain / invCost) * 100 : 0;
+  const budgetsInLens = budgets.filter(
+    (b) => (b.currency || 'INR').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3) === lensCurrency
+  );
+  const recentInLens = transactions
+    .filter((t) => inLensCc(t))
+    .slice(0, 5);
 
   const firstName = userProfile.name.split(' ')[0];
   const hour = new Date().getHours();
@@ -97,9 +143,43 @@ export function Dashboard() {
   return (
     <div data-testid="page-dashboard" className="p-4 sm:p-6 lg:p-8 space-y-5 sm:space-y-6 max-w-[1440px] mx-auto">
       {/* ── Header ── */}
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-slate-900 tracking-tight">{greeting}, {firstName} 👋</h1>
-        <p className="text-slate-400 text-sm sm:text-base mt-0.5">Here's your financial snapshot</p>
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"
+      >
+        <div>
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-slate-900 tracking-tight">
+            {greeting}, {firstName}{' '}
+            <span aria-hidden>👋</span>
+          </h1>
+          <p className="text-slate-400 text-sm sm:text-base mt-0.5">
+            Snapshot in <span className="font-semibold text-slate-600">{lensCurrency}</span> — totals, charts, and activity match this currency
+          </p>
+        </div>
+        <div
+          className="flex shrink-0 rounded-2xl border border-slate-200/90 bg-slate-100/90 p-1 shadow-inner"
+          role="group"
+          aria-label="Dashboard display currency"
+        >
+          {(['INR', 'EUR'] as const).map((ccy) => (
+            <button
+              key={ccy}
+              type="button"
+              data-testid={`dashboard-lens-${ccy}`}
+              aria-pressed={lensCurrency === ccy}
+              onClick={() => setDashboardDisplayLens(ccy)}
+              className={cn(
+                'min-w-[4.25rem] rounded-xl px-4 py-2 text-xs font-black tracking-wide transition-all',
+                lensCurrency === ccy
+                  ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
+                  : 'text-slate-500 hover:text-slate-800'
+              )}
+            >
+              {ccy}
+            </button>
+          ))}
+        </div>
       </motion.div>
 
       {/* ── Stat Cards ── */}
@@ -113,11 +193,11 @@ export function Dashboard() {
           </div>
           <p className="text-xs sm:text-sm text-emerald-100 font-medium">Total Balance</p>
           {renderStackedValues(
-            finalCurrencies.map(c => formatCurrency(netWorthByCurrency[c]?.assets || 0, c)), 
+            [formatCurrency(netWorthByCurrency[lensCurrency]?.assets ?? 0, lensCurrency)],
             'text-2xl sm:text-3xl', 'text-xl', true
           )}
-          {netWorthByCurrency[chartCurrency]?.change !== 0 && (
-            <div className="mt-2 sm:mt-3 flex items-center gap-1"><TrendingUp className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-emerald-200" /><span className="text-[11px] sm:text-xs font-semibold text-emerald-100">{netWorthByCurrency[chartCurrency]?.change > 0 ? '+' : ''}{netWorthByCurrency[chartCurrency]?.change.toFixed(1)}%</span></div>
+          {(netWorthByCurrency[lensCurrency]?.change ?? 0) !== 0 && (
+            <div className="mt-2 sm:mt-3 flex items-center gap-1"><TrendingUp className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-emerald-200" /><span className="text-[11px] sm:text-xs font-semibold text-emerald-100">{(netWorthByCurrency[lensCurrency]?.change ?? 0) > 0 ? '+' : ''}{(netWorthByCurrency[lensCurrency]?.change ?? 0).toFixed(1)}%</span></div>
           )}
         </motion.div>
 
@@ -127,7 +207,7 @@ export function Dashboard() {
           <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl sm:rounded-2xl bg-blue-50 text-blue-500 mb-3"><TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" /></div>
           <p className="text-xs sm:text-sm text-slate-400 font-medium">Income</p>
           {renderStackedValues(
-            finalCurrencies.map(c => formatCurrency(netWorthByCurrency[c]?.income || 0, c)), 
+            [formatCurrency(netWorthByCurrency[lensCurrency]?.income ?? 0, lensCurrency)],
             'text-lg sm:text-2xl text-slate-900', 'text-base text-slate-900'
           )}
         </motion.div>
@@ -138,7 +218,7 @@ export function Dashboard() {
           <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl sm:rounded-2xl bg-rose-50 text-rose-500 mb-3"><CreditCard className="h-4 w-4 sm:h-5 sm:w-5" /></div>
           <p className="text-xs sm:text-sm text-slate-400 font-medium">Expenses</p>
           {renderStackedValues(
-            finalCurrencies.map(c => formatCurrency(netWorthByCurrency[c]?.expenses || 0, c)), 
+            [formatCurrency(netWorthByCurrency[lensCurrency]?.expenses ?? 0, lensCurrency)],
             'text-lg sm:text-2xl text-slate-900', 'text-base text-slate-900'
           )}
         </motion.div>
@@ -149,7 +229,7 @@ export function Dashboard() {
           <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl sm:rounded-2xl bg-white/20 mb-3"><Target className="h-4 w-4 sm:h-5 sm:w-5" /></div>
           <p className="text-xs sm:text-sm text-violet-100 font-medium">Net Worth</p>
           {renderStackedValues(
-            finalCurrencies.map(c => formatCurrency(netWorthByCurrency[c]?.total || 0, c)), 
+            [formatCurrency(netWorthByCurrency[lensCurrency]?.total ?? 0, lensCurrency)],
             'text-2xl sm:text-3xl', 'text-xl', true
           )}
         </motion.div>
@@ -163,7 +243,7 @@ export function Dashboard() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 sm:mb-6 gap-2">
             <div>
               <h3 className="text-base sm:text-lg font-bold text-slate-900">Cash Flow</h3>
-              <p className="text-xs sm:text-sm text-slate-400">Income vs expenses</p>
+              <p className="text-xs sm:text-sm text-slate-400">Income vs expenses • {lensCurrency}</p>
             </div>
             <div className="flex items-center gap-3 sm:gap-4 text-[11px] sm:text-xs font-semibold">
               <span className="flex items-center gap-1.5"><span className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-emerald-500" />Income</span>
@@ -179,7 +259,7 @@ export function Dashboard() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis dataKey="m" stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
               <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} tickFormatter={v => `${chartSym}${v/1000}k`} width={48} />
-              <Tooltip contentStyle={{ background: 'rgba(15,23,42,0.92)', border: 'none', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,.2)', fontSize: 12 }} itemStyle={{ color: '#fff' }} labelStyle={{ color: '#94a3b8' }} formatter={(v) => formatCurrency(Number(v), chartCurrency)} />
+              <Tooltip contentStyle={{ background: 'rgba(15,23,42,0.92)', border: 'none', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,.2)', fontSize: 12 }} itemStyle={{ color: '#fff' }} labelStyle={{ color: '#94a3b8' }} formatter={(v) => formatCurrency(Number(v), lensCurrency)} />
               <Area type="monotone" dataKey="inc" name="Income" stroke="#10B981" strokeWidth={2} fill="url(#ig)" dot={{ r: 3, fill: '#10B981', strokeWidth: 2, stroke: '#fff' }} />
               <Area type="monotone" dataKey="exp" name="Expenses" stroke="#F43F5E" strokeWidth={2} fill="url(#eg)" dot={{ r: 3, fill: '#F43F5E', strokeWidth: 2, stroke: '#fff' }} />
             </AreaChart>
@@ -190,7 +270,7 @@ export function Dashboard() {
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
           className="lg:col-span-2 rounded-2xl sm:rounded-3xl bg-white p-4 sm:p-6 shadow-sm border border-slate-100">
           <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-1">Spending</h3>
-          <p className="text-xs sm:text-sm text-slate-400 mb-3 sm:mb-4">By category</p>
+          <p className="text-xs sm:text-sm text-slate-400 mb-3 sm:mb-4">By category • {lensCurrency}</p>
           <div className="flex items-center gap-4">
             <div className="w-[120px] sm:w-[140px] flex-shrink-0">
               <ResponsiveContainer width="100%" height={120}>
@@ -198,17 +278,21 @@ export function Dashboard() {
                   <Pie data={pie} cx="50%" cy="50%" innerRadius={32} outerRadius={55} paddingAngle={2} dataKey="value" strokeWidth={0}>
                     {pie.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
-                  <Tooltip formatter={v => formatCurrency(Number(v))} contentStyle={{ background: 'rgba(15,23,42,0.92)', border: 'none', borderRadius: 10, fontSize: 12 }} itemStyle={{ color: '#fff' }} />
+                  <Tooltip formatter={v => formatCurrency(Number(v), lensCurrency)} contentStyle={{ background: 'rgba(15,23,42,0.92)', border: 'none', borderRadius: 10, fontSize: 12 }} itemStyle={{ color: '#fff' }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
-            <div className="flex-1 space-y-1.5 sm:space-y-2 min-w-0">
-              {pie.slice(0, 5).map((d, i) => (
+          <div className="flex-1 space-y-1.5 sm:space-y-2 min-w-0">
+              {pie.length === 0 ? (
+                <p className="text-xs text-slate-400 font-medium py-6">No spending in {lensCurrency} yet.</p>
+              ) : (
+              pie.slice(0, 5).map((d, i) => (
                 <div key={d.name} className="flex items-center justify-between text-xs sm:text-sm gap-2">
                   <div className="flex items-center gap-1.5 min-w-0"><div className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} /><span className="text-slate-500 font-medium truncate">{d.name}</span></div>
-                  <span className="font-bold text-slate-900 tabular-nums flex-shrink-0">{formatCurrency(d.value)}</span>
+                  <span className="font-bold text-slate-900 tabular-nums flex-shrink-0">{formatCurrency(d.value, lensCurrency)}</span>
                 </div>
-              ))}
+              ))
+              )}
             </div>
           </div>
         </motion.div>
@@ -219,12 +303,18 @@ export function Dashboard() {
         {/* Recent Activity */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
           className="rounded-2xl sm:rounded-3xl bg-white p-4 sm:p-6 shadow-sm border border-slate-100">
-          <div className="flex items-center justify-between mb-4 sm:mb-5">
-            <h3 className="text-base sm:text-lg font-bold text-slate-900">Recent</h3>
+            <div className="flex items-center justify-between mb-4 sm:mb-5">
+            <div>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900">Recent</h3>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mt-0.5">{lensCurrency} only</p>
+            </div>
             <button onClick={() => nav('/app/transactions')} className="text-[11px] sm:text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-full transition-colors">View all</button>
           </div>
           <div className="space-y-1.5 sm:space-y-2">
-            {transactions.slice(0, 5).map((t, i) => (
+            {recentInLens.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-8 font-medium">No activity in {lensCurrency}</p>
+            ) : (
+            recentInLens.map((t, i) => (
               <motion.div key={t.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.45 + i * 0.04 }}
                 className="flex items-center justify-between rounded-xl sm:rounded-2xl bg-slate-50/80 p-2.5 sm:p-3">
                 <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
@@ -237,10 +327,11 @@ export function Dashboard() {
                   </div>
                 </div>
                 <span className={cn('text-xs sm:text-sm font-bold tabular-nums flex-shrink-0 ml-2', t.type === 'income' ? 'text-emerald-600' : 'text-rose-500')}>
-                  {t.type === 'income' ? '+' : '−'}{formatCurrency(t.amount, t.currency)}
+                  {t.type === 'income' ? '+' : '−'}{formatCurrency(t.amount, transactionCurrency(t, lensCurrency))}
                 </span>
               </motion.div>
-            ))}
+            ))
+            )}
           </div>
         </motion.div>
 
@@ -248,11 +339,17 @@ export function Dashboard() {
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}
           className="rounded-2xl sm:rounded-3xl bg-white p-4 sm:p-6 shadow-sm border border-slate-100">
           <div className="flex items-center justify-between mb-4 sm:mb-5">
-            <h3 className="text-base sm:text-lg font-bold text-slate-900">Budgets</h3>
+            <div>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900">Budgets</h3>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mt-0.5">{lensCurrency} only</p>
+            </div>
             <button onClick={() => nav('/app/budgets')} className="text-[11px] sm:text-xs font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 px-2.5 py-1 rounded-full transition-colors">Manage</button>
           </div>
           <div className="space-y-3 sm:space-y-4">
-            {budgets.slice(0, 5).map(b => {
+            {budgetsInLens.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-6 font-medium">No budgets in {lensCurrency}</p>
+            ) : (
+            budgetsInLens.slice(0, 5).map(b => {
               const pct = Math.min((b.spent / b.limit) * 100, 100);
               return (
                 <div key={b.id}>
@@ -265,12 +362,13 @@ export function Dashboard() {
                       className={cn('h-full rounded-full', pct > 90 ? 'bg-rose-500' : pct > 70 ? 'bg-amber-500' : 'bg-emerald-500')} />
                   </div>
                   <div className="flex justify-between mt-0.5">
-                    <span className="text-[10px] text-slate-400 tabular-nums">{formatCurrency(b.spent)}</span>
-                    <span className="text-[10px] text-slate-400 tabular-nums">{formatCurrency(b.limit)}</span>
+                    <span className="text-[10px] text-slate-400 tabular-nums">{formatCurrency(b.spent, b.currency || lensCurrency)}</span>
+                    <span className="text-[10px] text-slate-400 tabular-nums">{formatCurrency(b.limit, b.currency || lensCurrency)}</span>
                   </div>
                 </div>
               );
-            })}
+            })
+            )}
           </div>
         </motion.div>
 
@@ -294,7 +392,7 @@ export function Dashboard() {
                 <div><p className="text-[11px] sm:text-sm text-violet-100">Returns</p><p className="text-2xl sm:text-3xl font-black mt-0.5 tabular-nums">{invPct >= 0 ? '+' : ''}{invPct.toFixed(1)}%</p></div>
                 <div className="flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-xl sm:rounded-2xl bg-white/20"><BarChart3 className="h-5 w-5 sm:h-6 sm:w-6" /></div>
               </div>
-              <p className="text-[10px] sm:text-xs text-violet-200 mt-2">📈 {formatCurrency(invGain)} unrealized</p>
+              <p className="text-[10px] sm:text-xs text-violet-200 mt-2">📈 {formatCurrency(invGain, lensCurrency)} unrealized</p>
             </div>
 
             <div className="rounded-2xl sm:rounded-3xl bg-gradient-to-br from-amber-500 to-orange-500 p-4 sm:p-5 text-white shadow-lg shadow-amber-100/40 relative overflow-hidden sm:col-span-2 md:col-span-2 lg:col-span-1">

@@ -11,11 +11,23 @@ coverage/
 .DS_Store
 .idea/
 .vscode/
+.cursor/
+.claude/
+.agents/
+.kilo/
 
-# Environment and Logs
+# Environment and Logs — never commit real secrets (hooks also block git add -f)
 *.log
 .env*
 !.env.example
+!/packages/frontend/.env.example
+.env.local
+.env*.local
+.env.backup
+.env.*.backup
+*.env.bak
+.envrc
+.secrets
 
 # H2 local database files (dev profile)
 backend/data/
@@ -23,14 +35,28 @@ backend/data/
 # Server compiled output
 server/dist/
 server/data/
+server/data/audit_*.json
 
 # Scratch/notes files
-*.txt
+scratch*.txt
+notes/*.txt
+!live_schema.txt
 # Scratch/test files with potential secrets
 server/scratch/
 scratch/
+
+# Dedicated local folder for agent-tool outputs and temporary assets
+.local/
 
 # Graphify, agent, and temporary assets
 graphify-out/
 .agent/
 *.zip
+
+# Playwright artifacts
+playwright-report/
+test-results/
+e2e/*.png
+
+# Audit files
+server/data/audit_*.json

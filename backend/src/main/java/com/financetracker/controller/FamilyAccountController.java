@@ -3,6 +3,7 @@ package com.financetracker.controller;
 import com.financetracker.model.FamilyAccount;
 import com.financetracker.service.FamilyAccountService;
 import com.financetracker.util.Guards;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -53,5 +54,31 @@ public class FamilyAccountController {
         Guards.requireUser(userId);
         service.delete(id, userId);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/members")
+    public ResponseEntity<FamilyAccount> addMember(
+            @PathVariable String id,
+            @RequestBody AddMemberRequest request,
+            @RequestHeader("X-User-Id") String userId) {
+        Guards.requireUser(userId);
+        FamilyAccount updated = service.addMember(id, userId, request.getName(), request.getRole());
+        return ResponseEntity.ok(updated);
+    }
+
+    @DeleteMapping("/{id}/members/{uid}")
+    public ResponseEntity<FamilyAccount> removeMember(
+            @PathVariable String id,
+            @PathVariable String uid,
+            @RequestHeader("X-User-Id") String userId) {
+        Guards.requireUser(userId);
+        FamilyAccount updated = service.removeMember(id, userId, uid);
+        return ResponseEntity.ok(updated);
+    }
+
+    @Data
+    public static class AddMemberRequest {
+        private String name;
+        private String role;
     }
 }

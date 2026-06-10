@@ -2,6 +2,7 @@ package com.financetracker.service;
 
 import com.financetracker.repository.*;
 import com.financetracker.model.UserProfile;
+import com.financetracker.util.Guards;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -32,10 +33,18 @@ public class UserProfileService {
     public List<UserProfile> findAll() { return repo.findAll(); }
 
     @Transactional(readOnly = true)
-    public Optional<UserProfile> findById(String id) { return repo.findById(id); }
+    public Optional<UserProfile> findById(String id, String requestUserId) {
+        Guards.assertOwner(id, requestUserId);
+        return repo.findById(id);
+    }
 
     @Transactional(readOnly = true)
-    public Optional<UserProfile> findByEmail(String email) { return repo.findByEmail(email); }
+    public Optional<UserProfile> findByEmail(String email, String requestUserId) {
+        return repo.findByEmail(email).map(profile -> {
+            Guards.assertOwner(profile.getId(), requestUserId);
+            return profile;
+        });
+    }
 
     @Transactional
     public UserProfile create(UserProfile profile) {
@@ -47,7 +56,8 @@ public class UserProfileService {
     }
 
     @Transactional
-    public UserProfile update(String id, UserProfile updates) {
+    public UserProfile update(String id, UserProfile updates, String requestUserId) {
+        Guards.assertOwner(id, requestUserId);
         UserProfile existing = repo.findById(id)
             .orElseThrow(() -> new com.financetracker.exception.NotFoundException("User profile not found"));
         if (updates.getName() != null) existing.setName(updates.getName());
@@ -60,17 +70,16 @@ public class UserProfileService {
     }
 
     @Transactional
-    public void delete(String id) { purgeUserData(id); }
-
-    @Transactional
-    public void deleteByEmail(String email) {
-        repo.findByEmail(email).ifPresent(p -> purgeUserData(p.getId()));
+    public void delete(String id, String requestUserId) {
+        Guards.assertOwner(id, requestUserId);
+        purgeUserData(id);
     }
+
 
     @Transactional
     public void deleteByEmailOwned(String email, String requestUserId) {
         repo.findByEmail(email).ifPresent(profile -> {
-            com.financetracker.util.Guards.assertOwner(profile.getId(), requestUserId);
+            Guards.assertOwner(profile.getId(), requestUserId);
             purgeUserData(profile.getId());
         });
     }

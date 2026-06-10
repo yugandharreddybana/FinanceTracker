@@ -1,133 +1,121 @@
 /**
- * auth middleware — two-layer verification:
+ * auth middleware
  *
- * Layer 1 (every request): RS256 JWT verification against server public key
- * Layer 2 (mutating requests POST/PUT/PATCH/DELETE): ECDSA P-256 per-operation
- *   request signature verification against the user's stored public key
- *
- * Analogous to blockchain:
- *   Layer 1 = checking the transaction came from a valid, CA-signed identity
- *   Layer 2 = verifying the transaction was actually signed by that wallet
+ * Every request goes through JWT verification to confirm authentication state.
+ * Verifies the token against shared backend secrets and validates the session.
  */
 
 import { Request, Response, NextFunction } from "express";
-import { verifyToken, findUserById, findUserByEmail } from "../lib/auth.js";
-import { verifyRequestSignature } from "../lib/keyManager.js";
-
-const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-
-// Headers that carry the per-operation signature
-const SIG_HEADER = "x-request-signature";
-// Optional nonce header — prevents replay attacks within the same JWT window
-const NONCE_HEADER = "x-request-nonce";
+import { 
+  verifyToken, 
+  findUserByEmail, 
+  createToken, 
+  cookieOptions, 
+  refreshTokenCookieOptions,
+  verifyAndRotateRefreshToken 
+} from "../lib/auth.js";
 
 /**
- * authMiddleware — Layer 1 only.
- * Verifies the RS256 JWT and attaches `req.user`.
- * Used on read-only routes where per-op signing is not required.
+ * authMiddleware
+ * Verifies the HS256 JWT, enforces short-lived access token transparent rotation 
+ * via Redis-backed refresh tokens, enforces idle timeout, email verification, 
+ * session revocation, and attaches `req.user`.
  */
-export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
+export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
   let token: string | undefined;
   const authHeader = req.headers.authorization;
-  if (authHeader?.startsWith("Bearer ")) {
+  if (authHeader && /^bearer /i.test(authHeader)) {
     token = authHeader.slice(7);
   } else if ((req as any).cookies?.auth_token) {
     token = (req as any).cookies.auth_token;
   }
-  if (!token) {
-    res.status(401).json({ error: "Unauthorized: missing token" });
-    return;
+
+  let payload: any = null;
+  if (token) {
+    payload = verifyToken(token);
   }
-  const payload = verifyToken(token);
+
+  // Phase2.0008: Transparent token refresh if access token is missing, invalid, or expired
   if (!payload) {
-    res.status(401).json({ error: "Unauthorized: invalid or expired token" });
+    const refreshToken = (req as any).cookies?.refresh_token;
+    if (refreshToken) {
+      try {
+        const refreshResult = await verifyAndRotateRefreshToken(refreshToken);
+        if (refreshResult) {
+          const { payload: userPayload, newToken: newRefreshToken } = refreshResult;
+          const now = Math.floor(Date.now() / 1000);
+          const newAccessToken = createToken(userPayload, now);
+          
+          // Set cookies on the response
+          res.cookie("auth_token", newAccessToken, cookieOptions);
+          res.cookie("refresh_token", newRefreshToken, refreshTokenCookieOptions);
+          
+          // Update local payload and inject new token for downstream proxy logic
+          payload = { ...userPayload, lastActivityAt: now };
+          if (!(req as any).cookies) (req as any).cookies = {};
+          (req as any).cookies.auth_token = newAccessToken;
+        }
+      } catch (e) {
+        console.error("[authMiddleware] Transparent refresh error:", e);
+      }
+    }
+  }
+
+  // If still no valid payload after checking refresh token, reject request
+  if (!payload) {
+    res.status(401).json({ error: "Unauthorized: session expired or invalid" });
     return;
   }
 
-  const stored = findUserByEmail(payload.email);
-  if (stored?.emailVerified === false) {
-    res.status(403).json({ error: "Email verification required" });
-    return;
+  const now = Math.floor(Date.now() / 1000);
+
+  // Phase2.012: Server-side Inactivity sliding renewal on the ACCESS token.
+  // If the access token is still valid but more than 60 seconds have elapsed
+  // since last activity, update the cookie.
+  // NOTE: the core inactivity enforcement (> 1 hour) is now backed by the Redis session state
+  // inside `verifyAndRotateRefreshToken`, but we still update the lastActivityAt claim 
+  // in the access token here for downstream consistency.
+  if (typeof payload.lastActivityAt === "number") {
+    const idleSeconds = now - payload.lastActivityAt;
+    if (idleSeconds > 60) {
+      const newToken = createToken({ uid: payload.uid, email: payload.email, name: payload.name }, now);
+      res.cookie("auth_token", newToken, cookieOptions);
+      payload.lastActivityAt = now;
+      if (!(req as any).cookies) (req as any).cookies = {};
+      (req as any).cookies.auth_token = newToken;
+    }
+  }
+
+  // Demo Account Isolation Bypass
+  const isDev = process.env.NODE_ENV === "development";
+  const allowDemoBypass =
+    payload.email === "demo@yugifinance.com" &&
+    isDev && process.env.ALLOW_DEMO_EMAIL_VERIFICATION_BYPASS === "true";
+
+  if (!allowDemoBypass) {
+    const stored = await findUserByEmail(payload.email);
+    if (!stored) {
+      res.status(401).json({ error: "Unauthorized: user not found" });
+      return;
+    }
+    
+    if (stored.emailVerified === false) {
+      res.status(403).json({ error: "Email verification required" });
+      return;
+    }
+
+    // Phase2.0009: check password rotation / reset to invalidate tokens
+    if (payload.iat && stored.passwordChangedAt) {
+      const changedTime = new Date(stored.passwordChangedAt).getTime();
+      const iatTime = payload.iat * 1000;
+      // Reject token if issued before the password update, with 5 second grace period
+      if (iatTime < changedTime - 5000) {
+        res.status(401).json({ error: "Unauthorized: session revoked due to password change" });
+        return;
+      }
+    }
   }
 
   (req as any).user = payload;
-  next();
-};
-
-/**
- * strictAuthMiddleware — Layer 1 + Layer 2.
- *
- * For mutating operations (POST/PUT/PATCH/DELETE), additionally verifies the
- * per-operation ECDSA P-256 signature in the `x-request-signature` header.
- *
- * Canonical payload signed by the client:
- *   SHA-256( METHOD + "\n" + path + "\n" + nonce + "\n" + JSON.stringify(body) )
- *
- * This ensures:
- *   - A stolen JWT alone cannot perform writes (attacker lacks private key)
- *   - Each signed request is bound to a specific path + nonce (replay-resistant)
- *   - The server verifies integrity of the exact payload being processed
- */
-export const strictAuthMiddleware = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  // ── Layer 1: JWT ──────────────────────────────────────────────────────────
-  let token: string | undefined;
-  const authHeader = req.headers.authorization;
-  if (authHeader?.startsWith("Bearer ")) {
-    token = authHeader.slice(7);
-  } else if ((req as any).cookies?.auth_token) {
-    token = (req as any).cookies.auth_token;
-  }
-  if (!token) {
-    res.status(401).json({ error: "Unauthorized: missing token" });
-    return;
-  }
-  const jwtPayload = verifyToken(token);
-  if (!jwtPayload) {
-    res.status(401).json({ error: "Unauthorized: invalid or expired token" });
-    return;
-  }
-  (req as any).user = jwtPayload;
-
-  // ── Layer 2: per-operation ECDSA signature (mutating methods only) ────────
-  if (MUTATING_METHODS.has(req.method)) {
-    const signature = req.headers[SIG_HEADER] as string | undefined;
-    if (!signature) {
-      res.status(401).json({
-        error: "Unauthorized: request signature required for write operations",
-        hint: "Sign the canonical payload with your ECDSA private key and include it in the x-request-signature header",
-      });
-      return;
-    }
-
-    // Look up the user's stored ECDSA public key
-    const storedUser = findUserById(jwtPayload.uid);
-    if (!storedUser?.ecPublicKey) {
-      res.status(403).json({
-        error: "Forbidden: user has no registered signing key. Re-register or rotate your keypair.",
-      });
-      return;
-    }
-
-    // Build the canonical payload string the client should have signed
-    const nonce = (req.headers[NONCE_HEADER] as string) ?? "";
-    const bodyStr = req.body && typeof req.body === "object"
-      ? JSON.stringify(req.body)
-      : (typeof req.body === "string" ? req.body : "");
-    const canonical = `${req.method}\n${req.path}\n${nonce}\n${bodyStr}`;
-
-    const valid = verifyRequestSignature(canonical, signature, storedUser.ecPublicKey);
-    if (!valid) {
-      res.status(401).json({
-        error: "Unauthorized: invalid request signature",
-        hint: "Ensure you are signing: METHOD + newline + path + newline + nonce + newline + JSON.stringify(body)",
-      });
-      return;
-    }
-  }
-
   next();
 };

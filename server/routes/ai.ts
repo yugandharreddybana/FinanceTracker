@@ -1,10 +1,13 @@
 import { Router, Request, Response } from "express";
 import { rateLimit } from "express-rate-limit";
-import { findUserByEmail, verifyToken } from "../lib/auth.js";
-import dotenv from "dotenv";
-
-dotenv.config();
-
+import { authMiddleware } from "../middleware/auth.js";
+import {
+  normalizeProcessInputItems,
+  sortBankAccountsFirst,
+  type SmartAccount,
+  type SmartBudget,
+  type SmartGoal,
+} from "../lib/smartAddNormalize.js";
 const router = Router();
 
 const IS_PROD_AI = process.env.NODE_ENV === "production";
@@ -266,27 +269,26 @@ function buildChatSystemContent(
   const accountsJson = JSON.stringify(accountsSlim);
   const txJson = JSON.stringify(transactions);
   const financeJson = JSON.stringify(financeSnapshot);
-  const accountsNote =
-    accountsSlim.length === 0
-      ? "BANK_ACCOUNTS_SNAPSHOT is empty — the user has not added bank accounts yet; tell them to add accounts under Bank Accounts for accurate balances."
-      : "BANK_ACCOUNTS_SNAPSHOT is the authoritative source for balances (not transaction history).";
 
   return (
     `You are the Yugi Oracle, a premium personal financial assistant.\n` +
     `User: ${name}. Today: ${new Date().toISOString().split("T")[0]}.\n\n` +
-    `BANK_ACCOUNTS_SNAPSHOT (${accountsNote})\n` +
+    `You receive structured finance data below for reasoning only.\n\n` +
+    `USER-FACING STYLE (critical):\n` +
+    `- Never name or quote JSON keys, section headings from this prompt, datasets, snapshots, APIs, schemas, arrays, "empty array", or field paths (e.g. no "budgets property", no "finance snapshot").\n` +
+    `- If something is missing, say it in plain language (e.g. "You have not added investment holdings in the app yet" / "There are no savings goals recorded yet").\n` +
+    `- Never imply you are reading code or databases; speak as a coach who sees their finances at a glance.\n\n` +
+    `CONTEXT A — linked bank-type accounts (${accountsSlim.length === 0 ? "none yet — suggest Bank Accounts page; do not say 'empty snapshot'" : "balances here override transaction math for totals"}):\n` +
     `${accountsJson}\n\n` +
-    `USER_FINANCE_SNAPSHOT (cross-domain context — before saying anything is missing, check every subsection below)\n` +
+    `CONTEXT B — budgets, goals, loans, subscriptions, holdings, income sources, aggregates, preferences, trends (may include empty lists):\n` +
     `${financeJson}\n\n` +
-    `Recent transactions (cash-flow detail — may be empty; balance questions still use accounts):\n` +
+    `CONTEXT C — recent transactions (cash-flow detail; balance questions still prioritize CONTEXT A):\n` +
     `${txJson}\n\n` +
     `RULES:\n` +
-    `- If the user asks about **current balance**, **total balance**, **bank balances**, **how much money I have**, **across accounts**, or similar: answer using BANK_ACCOUNTS_SNAPSHOT only. Sum balances **per currency**. List each account with name, type, balance, and currency.\n` +
-    `- Treat **Credit** accounts as debt: show them separately from Current/Savings when giving "cash" or "liquid" totals.\n` +
-    `- Budget / spending limits → USER_FINANCE_SNAPSHOT.budgets. Savings goals → savings_goals. Debt / EMI → loans. Subscriptions → recurring_payments. Portfolio → investments. Salary or income streams → income_sources. Net worth / wealth rollups → net_worth_by_currency (plus accounts where relevant). Financial health scores → health_metrics_by_currency. Category definitions → custom_categories. Recent multi-month cash-flow shape → monthly_trends. Prefer **preferences.currency** when picking a default currency to emphasize.\n` +
-    `- Do **not** refuse balance questions because transactions are empty — rely on BANK_ACCOUNTS_SNAPSHOT.\n` +
-    `- Do **not** claim the user has no budgets, goals, loans, etc. without confirming the matching array in USER_FINANCE_SNAPSHOT is empty.\n` +
-    `- Answer using markdown (**bold** figures, bullets). Be concise (2–4 short paragraphs). Never invent accounts, transactions, or holdings.`
+    `- Balance / "how much do I have" / across accounts → infer from CONTEXT A only; sum per currency; list account name, type, balance; treat Credit as debt unless user wants one merged net figure.\n` +
+    `- Map insights to CONTEXT B silently: budgets, savings goals, loans, recurring, investments/portfolio, income sources, category labels, monthly_trends, preferences.currency for default emphasis.\n` +
+    `- Do not refuse balances because CONTEXT C is empty.\n` +
+    `- Markdown to user (**bold** numbers, bullets); 2–4 short paragraphs; never invent holdings or transactions.`
   );
 }
 
@@ -294,6 +296,8 @@ function buildChatSystemContent(
 // this absolute cap is rejected outright. Below the cap the tool still does NOT
 // auto-execute — it returns a pendingAction the user must confirm via UI.
 const MAX_AI_TX_AMOUNT = 10000;
+const MAX_AI_BUDGET_LIMIT = 250_000;
+const MAX_AI_BUDGET_BATCH = 24;
 
 // ---------------------------------------------------------------------------
 // NVIDIA NIM — OpenAI-compatible client
@@ -398,27 +402,7 @@ function safeJson(text: string): any {
 }
 
 // ---------------------------------------------------------------------------
-// Authentication Middleware
-// ---------------------------------------------------------------------------
 
-const authMiddleware = (req: Request, res: Response, next: () => void) => {
-  let token: string | undefined;
-  const authHeader = req.headers.authorization;
-  if (authHeader?.startsWith("Bearer ")) {
-    token = authHeader.slice(7);
-  } else if ((req as any).cookies?.auth_token) {
-    token = (req as any).cookies.auth_token;
-  }
-  if (!token) return res.status(401).json({ error: "Missing authorization token" });
-  const decoded = verifyToken(token);
-  if (!decoded) return res.status(401).json({ error: "Invalid or expired token" });
-  const stored = findUserByEmail(decoded.email);
-  if (stored?.emailVerified === false) {
-    return res.status(403).json({ error: "Email verification required" });
-  }
-  (req as any).user = decoded;
-  next();
-};
 
 const BACKEND_URL = process.env.JAVA_BACKEND_URL || process.env.BACKEND_URL || "http://localhost:8081";
 const BACKEND_API = `${BACKEND_URL}/api/finance`;
@@ -447,7 +431,7 @@ async function callBackend(path: string, method: string, body: any, userId: stri
 
 router.post("/process-input", authMiddleware, aiLimiter, async (req, res) => {
   try {
-    const { input, savingsGoals, accounts } = req.body;
+    const { input, savingsGoals, accounts, budgets: budgetsBody } = req.body;
     if (!input || typeof input !== 'string') {
       return res.status(400).json({ error: "Input is required and must be a string" });
     }
@@ -543,7 +527,45 @@ Example: "coffee 5; uber 12; salary 5000" → 3 separate TRANSACTION items.`;
     const result = Array.isArray(parsed)
       ? parsed
       : parsed.results || parsed.items || parsed.transactions || [parsed];
-    res.json(result);
+    let items: Record<string, unknown>[] = (Array.isArray(result) ? result : []).filter(
+      (x): x is Record<string, unknown> => Boolean(x) && typeof x === "object" && !Array.isArray(x)
+    );
+
+    const goalsCtx: SmartGoal[] = Array.isArray(savingsGoals)
+      ? savingsGoals
+          .map((g: { id?: string; name?: string }) => ({
+            id: String(g?.id ?? ""),
+            name: String(g?.name ?? ""),
+          }))
+          .filter((g) => g.id !== "" || g.name !== "")
+      : [];
+
+    const accCtx: SmartAccount[] = Array.isArray(accounts)
+      ? (accounts as Record<string, unknown>[]).map((a) => ({
+          id: String(a.id ?? ""),
+          name: typeof a.name === "string" ? a.name : "",
+          bank: typeof a.bank === "string" ? a.bank : "",
+          currency: typeof a.currency === "string" ? a.currency : undefined,
+          isPrimary: Boolean(a.isPrimary),
+        }))
+      : [];
+
+    const budgetCtx: SmartBudget[] = Array.isArray(budgetsBody)
+      ? (budgetsBody as Record<string, unknown>[]).map((b) => ({
+          id: String(b.id ?? ""),
+          category: String(b.category ?? ""),
+          limit: typeof b.limit === "number" ? b.limit : undefined,
+          currency: typeof b.currency === "string" ? b.currency : undefined,
+        }))
+      : [];
+
+    items = sortBankAccountsFirst(items);
+    items = normalizeProcessInputItems(input, items, {
+      savingsGoals: goalsCtx,
+      accounts: accCtx,
+      budgets: budgetCtx,
+    });
+    res.json(items);
   } catch (error: any) {
     console.error("AI Process Input Error:", error.message);
     res.status(500).json({ error: aiPublicError(error) });
@@ -753,6 +775,35 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
           },
         },
       },
+      {
+        type: "function",
+        function: {
+          name: "create_budgets",
+          description:
+            "Create monthly budgets in the user's data store. Use when the user asks to add/set up budgets from scratch. Skips categories that already exist.",
+          parameters: {
+            type: "object",
+            properties: {
+              budgets: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    category: { type: "string", description: "Budget category name e.g. Food & Drink" },
+                    limit: { type: "number", description: "Monthly limit in the given currency" },
+                    currency: {
+                      type: "string",
+                      description: "ISO 4217 currency e.g. EUR, INR, USD (omit only if unknown)",
+                    },
+                  },
+                  required: ["category", "limit"],
+                },
+              },
+            },
+            required: ["budgets"],
+          },
+        },
+      },
     ];
 
     const today = new Date().toISOString().split("T")[0];
@@ -765,7 +816,8 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
         `CAPABILITIES:\n` +
         `- You have direct access to the user's REAL financial data via tools. ALWAYS call tools before answering data questions.\n` +
         `- You can view: transactions, bank accounts, budgets, savings goals, loans, and recurring payments.\n` +
-        `- You can draft new transactions (user must confirm).\n\n` +
+        `- You can draft new transactions (user must confirm in Smart Add).\n` +
+        `- You can **create budgets** with the create_budgets tool — these are saved immediately.\n\n` +
         `CRITICAL TOOL USE:\n` +
         `- Questions about **balance**, **bank balances**, **total money**, **cash available**, **across accounts**, or **net liquid**: call **get_accounts** (not only get_transactions). Sum balances **per currency**. Treat **Credit** as debt — separate from deposit balances unless the user asks for one combined net figure.\n` +
         `- Transaction history alone cannot prove current account balances — never claim balances are "unknown" solely because transactions are empty.\n\n` +
@@ -777,9 +829,10 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
         `5. When asked about net worth, sum all account balances minus total loan remaining amounts.\n` +
         `6. For forecasting questions, use actual data trends rather than assumptions.\n` +
         `7. Keep responses concise but insightful — aim for 2-4 paragraphs max.\n` +
-        `8. Never fabricate data. If a tool returns empty results, say so clearly.\n` +
-        `9. If the user asks to create/add something, use the appropriate tool or guide them to the right page.\n` +
-        `10. For debt strategy questions, compare avalanche vs snowball methods using their actual loan data.`,
+        `8. Never fabricate data. If a tool returns no rows, describe that in friendly language (e.g. "You have not added investments in the app yet") — never mention JSON, arrays, API fields, or internal labels.\n` +
+        `9. Never claim you created budgets unless **create_budgets** returned createdCount > 0. If duplicates were skipped, mention that.\n` +
+        `10. If the user asks to create/add something, use the appropriate tool or guide them to the right page.\n` +
+        `11. For debt strategy questions, compare avalanche vs snowball methods using their actual loan data.`,
     };
 
     const messages: NvidiaMessage[] = [
@@ -793,6 +846,7 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
 
     let loopMessages = [...messages];
     let finalText = "";
+    let financeMutations = false;
     let iterations = 0;
     const MAX_ITERATIONS = 5;
 
@@ -851,6 +905,78 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
                   "Transaction drafted. The user must confirm and submit via the Smart Add dialog before it is recorded.",
               };
             }
+          } else if (fnName === "create_budgets") {
+            const rawList = Array.isArray(args?.budgets) ? args.budgets : [];
+            const created: unknown[] = [];
+            const skippedDuplicates: string[] = [];
+            const errs: string[] = [];
+            let existing: unknown[] = [];
+            try {
+              existing = await callBackend("/budgets", "GET", null, uid, token);
+            } catch {
+              existing = [];
+            }
+            const taken = new Set(
+              Array.isArray(existing)
+                ? existing.map((b: unknown) =>
+                    String((b as Record<string, unknown>).category ?? "")
+                      .trim()
+                      .toLowerCase()
+                  )
+                : []
+            );
+            const palette = ["#6366f1", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6"];
+            let colorIdx = 0;
+
+            for (const row of rawList.slice(0, MAX_AI_BUDGET_BATCH)) {
+              const category = String((row as Record<string, unknown>)?.category ?? "").trim();
+              const limit = Number((row as Record<string, unknown>)?.limit);
+              const curRaw = String((row as Record<string, unknown>)?.currency ?? "")
+                .trim()
+                .toUpperCase()
+                .replace(/[^A-Z]/g, "")
+                .slice(0, 3);
+              const currency = curRaw.length === 3 ? curRaw : "EUR";
+
+              if (!category || !Number.isFinite(limit) || limit <= 0) {
+                errs.push("skipped invalid budget row");
+                continue;
+              }
+              if (limit > MAX_AI_BUDGET_LIMIT) {
+                errs.push(`${category}: exceeds limit cap`);
+                continue;
+              }
+              const ck = category.toLowerCase();
+              if (taken.has(ck)) {
+                skippedDuplicates.push(category);
+                continue;
+              }
+
+              try {
+                const body = {
+                  category,
+                  limit,
+                  currency,
+                  emoji: "📊",
+                  color: palette[colorIdx++ % palette.length],
+                  periodType: "MONTHLY",
+                };
+                const saved = await callBackend("/budgets", "POST", body, uid, token);
+                created.push(saved);
+                taken.add(ck);
+                financeMutations = true;
+              } catch (e: unknown) {
+                errs.push(
+                  `${category}: ${e instanceof Error ? e.message : String(e)}`
+                );
+              }
+            }
+            toolResult = {
+              createdCount: created.length,
+              skippedDuplicates,
+              errors: errs,
+              budgets: created,
+            };
           } else {
             toolResult = { error: `Unknown tool: ${fnName}` };
           }
@@ -869,7 +995,7 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
     }
 
     if (!finalText) finalText = "I was unable to complete the request. Please try again.";
-    res.json({ content: finalText });
+    res.json({ content: finalText, financeMutations });
   } catch (error: any) {
     console.error("AI Oracle Error:", error.message);
     res.status(500).json({ error: aiPublicError(error) });

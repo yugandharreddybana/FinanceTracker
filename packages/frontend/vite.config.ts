@@ -6,7 +6,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ mode }) => {
   // Load env from project root (two levels up from packages/frontend)
-  const env = loadEnv(mode, path.resolve(__dirname, '../..'), '');
+  const env = loadEnv(mode, path.resolve(__dirname, '../..'), 'VITE_');
   return {
     envDir: path.resolve(__dirname, '../..'),
     build: {
@@ -51,6 +51,40 @@ export default defineConfig(({ mode }) => {
               src: 'pwa-512x512.png',
               sizes: '512x512',
               type: 'image/png'
+            }
+          ]
+        },
+        workbox: {
+          globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+          runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'google-fonts',
+                expiration: {
+                  maxEntries: 20,
+                  maxAgeSeconds: 60 * 60 * 24 * 365
+                },
+                cacheableResponse: {
+                  statuses: [0, 200]
+                }
+              }
+            },
+            {
+              urlPattern: /\/api\/.*/i,
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'api-cache',
+                networkTimeoutSeconds: 5,
+                expiration: {
+                  maxEntries: 50,
+                  maxAgeSeconds: 60 * 5
+                },
+                cacheableResponse: {
+                  statuses: [200]
+                }
+              }
             }
           ]
         }

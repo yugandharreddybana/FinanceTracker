@@ -34,9 +34,9 @@ export function RecurringPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { label: 'Monthly Income', value: formatCurrency(activeIncome), icon: ArrowUpRight, gradient: 'from-emerald-500 to-teal-600' },
-          { label: 'Monthly Expenses', value: formatCurrency(activeExpenses), icon: ArrowDownRight, gradient: 'from-rose-500 to-pink-600' },
-          { label: 'Net Monthly', value: formatCurrency(activeIncome - activeExpenses), icon: CalendarClock, gradient: 'from-violet-500 to-purple-600' },
+          { label: 'Monthly Income', value: formatCurrency(activeIncome, currency), icon: ArrowUpRight, gradient: 'from-emerald-500 to-teal-600' },
+          { label: 'Monthly Expenses', value: formatCurrency(activeExpenses, currency), icon: ArrowDownRight, gradient: 'from-rose-500 to-pink-600' },
+          { label: 'Net Monthly', value: formatCurrency(activeIncome - activeExpenses, currency), icon: CalendarClock, gradient: 'from-violet-500 to-purple-600' },
         ].map((s, i) => (
           <motion.div key={i} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
             className={`rounded-3xl bg-gradient-to-br ${s.gradient} p-6 text-white shadow-xl relative overflow-hidden`}>
@@ -70,7 +70,7 @@ export function RecurringPage() {
             </div>
             <div className="flex items-center gap-4">
               <span className="text-lg font-black text-rose-500">
-                -{formatCurrency(t.amount)}
+                -{formatCurrency(t.amount, t.currency || currency)}
               </span>
               <button 
                 onClick={() => toggleActive(t.id, t.status)}

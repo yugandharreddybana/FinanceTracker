@@ -21,7 +21,9 @@ public class Authenticator {
     @Column(columnDefinition = "text")
     private String publicKey;
 
-    private Long signCount;
+    @Column(name = "sign_count", nullable = false)
+    @Builder.Default
+    private long signCount = 0L;
     
     private String transports;
 }

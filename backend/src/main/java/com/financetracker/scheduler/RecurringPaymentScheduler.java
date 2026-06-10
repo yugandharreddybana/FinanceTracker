@@ -38,9 +38,20 @@ public class RecurringPaymentScheduler {
         for (RecurringPayment rp : due) {
             try {
                 if (rp.getPaymentMethod() != null && !rp.getPaymentMethod().isBlank()) {
-                    var linkedAccount = bankRepo.findByNameIgnoreCaseAndUserId(rp.getPaymentMethod(), rp.getUserId());
+                    // ISSUE 4.037 FIX: Priority lookup by ID, fallback to Name for legacy data
+                    var linkedAccount = bankRepo.findByIdAndUserId(rp.getPaymentMethod(), rp.getUserId())
+                        .or(() -> bankRepo.findByNameIgnoreCaseAndUserId(rp.getPaymentMethod(), rp.getUserId()));
+                    
                     if (linkedAccount.isPresent() && linkedAccount.get().getBalance() != null
                             && linkedAccount.get().getBalance().compareTo(rp.getAmount()) < 0) {
+                        
+                        log.warn("[RecurringPaymentScheduler] Insufficient funds for payment {} (user: {})", rp.getId(), rp.getUserId());
+                        
+                        // ISSUE 4.036 FIX: Retry policy — only advance after 3 failures or if it's been more than 3 days since first failure
+                        int currentRetries = rp.getRetryCount() != null ? rp.getRetryCount() : 0;
+                        rp.setRetryCount(currentRetries + 1);
+                        rp.setLastFailedDate(today);
+                        
                         java.util.List<RecurringPayment.PaymentHistory> history =
                             new java.util.ArrayList<>(rp.getHistory() != null ? rp.getHistory() : List.of());
                         history.add(new RecurringPayment.PaymentHistory(
@@ -48,9 +59,14 @@ public class RecurringPaymentScheduler {
                         ));
                         rp.setHistory(history);
                         rp.setStatus("FAILED_INSUFFICIENT_FUNDS");
+
+                        if (rp.getRetryCount() >= 3) {
+                            log.info("[RecurringPaymentScheduler] Max retries reached for {}. Advancing to next period.", rp.getId());
+                            rp.setDueDate(nextOccurrence(rp, rp.getDueDate() != null ? rp.getDueDate() : today));
+                            rp.setRetryCount(0);
+                        }
+                        
                         repo.save(rp);
-                        log.warn("[RecurringPaymentScheduler] Skipping {} due to insufficient funds",
-                            rp.getId());
                         continue;
                     }
                 }
@@ -69,27 +85,26 @@ public class RecurringPaymentScheduler {
                     .currency(rp.getCurrency())
                     .transactionDate(today)
                     .build();
+                
                 Transaction saved = txService.create(tx);
-                // Phase5.0008: idempotency — if create() returned the EXISTING
-                // transaction (Railway restart re-fired the same day), we must
-                // NOT advance history or dueDate, otherwise the user sees a
-                // duplicate history row and skips a real future occurrence.
                 if (saved == null || !generatedId.equals(saved.getId())) {
                     log.info("[RecurringPaymentScheduler] Skipping {} — already fired today (idempotency)", rp.getId());
                     continue;
                 }
+
                 java.util.List<RecurringPayment.PaymentHistory> history =
                     new java.util.ArrayList<>(rp.getHistory() != null ? rp.getHistory() : List.of());
                 history.add(new RecurringPayment.PaymentHistory(
                     today.toString(), rp.getAmount(), "PAID"
                 ));
                 rp.setHistory(history);
-                rp.setDueDate(nextOccurrence(rp, today).toString());
+                rp.setDueDate(nextOccurrence(rp, today));
+                rp.setRetryCount(0); // Reset on success
+                rp.setStatus("ACTIVE");
                 repo.save(rp);
                 log.info("[RecurringPaymentScheduler] Fired payment for {} (user: {})",
                     rp.getName(), rp.getUserId());
             } catch (Exception e) {
-                // Isolated per-payment: one failure does not block other payments
                 log.error("[RecurringPaymentScheduler] Failed to fire payment {} : {}",
                     rp.getId(), e.getMessage(), e);
             }

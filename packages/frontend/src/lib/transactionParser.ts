@@ -19,6 +19,8 @@ export interface ParsedAction {
   type: 'income' | 'expense';
   category: string;
   date: string;
+  /** ISO currency for transaction rows when distinct from account preference */
+  transactionCurrency?: string;
   budgetLimit?: number;
   budgetPeriod?: 'monthly' | 'weekly' | 'yearly';
   isRecurring?: boolean;

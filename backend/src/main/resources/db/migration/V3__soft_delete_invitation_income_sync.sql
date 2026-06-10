@@ -20,9 +20,19 @@ ALTER TABLE finance_app.family_accounts    ADD COLUMN IF NOT EXISTS deleted BOOL
 ALTER TABLE finance_app.family_accounts    ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 
 -- ISSUE #21: lastSynced as TIMESTAMPTZ (was VARCHAR)
-ALTER TABLE finance_app.bank_accounts ADD COLUMN IF NOT EXISTS last_synced TIMESTAMPTZ;
--- Migrate existing varchar last_synced if it exists
--- (safe no-op if column didn't exist before)
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'finance_app' AND table_name = 'bank_accounts' AND column_name = 'last_synced' 
+          AND data_type IN ('character varying', 'text')
+    ) THEN
+        ALTER TABLE finance_app.bank_accounts 
+            ALTER COLUMN last_synced TYPE TIMESTAMPTZ USING NULLIF(last_synced, '')::TIMESTAMPTZ;
+    ELSE
+        ALTER TABLE finance_app.bank_accounts ADD COLUMN IF NOT EXISTS last_synced TIMESTAMPTZ;
+    END IF;
+END$$;
 
 -- ISSUE #20: Income source date fields
 ALTER TABLE finance_app.income_sources ADD COLUMN IF NOT EXISTS last_received_date DATE;
@@ -48,7 +58,19 @@ CREATE INDEX IF NOT EXISTS idx_family_invitations_invitee
     ON finance_app.family_invitations (invitee_email, status);
 
 -- ISSUE #4: Investment last_updated as TIMESTAMPTZ
-ALTER TABLE finance_app.investments ADD COLUMN IF NOT EXISTS last_updated_ts TIMESTAMPTZ;
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'finance_app' AND table_name = 'investments' AND column_name = 'last_updated' 
+          AND data_type IN ('character varying', 'text')
+    ) THEN
+        ALTER TABLE finance_app.investments 
+            ALTER COLUMN last_updated TYPE TIMESTAMPTZ USING NULLIF(last_updated, '')::TIMESTAMPTZ;
+    ELSE
+        ALTER TABLE finance_app.investments ADD COLUMN IF NOT EXISTS last_updated TIMESTAMPTZ;
+    END IF;
+END$$;
 
 -- Indexes for soft-delete filtered queries (fast WHERE deleted = false)
 CREATE INDEX IF NOT EXISTS idx_savings_goals_user_active

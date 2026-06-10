@@ -60,6 +60,29 @@ export function getInitials(name: string): string {
   return letters.toUpperCase().slice(0, 2);
 }
 
+/** Matches `Dashboard` monthly headline currency: prefer INR when that bucket is active, else first active currency. */
+export function resolveDashboardChartCurrency(
+  netWorthByCurrency: Record<string, { assets: number; liabilities: number; income: number; expenses: number }>
+): string {
+  const currencies = Object.keys(netWorthByCurrency || {});
+  const displayCurrencies = currencies.filter(
+    (c) =>
+      (netWorthByCurrency[c]?.assets ?? 0) > 0 ||
+      (netWorthByCurrency[c]?.liabilities ?? 0) > 0 ||
+      (netWorthByCurrency[c]?.income ?? 0) > 0 ||
+      (netWorthByCurrency[c]?.expenses ?? 0) > 0
+  );
+  const finalList = displayCurrencies.length > 0 ? displayCurrencies : ['INR'];
+  return finalList.includes('INR') ? 'INR' : finalList[0] || 'INR';
+}
+
+const ISO_CCY = /^[A-Z]{3}$/;
+export function transactionCurrency(tx: { currency?: string }, fallback = 'INR'): string {
+  const raw = typeof tx.currency === 'string' ? tx.currency.trim().toUpperCase().replace(/[^A-Z]/g, '') : '';
+  const c = raw.length >= 3 ? raw.slice(0, 3) : '';
+  return ISO_CCY.test(c) ? c : fallback;
+}
+
 export const safeStorage = {
   getItem: (key: string): string | null => {
     try { return localStorage.getItem(key); } catch { return null; }
@@ -74,3 +97,21 @@ export const safeStorage = {
     try { localStorage.removeItem(key); } catch {}
   }
 };
+
+export const DASHBOARD_LENS_STORAGE_KEY = 'ft_dashboard_lens';
+export type DashboardDisplayLens = 'INR' | 'EUR';
+
+export function readStoredDashboardLens(): DashboardDisplayLens | null {
+  const v = safeStorage.getItem(DASHBOARD_LENS_STORAGE_KEY);
+  return v === 'INR' || v === 'EUR' ? v : null;
+}
+
+export function defaultDashboardDisplayLens(
+  prefCurrency: string,
+  netWorthByCurrency: Record<string, { assets: number; liabilities: number; income: number; expenses: number }>
+): DashboardDisplayLens {
+  const p = (prefCurrency || '').trim().toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+  if (p === 'INR' || p === 'EUR') return p;
+  const auto = resolveDashboardChartCurrency(netWorthByCurrency);
+  return auto === 'EUR' ? 'EUR' : 'INR';
+}

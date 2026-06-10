@@ -1,5 +1,7 @@
 package com.financetracker.controller;
 
+import com.financetracker.dto.BulkDeleteRequest;
+import com.financetracker.dto.BulkUpdateRequest;
 import com.financetracker.model.Transaction;
 import com.financetracker.service.TransactionService;
 import jakarta.validation.Valid;
@@ -42,21 +44,15 @@ public class TransactionController {
     }
 
     @PatchMapping("/bulk")
-    public Map<String, Integer> bulkUpdate(@RequestBody Map<String, Object> body,
+    public Map<String, Integer> bulkUpdate(@Valid @RequestBody BulkUpdateRequest request,
             @RequestHeader("X-User-Id") String userId) {
-        @SuppressWarnings("unchecked")
-        List<String> ids = (List<String>) body.get("ids");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> updates = (Map<String, Object>) body.get("updates");
-        return Map.of("updated", service.bulkUpdate(ids, updates, userId));
+        return Map.of("updated", service.bulkUpdate(request.getIds(), request.getUpdates(), userId));
     }
 
     @PostMapping("/bulk-delete")
-    public Map<String, Integer> bulkDelete(@RequestBody Map<String, Object> body,
+    public Map<String, Integer> bulkDelete(@Valid @RequestBody BulkDeleteRequest request,
             @RequestHeader("X-User-Id") String userId) {
-        @SuppressWarnings("unchecked")
-        List<String> ids = (List<String>) body.get("ids");
-        return Map.of("deleted", service.bulkDelete(ids, userId));
+        return Map.of("deleted", service.bulkDelete(request.getIds(), userId));
     }
 
     @DeleteMapping("/{id}")

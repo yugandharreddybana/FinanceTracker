@@ -83,7 +83,7 @@ text
 | POST /api/ai/tax-suggestions | `{ spendingData }` | Array `{ title, description, potentialSavings, difficulty }` |
 
 ## Finance Proxy Endpoints (server/routes/finance.ts)
-All follow REST pattern → proxied to Spring Boot at `VITE_API_URL/api/finance`:
+All follow REST pattern → proxied to Spring Boot at `JAVA_BACKEND_URL/api/finance`:
 - `/transactions` (GET, POST), `/transactions/:id` (PUT, DELETE), `/transactions/bulk` (PATCH)
 - `/accounts` (GET, POST, PUT, DELETE)
 - `/budgets` (GET, POST, PUT, DELETE)
@@ -125,7 +125,8 @@ All follow REST pattern → proxied to Spring Boot at `VITE_API_URL/api/finance`
 | Variable | Used In | Purpose |
 |---|---|---|
 | `GEMINI_API_KEY` | server | Gemini AI access |
-| `VITE_API_URL` | server + frontend | Spring Boot base URL |
+| `VITE_MIDDLEWARE_URL` | frontend | Node.js Express Middleware base URL |
+| `JAVA_BACKEND_URL` | server | Java Spring Boot base URL |
 | `JWT_SECRET` | server | Token signing |
 
 Never hardcode any URL, key, or secret. Always use `process.env.*`.

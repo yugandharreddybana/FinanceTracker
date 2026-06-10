@@ -58,6 +58,9 @@ public class Investment {
     private Instant lastUpdated;
 
     // Computed gain/loss — populated on read, never stored
+    // Note (Phase4.025): Both averagePrice and currentPrice MUST be denominated 
+    // in the same currency (Investment.currency). Gain/loss calculations assume 
+    // consistency; mismatches must be guarded upstream.
     @Transient
     @JsonProperty("gainLoss")
     public BigDecimal getGainLoss() {
