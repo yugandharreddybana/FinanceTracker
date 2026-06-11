@@ -33,7 +33,7 @@
   "devDependencies": {
     "@playwright/test": "^1.59.1",
     "concurrently": "^8.2.0",
-    "tsx": "^4.16.2",
+    "tsx": "^4.22.4",
     "typescript": "^5.8.2"
   },
   "dependencies": {
