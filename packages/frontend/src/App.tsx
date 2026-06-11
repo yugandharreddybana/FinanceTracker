@@ -31,6 +31,10 @@ const ReportBuilderPage = lazy(() => import('./components/ReportBuilderPage').th
 const AuditLogPage = lazy(() => import('./components/AuditLogPage').then(m => ({ default: m.AuditLogPage })));
 const FamilyPage = lazy(() => import('./components/FamilyPage').then(m => ({ default: m.FamilyPage })));
 import { FinanceProvider, useFinance } from './context/FinanceContext';
+import { SubscriptionProvider } from './context/SubscriptionContext';
+import { PlanGate } from './components/PlanGate';
+import { UpgradeModal } from './components/UpgradeModal';
+import { DemoModeBanner } from './components/DemoModeBanner';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AnimatePresence, motion } from 'motion/react';
 import { cn, safeStorage } from './lib/utils';
@@ -40,16 +44,21 @@ import { FinancePageLoadingShell, FinanceDataErrorBanner } from './components/Pa
 import { NotificationCenter, Notification as AppNotification } from './components/NotificationCenter';
 import { LayoutDashboard, Wallet, Receipt, CreditCard, PieChart, TrendingUp, Settings, LogOut, Bell, Sparkles, X, Command, Search, WifiOff, Activity, Leaf, Shield, History, Globe2, FileText, BarChart3, Calculator, UserCircle, Briefcase, HeartPulse, HelpCircle, AlertCircle, Calendar, CheckCircle2, AlertTriangle, TrendingDown, Plus } from 'lucide-react';
 import { aiService, AIInsight } from './services/aiService';
-import { authApi, MIDDLEWARE_BASE } from './services/api';
+import { ToastProvider } from './components/Toast';
 
 export default function App() {
   return (
     <ErrorBoundary>
-      <Router>
-        <FinanceProvider>
-          <MainApp />
-        </FinanceProvider>
-      </Router>
+      <ToastProvider>
+        <Router>
+          <FinanceProvider>
+            <SubscriptionProvider>
+              <MainApp />
+              <UpgradeModal />
+            </SubscriptionProvider>
+          </FinanceProvider>
+        </Router>
+      </ToastProvider>
     </ErrorBoundary>
   );
 }
@@ -57,6 +66,7 @@ export default function App() {
 function MainApp() {
   const {
     isLoggedIn,
+    authReady,
     userProfile,
     transactions,
     budgets,
@@ -75,21 +85,8 @@ function MainApp() {
   // A2: Derive activeTab directly from URL — no useState, no localStorage
   const activeTab = location.pathname.split('/')[2] || 'dashboard';
 
-  // S1/S2: Auth state is now driven by the httpOnly cookie via /me check — no localStorage
-  // Prevent redirect-to-login flash while the /me check is in flight
-  const [authChecking, setAuthChecking] = useState(true);
-
-  // Check session via cookie on every app load
-  useEffect(() => {
-    authApi.me()
-      .then(data => {
-        if (data?.user) {
-          updateUserProfile({ email: data.user.email, name: data.user.name });
-        }
-      })
-      .catch(() => {})
-      .finally(() => setAuthChecking(false));
-  }, []);
+  // Prevent redirect-to-login flash while FinanceProvider session bootstrap is in flight
+  const authChecking = !authReady;
   const [showDemo, setShowDemo] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -329,7 +326,7 @@ function MainApp() {
     navigate(`/app/${tab}`);
   }, [navigate]);
 
-  const renderContent = () => {
+  const renderPage = () => {
     switch (activeTab) {
       case 'dashboard': return <Dashboard key="dashboard" />;
       case 'transactions': return <TransactionsPage key="transactions" />;
@@ -366,6 +363,12 @@ function MainApp() {
     }
   };
 
+  const renderContent = () => (
+    <PlanGate route={activeTab}>
+      {renderPage()}
+    </PlanGate>
+  );
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-[#020617] dark:text-slate-100 selection:bg-emerald-500/25">
       <Routes>
@@ -399,6 +402,7 @@ function MainApp() {
           ) : <Navigate to="/app/dashboard" replace />
         } />
         <Route path="/reset-password" element={
+          authChecking ? null :
           !isLoggedIn ? (
             <ResetPasswordPage key="reset-password" />
           ) : <Navigate to="/app/dashboard" replace />
@@ -422,6 +426,7 @@ function MainApp() {
                   onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
                   unreadNotificationCount={unreadBellCount}
                 />
+                <DemoModeBanner email={userProfile.email} />
 
                 <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-slate-50/50 dark:bg-slate-950/40">
                   {isOffline && (

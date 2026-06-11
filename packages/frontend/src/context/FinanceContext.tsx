@@ -28,6 +28,7 @@ import {
   defaultDashboardDisplayLens,
   type DashboardDisplayLens,
 } from '../lib/utils';
+import { resolveDemoAiTag } from '../lib/demoAccounts';
 import { currencyService } from '../services/currencyService';
 
 interface FinanceContextType {
@@ -46,8 +47,10 @@ interface FinanceContextType {
   familyAccount: FamilyAccount | null;
   userProfile: UserProfile;
   isLoggedIn: boolean;
+  authReady: boolean;
   updateUserProfile: (updates: Partial<UserProfile>) => void;
   login: (email: string, password: string) => Promise<boolean>;
+  loginDemo: () => Promise<boolean>;
   signup: (name: string, email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   clearDataForNewUser: (email?: string) => void;
@@ -256,6 +259,7 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isCategorizing, setIsCategorizing] = useState(false);
   const [isAddTransactionModalOpen, setIsAddTransactionModalOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
   const [dataRefreshError, setDataRefreshError] = useState<string | null>(null);
   const [financeHydrated, setFinanceHydrated] = useState(false);
 
@@ -467,7 +471,8 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     let isActive = true;
 
-        fetch(`${MIDDLEWARE_BASE}/api/auth/me`, { credentials: 'include', cache: 'no-store' })
+    authApi
+      .me()
       .then((session) => {
         if (!isActive) {
           return;
@@ -488,6 +493,11 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
         if (isActive) {
           setIsLoggedIn(false);
         }
+      })
+      .finally(() => {
+        if (isActive) {
+          setAuthReady(true);
+        }
       });
 
     return () => {
@@ -503,10 +513,11 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   useEffect(() => {
+    if (!authReady) return;
     if (!userProfile.email || userProfile.email === financeActions.DEFAULT_USER_PROFILE.email) {
       setIsLoggedIn(false);
     }
-  }, [userProfile.email]);
+  }, [userProfile.email, authReady]);
 
   const dispatchToastError = (error: any) => {
     const message = error?.message || String(error);
@@ -600,9 +611,10 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
         setInvestments(invs);
 
         const loaded = accs.length > 0 ? accs : accountsRef.current;
-        if (loaded[0]?.currency && loaded[0].currency !== 'INR') {
+        const accountCurrency = loaded[0]?.currency;
+        if (accountCurrency && accountCurrency !== 'INR') {
           setUserProfile(p => p.preferences.currency === 'INR'
-            ? { ...p, preferences: { ...p.preferences, currency: loaded[0].currency } }
+            ? { ...p, preferences: { ...p.preferences, currency: accountCurrency } }
             : p);
         }
 
@@ -647,6 +659,21 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
       ...prev,
       name: sessionUser?.name || prev.name || email.split('@')[0],
       email: sessionUser?.email || email,
+    }));
+    setIsLoggedIn(true);
+
+    return true;
+  }, [setUserProfile]);
+
+  const loginDemo = useCallback(async () => {
+    const response = await authApi.demoLogin();
+    const sessionUser = response?.user;
+    const email = sessionUser?.email || 'demo@yugifinance.com';
+
+    setUserProfile((prev) => ({
+      ...prev,
+      name: sessionUser?.name || prev.name || 'Demo User',
+      email,
     }));
     setIsLoggedIn(true);
 
@@ -1097,7 +1124,7 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
         category: 'Savings',
         type: 'expense',
         status: 'confirmed',
-        aiTag: 'Savings Transfer',
+        aiTag: resolveDemoAiTag(userProfile.email, 'Savings Transfer'),
         account: account.name,
         confidence: 1.0,
         savingsGoalId: goalId
@@ -1111,7 +1138,7 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
       console.error('Failed to transfer to savings:', error);
       dispatchToastError(error);
     }
-  }, [savingsGoals, accounts, setTransactions, setSavingsGoals, setAccounts, refreshData]);
+  }, [savingsGoals, accounts, setTransactions, setSavingsGoals, setAccounts, refreshData, userProfile.email]);
 
   const guardAccounts = useCallback(() => {
     if (accounts.length === 0) {
@@ -1247,7 +1274,7 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
               category: sanitizeFinanceText(finalCat),
               type,
               status: 'confirmed',
-              aiTag: 'Arta AI Autopilot',
+              aiTag: resolveDemoAiTag(userProfile.email, 'Arta AI Autopilot'),
               account: accountName,
               currency,
               confidence: res.confidence || 0.9
@@ -1381,7 +1408,7 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
       console.error('Failed to smart add transaction:', error);
       dispatchToastError(error);
     }
-  }, [accounts, budgets, savingsGoals, loans, transactions, deleteTransaction, previewSmartAdd, refreshData, addLog, setTransactions, setAccounts, guardAccounts]);
+  }, [accounts, budgets, savingsGoals, loans, transactions, deleteTransaction, previewSmartAdd, refreshData, addLog, setTransactions, setAccounts, guardAccounts, userProfile.email]);
 
   const addManualTransaction = useCallback(async (transaction: Transaction) => {
     try {
@@ -1389,7 +1416,7 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
         ...transaction,
         status: transaction.status || 'confirmed',
         confidence: 1.0,
-        aiTag: transaction.aiTag || 'Manual Entry'
+        aiTag: transaction.aiTag || resolveDemoAiTag(userProfile.email, 'Manual Entry')
       });
       setTransactions(prev => [newTx, ...prev]);
 
@@ -1409,7 +1436,7 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
       dispatchToastError(error);
       throw error;
     }
-  }, [addLog, refreshData, setTransactions, setAccounts]);
+  }, [addLog, refreshData, setTransactions, setAccounts, userProfile.email]);
 
   const bulkDeleteTransactions = useCallback(async (ids: string[]) => {
     try {
@@ -1844,7 +1871,9 @@ const FinanceProviderInner: React.FC<{ children: React.ReactNode }> = ({ childre
       familyAccount,
       userProfile,
       isLoggedIn,
+      authReady,
       login,
+      loginDemo,
       signup,
       logout,
       updateUserProfile,

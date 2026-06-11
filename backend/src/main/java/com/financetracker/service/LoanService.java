@@ -18,6 +18,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class LoanService {
     private final LoanRepository repo;
+    private final PlanLimitService planLimitService;
 
     @Transactional(readOnly = true)
     public List<Loan> findAllByUserId(String userId) {
@@ -27,6 +28,7 @@ public class LoanService {
 
     @Transactional
     public Loan create(Loan loan) {
+        planLimitService.assertCanCreate(loan.getUserId(), com.financetracker.model.LimitableResource.LOAN);
         // ISSUE #16 FIX: UUID-based ID
         loan.setId("loan-" + UUID.randomUUID());
         // ISSUE #5 FIX: Strip client-supplied payments; server generates amortisation

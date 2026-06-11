@@ -41,4 +41,24 @@ public class AppUser {
     private Boolean deleted = false;
 
     private java.time.Instant deletedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "plan_tier", nullable = false, length = 20)
+    @Builder.Default
+    private PlanTier planTier = PlanTier.FREE;
+
+    @Column(name = "stripe_customer_id", unique = true)
+    private String stripeCustomerId;
+
+    @Column(name = "stripe_subscription_id")
+    private String stripeSubscriptionId;
+
+    @Column(name = "subscription_status", length = 32)
+    private String subscriptionStatus;
+
+    @Column(name = "current_period_end")
+    private java.time.Instant currentPeriodEnd;
+
+    @Column(name = "billing_currency", length = 3)
+    private String billingCurrency;
 }

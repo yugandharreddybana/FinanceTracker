@@ -7,8 +7,21 @@ type ToastType = 'success' | 'error' | 'info' | 'ai';
 interface Toast { id: string; type: ToastType; title: string; message?: string; }
 
 interface ToastContextType { toast: (type: ToastType, title: string, message?: string) => void; }
-const ToastContext = createContext<ToastContextType>({ toast: () => {} });
-export const useToast = () => useContext(ToastContext);
+const ToastContext = createContext<ToastContextType | null>(null);
+
+let warnedMissingToastProvider = false;
+
+export const useToast = () => {
+  const ctx = useContext(ToastContext);
+  if (!ctx) {
+    if (import.meta.env.DEV && !warnedMissingToastProvider) {
+      warnedMissingToastProvider = true;
+      console.warn('[Toast] ToastProvider is missing from the React tree — toasts will be silent.');
+    }
+    return { toast: () => {} };
+  }
+  return ctx;
+};
 
 const ICONS = { success: CheckCircle2, error: AlertTriangle, info: Info, ai: Sparkles };
 const STYLES = {

@@ -15,7 +15,7 @@ You are a senior full-stack engineer working on a production finance application
 | Frontend | React + TypeScript (Vite) | `packages/frontend/src/` |
 | Middleware | Node.js + Express (TS) | `server/` |
 | Backend | Java Spring Boot + JPA | `backend/src/` |
-| AI | Google Gemini 2.0 Flash | `server/routes/ai.ts` |
+| AI | NVIDIA NIM (`meta/llama-3.3-70b-instruct`) | `server/routes/ai.ts` |
 | Auth | JWT (Bearer token) | `server/routes/auth.ts` |
 | Frontend Deploy | Vercel | `packages/frontend/vercel.json` |
 | Backend Deploy | Railway | `server/railway.json` |
@@ -30,7 +30,7 @@ types.ts ← ALL TypeScript interfaces and types (single source of truth)
 
 server/
 routes/
-ai.ts ← Gemini AI: insights, chat, forecast, tax
+ai.ts ← NVIDIA NIM AI: insights, chat, forecast, tax
 finance.ts ← proxy layer to Spring Boot (transactions, budgets, loans, savings, recurring, investments, accounts)
 auth.ts ← login, signup, JWT handling
 investment.ts ← investment routes
@@ -48,8 +48,8 @@ text
 4. All TypeScript types live in `packages/frontend/src/types.ts` — never declare inline types in components
 5. All API service calls live in `packages/frontend/src/services/` — never use raw `fetch()` inside components
 6. Auth token always passed as `Authorization: Bearer <token>` — never in query params or body
-7. Gemini model is always `gemini-2.0-flash` — never change the model
-8. Structured AI responses always use `config: { responseMimeType: "application/json" }` — no manual JSON.parse of prose
+7. AI model is always `meta/llama-3.3-70b-instruct` via NVIDIA NIM — never change without updating `server/routes/ai.ts` and this doc
+8. Structured AI responses use JSON schema prompts with `response_format: { type: "json_object" }` — parse the model JSON output; do not scrape prose
 
 ## Component Map (do not re-read these files unless directly editing them)
 | Component | Purpose |
@@ -62,7 +62,7 @@ text
 | SavingsPage.tsx | Savings goals with progress tracking |
 | RecurringPage.tsx | Recurring payments and subscriptions |
 | InvestmentPage.tsx | Investment positions |
-| AIInsightsPage.tsx | Gemini-powered insight cards (ALERT/WIN/TIP/TREND) |
+| AIInsightsPage.tsx | NVIDIA NIM insight cards (ALERT/WIN/TIP/TREND) |
 | AIOracle.tsx | Persistent conversational AI with transaction context |
 | ForecastingPage.tsx | 5/10/20yr net worth projection |
 | TaxEnginePage.tsx | Tax optimisation suggestions |
@@ -105,7 +105,7 @@ All follow REST pattern → proxied to Spring Boot at `JAVA_BACKEND_URL/api/fina
 
 ### Add a new AI feature
 1. Add endpoint in `server/routes/ai.ts`
-2. Use `gemini-2.0-flash`, structured JSON output via `responseMimeType: "application/json"`
+2. Use NVIDIA NIM `meta/llama-3.3-70b-instruct`, structured JSON via `response_format: { type: "json_object" }`
 3. Keep prompt under 200 tokens — schema inline, no prose padding
 4. Add corresponding service call in frontend `src/services/`
 5. Add UI component that calls the service
@@ -124,7 +124,7 @@ All follow REST pattern → proxied to Spring Boot at `JAVA_BACKEND_URL/api/fina
 ## Environment Variables
 | Variable | Used In | Purpose |
 |---|---|---|
-| `GEMINI_API_KEY` | server | Gemini AI access |
+| `NVIDIA_API_KEY` | server | NVIDIA NIM AI access |
 | `VITE_MIDDLEWARE_URL` | frontend | Node.js Express Middleware base URL |
 | `JAVA_BACKEND_URL` | server | Java Spring Boot base URL |
 | `JWT_SECRET` | server | Token signing |

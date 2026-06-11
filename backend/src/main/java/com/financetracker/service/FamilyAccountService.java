@@ -27,6 +27,7 @@ import javax.crypto.spec.SecretKeySpec;
 public class FamilyAccountService {
     private final FamilyAccountRepository repo;
     private final FamilyInvitationRepository invitationRepo;
+    private final PlanLimitService planLimitService;
 
     @Value("${jwt.secret:}")
     private String jwtSecret;
@@ -54,6 +55,7 @@ public class FamilyAccountService {
 
     @Transactional
     public FamilyAccount create(FamilyAccount family) {
+        planLimitService.assertCanAccessFeature(family.getOwnerId(), com.financetracker.model.PlanFeature.FAMILY);
         // ISSUE #16 FIX: UUID-based ID
         family.setId("fam-" + UUID.randomUUID());
         // ISSUE #10 FIX: Owner starts as sole member — no other UIDs injected at creation
@@ -141,6 +143,7 @@ public class FamilyAccountService {
                 List<FamilyAccount.FamilyMember> members = new java.util.ArrayList<>(
                     family.getMembers() != null ? family.getMembers() : List.of()
                 );
+                planLimitService.assertCanAddFamilyMember(family.getOwnerId(), members.size());
                 members.add(new FamilyAccount.FamilyMember(acceptingUserId, acceptingUserName, "MEMBER"));
                 family.setMembers(members);
                 repo.save(family);
@@ -174,6 +177,7 @@ public class FamilyAccountService {
         List<FamilyAccount.FamilyMember> members = new java.util.ArrayList<>(
             family.getMembers() != null ? family.getMembers() : List.of()
         );
+        planLimitService.assertCanAddFamilyMember(family.getOwnerId(), members.size());
         String memberUid = "mem-" + UUID.randomUUID().toString().substring(0, 8);
         members.add(new FamilyAccount.FamilyMember(memberUid, name, role != null ? role : "MEMBER"));
         family.setMembers(members);

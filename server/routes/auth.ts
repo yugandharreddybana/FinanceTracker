@@ -19,6 +19,8 @@ import {
 } from "../lib/auth.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { Redis } from "ioredis";
+import { DEMO_EMAIL, SEED_ACCOUNTS } from "../lib/seedAccounts.js";
+import { resolveFrontendBaseUrl } from "../lib/frontendUrl.js";
 
 const IS_PROD = process.env.NODE_ENV === "production";
 
@@ -300,10 +302,8 @@ router.post("/register", authLimiter, async (req: Request, res: Response) => {
     if (emailDeliveryConfigured()) {
       try {
         const vtoken = await storeVerificationToken(email);
-        const frontend = (process.env.FRONTEND_URL || "").split(",")[0].trim() || "";
-        const link = frontend
-          ? `${frontend.replace(/\/$/, "")}/verify-email?token=${encodeURIComponent(vtoken)}`
-          : `/verify-email?token=${vtoken}`;
+        const frontend = resolveFrontendBaseUrl();
+        const link = `${frontend}/verify-email?token=${encodeURIComponent(vtoken)}`;
         await sendVerificationEmailDispatch(email, link);
       } catch (e) {
         console.error("[auth] verification email failed:", e);
@@ -313,7 +313,7 @@ router.post("/register", authLimiter, async (req: Request, res: Response) => {
     const rfToken = await createRefreshToken({ uid: result.user.uid, email: result.user.email, name: result.user.name });
     res.cookie("auth_token", result.token, cookieOptions);
     res.cookie("refresh_token", rfToken, refreshTokenCookieOptions);
-    res.json({ user: result.user });
+    res.json({ user: result.user, token: result.token });
   } catch (err: any) {
     if (err.message === "An account with this email already exists") {
       res.status(409).json({ error: "An account with this email already exists. Please login instead." });
@@ -344,7 +344,7 @@ router.post("/login", authLimiter, async (req: Request, res: Response) => {
       const rfToken = await createRefreshToken({ uid: result.user.uid, email: result.user.email, name: result.user.name });
       res.cookie("auth_token", result.token, cookieOptions);
       res.cookie("refresh_token", rfToken, refreshTokenCookieOptions);
-      res.json({ user: result.user });
+      res.json({ user: result.user, token: result.token });
     } catch (err: any) {
       if (err.message === "Invalid email or password") {
         const next = await incrementFailureCount(email);
@@ -359,6 +359,29 @@ router.post("/login", authLimiter, async (req: Request, res: Response) => {
     }
   } catch {
     res.status(500).json({ error: "Login failed" });
+  }
+});
+
+router.post("/demo-login", authLimiter, async (_req: Request, res: Response) => {
+  try {
+    const demo = SEED_ACCOUNTS.find((a) => a.email.toLowerCase() === DEMO_EMAIL.toLowerCase());
+    if (!demo) {
+      res.status(503).json({ error: "Demo account is not configured" });
+      return;
+    }
+
+    const result = await loginUser(demo.email, demo.password);
+    const rfToken = await createRefreshToken({
+      uid: result.user.uid,
+      email: result.user.email,
+      name: result.user.name,
+    });
+    res.cookie("auth_token", result.token, cookieOptions);
+    res.cookie("refresh_token", rfToken, refreshTokenCookieOptions);
+    res.json({ user: result.user, token: result.token });
+  } catch (err: any) {
+    console.error("[auth] demo-login failed:", err?.message || err);
+    res.status(503).json({ error: "Demo system unavailable. Please try again later." });
   }
 });
 
@@ -452,9 +475,8 @@ router.post("/forgot-password", forgotPasswordLimiter, async (req: Request, res:
     const otp = String(crypto.randomInt(100000, 1000000));
     await storeOtp(email, otp);
     const resetToken = await storeResetToken(email);
-    const frontendBase = (process.env.FRONTEND_URL || "").split(",")[0].trim();
-    const resetPath = `/reset-password?token=${encodeURIComponent(resetToken)}`;
-    const resetLink = frontendBase ? `${frontendBase.replace(/\/$/, "")}${resetPath}` : resetPath;
+    const frontendBase = resolveFrontendBaseUrl();
+    const resetLink = `${frontendBase}/reset-password?token=${encodeURIComponent(resetToken)}`;
 
     if (emailDeliveryConfigured()) {
       try {

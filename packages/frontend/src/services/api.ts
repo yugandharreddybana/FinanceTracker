@@ -23,7 +23,7 @@ const getMiddlewareBase = () => {
 
     return parsedUrl.toString().replace(/\/$/, '');
   }
-  if (import.meta.env.DEV) return 'http://localhost:4000';
+  if (import.meta.env.DEV) return 'http://localhost:4001';
   throw new Error('VITE_MIDDLEWARE_URL is required in production');
 };
 
@@ -99,42 +99,7 @@ async function apiFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
       ? window.setTimeout(() => controller.abort(), 25000)
       : null;
 
-  const agentDebug =
-    typeof import.meta.env !== 'undefined' &&
-    import.meta.env.PROD !== true &&
-    import.meta.env.DEV === true &&
-    import.meta.env.VITE_AGENT_DEBUG === 'true';
-
-  const txnDeleteProbe =
-    typeof window !== 'undefined' &&
-    agentDebug &&
-    options.method === 'DELETE' &&
-    url.includes('/transactions/') &&
-    !url.includes('bulk-delete');
-
   try {
-    // #region agent log
-    if (txnDeleteProbe) {
-      fetch('http://127.0.0.1:7877/ingest/45115c5e-d789-479b-b3a2-738882121ed7', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '5c48c3' },
-        body: JSON.stringify({
-          sessionId: '5c48c3',
-          hypothesisId: 'H21',
-          location: 'api.ts:apiFetch',
-          message: 'browser DELETE transactions before fetch',
-          data: { urlPath: (() => {
-            try {
-              return new URL(url).pathname;
-            } catch {
-              return '';
-            }
-          })() },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-    }
-    // #endregion
     const res = await fetch(url, {
       ...options,
       credentials: 'include',
@@ -144,22 +109,6 @@ async function apiFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
         ...(options.headers || {}),
       },
     });
-    // #region agent log
-    if (txnDeleteProbe) {
-      fetch('http://127.0.0.1:7877/ingest/45115c5e-d789-479b-b3a2-738882121ed7', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '5c48c3' },
-        body: JSON.stringify({
-          sessionId: '5c48c3',
-          hypothesisId: 'H22',
-          location: 'api.ts:apiFetch',
-          message: 'browser DELETE transactions response',
-          data: { status: res.status, ok: res.ok },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-    }
-    // #endregion
     if (res.status === 401 && typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('auth:expired', {
         detail: { message: 'Your session expired. Please sign in again.' },
@@ -551,15 +500,33 @@ export const auditApi = {
 
 export const authApi = {
   login: async (email: string, password: string): Promise<any> => {
-    const res = await fetch(`${MIDDLEWARE_BASE}/api/auth/login`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
+    const loginUrl = `${MIDDLEWARE_BASE}/api/auth/login`;
+    let res: Response;
+    try {
+      res = await fetch(loginUrl, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+    } catch (networkErr) {
+      throw networkErr;
+    }
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || 'Login failed');
+    }
+    return res.json();
+  },
+
+  demoLogin: async (): Promise<any> => {
+    const res = await fetch(`${MIDDLEWARE_BASE}/api/auth/demo-login`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'Demo login failed');
     }
     return res.json();
   },

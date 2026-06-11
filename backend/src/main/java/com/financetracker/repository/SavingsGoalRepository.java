@@ -12,6 +12,7 @@ public interface SavingsGoalRepository extends JpaRepository<SavingsGoal, String
     List<SavingsGoal> findAllByUserId(String userId);
 
     List<SavingsGoal> findAllByUserIdAndDeletedFalse(String userId);
+    long countByUserIdAndDeletedFalse(String userId);
 
     @Modifying
     @Transactional

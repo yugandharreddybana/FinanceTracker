@@ -99,7 +99,8 @@ public class SecurityConfig {
             "Content-Type", 
             "X-User-Id", 
             "X-Requested-With", 
-            "X-Idempotency-Key"
+            "X-Idempotency-Key",
+            "X-Subscription-Sync-Secret"
         ));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);

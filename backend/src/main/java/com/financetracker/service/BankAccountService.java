@@ -13,6 +13,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class BankAccountService {
     private final BankAccountRepository repo;
+    private final PlanLimitService planLimitService;
 
     @Transactional(readOnly = true)
     public List<BankAccount> findAllByUserId(String userId) {
@@ -21,6 +22,10 @@ public class BankAccountService {
 
     @Transactional
     public BankAccount create(BankAccount account, String requestUserId) {
+        planLimitService.assertCanCreate(requestUserId, com.financetracker.model.LimitableResource.BANK_ACCOUNT);
+        if (account.getCurrency() != null) {
+            account.setCurrency(com.financetracker.util.SupportedCurrencies.normalize(account.getCurrency()));
+        }
         // Phase4.010: Enforce server-managed userId boundary strictly in service logic.
         account.setUserId(requestUserId);
         if (account.getId() == null || account.getId().isBlank()) {

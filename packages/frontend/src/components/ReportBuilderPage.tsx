@@ -214,7 +214,7 @@ export const ReportBuilderPage: React.FC = () => {
             <XAxis dataKey="label" tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={formatCompactCurrency} />
             <Tooltip
-              formatter={(value: number) => [currencyService.formatCurrency(value, reportCurrency), 'Expenses']}
+              formatter={(value) => [currencyService.formatCurrency(Number(value ?? 0), reportCurrency), 'Expenses']}
               contentStyle={{ backgroundColor: '#0F0F19', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px' }}
             />
             <Bar dataKey="total" radius={[10, 10, 0, 0]} fill="#7C6EFA" />
@@ -230,7 +230,7 @@ export const ReportBuilderPage: React.FC = () => {
           <ResponsiveContainer width="100%" height="100%">
             <RechartsPieChart>
               <Tooltip
-                formatter={(value: number) => [currencyService.formatCurrency(value, reportCurrency), 'Spend']}
+                formatter={(value) => [currencyService.formatCurrency(Number(value ?? 0), reportCurrency), 'Spend']}
                 contentStyle={{ backgroundColor: '#0F0F19', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px' }}
               />
               <Pie data={data} dataKey="total" nameKey="label" innerRadius={55} outerRadius={82} paddingAngle={3}>
@@ -264,7 +264,7 @@ export const ReportBuilderPage: React.FC = () => {
             <XAxis dataKey="label" tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={formatCompactCurrency} />
             <Tooltip
-              formatter={(value: number) => [currencyService.formatCurrency(value, reportCurrency), 'Net flow']}
+              formatter={(value) => [currencyService.formatCurrency(Number(value ?? 0), reportCurrency), 'Net flow']}
               contentStyle={{ backgroundColor: '#0F0F19', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px' }}
             />
             <Line dataKey="total" type="monotone" stroke="#22D3A5" strokeWidth={3} dot={{ r: 4, fill: '#22D3A5' }} activeDot={{ r: 6 }} />

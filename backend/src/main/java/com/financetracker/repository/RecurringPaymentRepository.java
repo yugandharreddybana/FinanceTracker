@@ -11,6 +11,7 @@ import java.util.List;
 
 public interface RecurringPaymentRepository extends JpaRepository<RecurringPayment, String> {
     List<RecurringPayment> findAllByUserId(String userId);
+    long countByUserIdAndDeletedFalse(String userId);
 
     // ISSUE #2 FIX: Finds all active payments whose dueDate is on or before today
     @Query("SELECT r FROM RecurringPayment r WHERE r.deleted = false " +

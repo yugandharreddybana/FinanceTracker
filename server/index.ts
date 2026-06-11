@@ -9,33 +9,7 @@ import { financeRouter } from "./routes/finance.js";
 import { aiRouter } from "./routes/ai.js";
 import { investmentRouter } from "./routes/investment.js";
 import { authRouter } from "./routes/auth.js";
-import {
-  findUserByEmail,
-  registerUser,
-  markEmailVerified,
-} from "./lib/auth.js";
-
-// ── Demo user bootstrap ────────────────────────────────────────────────────
-// Ensures demo@yugifinance.com always exists in the user store so the
-// "Try Demo Account" button on the login page works in every environment.
-async function ensureDemoUser(): Promise<void> {
-  const DEMO_EMAIL = "demo@yugifinance.com";
-  const DEMO_PASSWORD = "demo123456";
-  const DEMO_NAME = "Demo User";
-  try {
-    const existing = findUserByEmail(DEMO_EMAIL);
-    if (existing) {
-      console.log("[demo] Demo user already exists — skipping seed.");
-      return;
-    }
-    await registerUser(DEMO_EMAIL, DEMO_PASSWORD, DEMO_NAME);
-    await markEmailVerified(DEMO_EMAIL);
-    console.log("[demo] Demo user seeded successfully.");
-  } catch (err) {
-    // Non-fatal: log and continue — don't block server startup
-    console.error("[demo] Failed to seed demo user:", err);
-  }
-}
+import { ensureSeedAccounts } from "./lib/seedAccounts.js";
 
 async function startServer() {
   // ── Startup environment validation ────────────────────────────────────────
@@ -59,18 +33,18 @@ async function startServer() {
     console.warn("[WARN] JAVA_BACKEND_URL not set — finance data proxies will target http://localhost:8081 (Spring default).");
   }
   if (!process.env.FRONTEND_URL) {
-    console.warn("[WARN] FRONTEND_URL not set — only localhost origins will be allowed by CORS.");
+    console.warn("[WARN] FRONTEND_URL not set — CORS defaults include http://localhost:3000; set FRONTEND_URL for production.");
   }
 
-  // ── Seed demo user ─────────────────────────────────────────────────────────
-  await ensureDemoUser();
+  // ── Seed demo + admin tier accounts ────────────────────────────────────────
+  await ensureSeedAccounts();
 
   const app = express();
   app.disable("x-powered-by");
   // Trust Railway's reverse proxy so rate-limit reads X-Forwarded-For correctly
   app.set("trust proxy", 1);
 
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4001;
 
   console.log("-------------------------------------------------------------------");
   console.log("DEPLOYMENT DIAGNOSTICS");
@@ -87,6 +61,7 @@ async function startServer() {
   const ALLOWED_ORIGINS = [
     ...extraOrigins,
     "http://localhost:5173",
+    "http://localhost:5174",
     "http://localhost:3000",
     "http://localhost:8080",
   ].filter((v, i, arr) => v && arr.indexOf(v) === i);
@@ -146,6 +121,10 @@ async function startServer() {
     next();
   });
 
+  // ── Stripe webhook (raw body before JSON parser) ─────────────────────────
+  const { handleStripeWebhook, billingRouter } = await import("./routes/billing.js");
+  app.post("/api/billing/webhook", express.raw({ type: "application/json" }), handleStripeWebhook);
+
   // ── Middleware ───────────────────────────────────────────────────────────
   app.use(cookieParser());
   // Phase3.0013: tight default body cap; specific routes that legitimately accept
@@ -158,6 +137,9 @@ async function startServer() {
   app.use("/api/finance", financeRouter);
   app.use("/api/ai", aiRouter);
   app.use("/api/investment", investmentRouter);
+  const { subscriptionRouter } = await import("./routes/subscription.js");
+  app.use("/api/subscription", subscriptionRouter);
+  app.use("/api/billing", billingRouter);
 
   // ── Health check ─────────────────────────────────────────────────────────
   app.get("/api/health", async (_req, res) => {

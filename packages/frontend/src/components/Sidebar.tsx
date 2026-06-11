@@ -2,12 +2,13 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { useFinance } from '../context/FinanceContext';
+import { useSubscription } from '../context/SubscriptionContext';
 import type { ReactNode } from 'react';
 import {
   LayoutDashboard, Receipt, CreditCard, PieChart, Target, TrendingUp,
   Settings, LogOut, Sparkles, CalendarClock, Briefcase, Wallet, Calculator,
   ChevronLeft, ChevronRight, X, HeartPulse, Leaf, Layers, FileText,
-  ShieldCheck, Users, LineChart, Tag, BarChart3,
+  ShieldCheck, Users, LineChart, Tag, BarChart3, Lock,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -50,8 +51,11 @@ interface Props {
 
 export function Sidebar({ mobileOpen, onMobileClose }: Props) {
   const { logout, userProfile } = useFinance();
+  const { tier, openUpgrade, canAccessRoute } = useSubscription();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
+
+  const routeKey = (path: string) => path.split('/').pop() || 'dashboard';
 
   const sidebarContent = (isMobile: boolean) => (
     <div className={cn(
@@ -106,29 +110,53 @@ export function Sidebar({ mobileOpen, onMobileClose }: Props) {
                 </p>
               );
             }
-            nodes.push(
-              <NavLink key={n.path} to={n.path}
-                onClick={isMobile ? onMobileClose : undefined}
-                className={({ isActive }) => cn(
-                  'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold transition-all duration-200 relative',
-                  isActive
-                    ? 'bg-white/10 text-white shadow-lg shadow-emerald-500/5'
-                    : 'text-slate-400 hover:bg-white/5 hover:text-white',
-                  !isMobile && collapsed && 'justify-center px-0'
-                )}>
-                {({ isActive }) => (
-                  <>
-                    {isActive && (
-                      <motion.div layoutId={isMobile ? 'mobileTab' : 'activeTab'}
-                        className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 rounded-r-full bg-emerald-400"
-                        transition={{ type: 'spring', stiffness: 400, damping: 30 }} />
-                    )}
-                    <n.icon className={cn('h-[18px] w-[18px] flex-shrink-0 transition-colors', isActive ? n.color : '')} aria-hidden />
-                    {(!collapsed || isMobile) && <span>{n.label}</span>}
-                  </>
-                )}
-              </NavLink>
-            );
+            const tab = routeKey(n.path);
+            const locked = !canAccessRoute(tab);
+            if (locked) {
+              nodes.push(
+                <button
+                  key={n.path}
+                  type="button"
+                  onClick={() => { openUpgrade(); if (isMobile) onMobileClose(); }}
+                  className={cn(
+                    'group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold transition-all duration-200 relative text-slate-500 hover:bg-white/5 hover:text-slate-300',
+                    !isMobile && collapsed && 'justify-center px-0'
+                  )}
+                >
+                  <n.icon className="h-[18px] w-[18px] flex-shrink-0 opacity-60" aria-hidden />
+                  {(!collapsed || isMobile) && (
+                    <>
+                      <span className="flex-1 text-left">{n.label}</span>
+                      <Lock className="h-3.5 w-3.5 opacity-70" aria-hidden />
+                    </>
+                  )}
+                </button>
+              );
+            } else {
+              nodes.push(
+                <NavLink key={n.path} to={n.path}
+                  onClick={isMobile ? onMobileClose : undefined}
+                  className={({ isActive }) => cn(
+                    'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold transition-all duration-200 relative',
+                    isActive
+                      ? 'bg-white/10 text-white shadow-lg shadow-emerald-500/5'
+                      : 'text-slate-400 hover:bg-white/5 hover:text-white',
+                    !isMobile && collapsed && 'justify-center px-0'
+                  )}>
+                  {({ isActive }) => (
+                    <>
+                      {isActive && (
+                        <motion.div layoutId={isMobile ? 'mobileTab' : 'activeTab'}
+                          className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-1 rounded-r-full bg-emerald-400"
+                          transition={{ type: 'spring', stiffness: 400, damping: 30 }} />
+                      )}
+                      <n.icon className={cn('h-[18px] w-[18px] flex-shrink-0 transition-colors', isActive ? n.color : '')} aria-hidden />
+                      {(!collapsed || isMobile) && <span>{n.label}</span>}
+                    </>
+                  )}
+                </NavLink>
+              );
+            }
             return nodes;
           });
         })()}
@@ -144,6 +172,7 @@ export function Sidebar({ mobileOpen, onMobileClose }: Props) {
             <div className="flex-1 overflow-hidden">
               <p className="truncate text-sm font-semibold">{userProfile.name}</p>
               <p className="truncate text-xs text-slate-400">{userProfile.email}</p>
+              <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400">{tier} plan</p>
             </div>
           </div>
         )}

@@ -9,6 +9,7 @@ import java.util.List;
 public interface BudgetRepository extends JpaRepository<Budget, String> {
     List<Budget> findAllByUserId(String userId);
     List<Budget> findAllByUserIdAndDeletedFalse(String userId);
+    long countByUserIdAndDeletedFalse(String userId);
     // ISSUE #9 / 4.056 FIX: Query only active budgets for rollover.
     List<Budget> findAllByPeriodTypeAndDeletedFalse(Budget.PeriodType periodType);
     List<Budget> findAllByUserIdAndCategoryIgnoreCaseAndCurrencyAndDeletedFalse(String userId, String category, String currency);

@@ -2,7 +2,9 @@ package com.financetracker.controller;
 
 import com.financetracker.model.Loan;
 import com.financetracker.service.LoanService;
+import com.financetracker.model.PlanFeature;
 import com.financetracker.util.Guards;
+import com.financetracker.util.PlanGuard;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -15,10 +17,12 @@ import java.util.List;
 @RequiredArgsConstructor
 public class LoanController {
     private final LoanService service;
+    private final PlanGuard planGuard;
 
     @GetMapping
     public List<Loan> getAll(@RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
+        planGuard.requireFeature(userId, PlanFeature.LOANS);
         return service.findAllByUserId(userId);
     }
 
@@ -28,6 +32,7 @@ public class LoanController {
     @PostMapping
     public ResponseEntity<Loan> create(@Valid @RequestBody Loan loan, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
+        planGuard.requireFeature(userId, PlanFeature.LOANS);
         loan.setUserId(userId);
         return ResponseEntity.ok(service.create(loan));
     }
@@ -35,12 +40,14 @@ public class LoanController {
     @PutMapping("/{id}")
     public Loan update(@PathVariable String id, @Valid @RequestBody Loan updates, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
+        planGuard.requireFeature(userId, PlanFeature.LOANS);
         return service.update(id, updates, userId);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable String id, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
+        planGuard.requireFeature(userId, PlanFeature.LOANS);
         service.delete(id, userId);
         return ResponseEntity.noContent().build();
     }

@@ -10,9 +10,15 @@ import {
   ChevronDown, Calendar, Tag, Download, Printer,
 } from 'lucide-react';
 import { downloadTransactionsCsv, printTransactionsStatement } from '../lib/exportCsv';
+import {
+  demoTransactionSource,
+  demoTransactionSourceLabel,
+  isDemoAccount,
+} from '../lib/demoAccounts';
 
 export function TransactionsPage() {
-  const { transactions, deleteTransaction } = useFinance();
+  const { transactions, deleteTransaction, userProfile } = useFinance();
+  const showDemoHints = isDemoAccount(userProfile.email);
   const { toast } = useToast();
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
@@ -97,6 +103,18 @@ export function TransactionsPage() {
 
   return (
     <div data-testid="page-transactions" className="p-4 md:p-8 max-w-[1400px] mx-auto space-y-6">
+      {showDemoHints && (
+        <div
+          data-testid="demo-transactions-hint"
+          className="rounded-2xl border border-emerald-100 bg-emerald-50/80 px-4 py-3 text-sm text-slate-700"
+        >
+          <p className="font-semibold text-slate-900">Transaction sources</p>
+          <p className="mt-1 text-xs text-slate-600">
+            <span className="font-medium text-emerald-800">Sample</span> rows are pre-loaded for the tour.{' '}
+            <span className="font-medium text-teal-800">Visitor-added</span> rows were created by earlier demo sessions.
+          </p>
+        </div>
+      )}
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
         className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -279,7 +297,25 @@ export function TransactionsPage() {
                         </div>
                         <div>
                           <p className="text-sm font-semibold text-slate-800">{t.merchant}</p>
-                          <span className="text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md font-medium inline-block mt-0.5">{t.category}</span>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                            <span className="text-[11px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md font-medium">{t.category}</span>
+                            {showDemoHints && (() => {
+                              const source = demoTransactionSource(t.aiTag);
+                              if (!source) return null;
+                              return (
+                                <span
+                                  className={cn(
+                                    'text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wide',
+                                    source === 'sample'
+                                      ? 'bg-emerald-100 text-emerald-700'
+                                      : 'bg-teal-100 text-teal-700',
+                                  )}
+                                >
+                                  {demoTransactionSourceLabel(source)}
+                                </span>
+                              );
+                            })()}
+                          </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-3">

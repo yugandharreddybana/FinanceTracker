@@ -14,6 +14,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class RecurringPaymentService {
     private final RecurringPaymentRepository repo;
+    private final PlanLimitService planLimitService;
 
     @Transactional(readOnly = true)
     public List<RecurringPayment> findAllByUserId(String userId) {
@@ -22,6 +23,7 @@ public class RecurringPaymentService {
 
     @Transactional
     public RecurringPayment create(RecurringPayment payment) {
+        planLimitService.assertCanCreate(payment.getUserId(), com.financetracker.model.LimitableResource.RECURRING_PAYMENT);
         // ISSUE #16 FIX: UUID-based ID
         payment.setId("rec-" + UUID.randomUUID());
         return repo.save(payment);

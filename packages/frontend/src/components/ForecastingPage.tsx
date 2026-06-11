@@ -169,7 +169,7 @@ export const ForecastingPage: React.FC = () => {
                     contentStyle={{ backgroundColor: '#0F0F19', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', padding: '16px' }}
                     itemStyle={{ color: '#7C6EFA', fontWeight: 'bold' }}
                     labelStyle={{ color: 'rgba(255,255,255,0.4)', marginBottom: '8px', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase' }}
-                    formatter={(val: number) => [currencyService.formatCurrency(val, currentCurrency), 'Net Worth']}
+                    formatter={(val) => [currencyService.formatCurrency(Number(val ?? 0), currentCurrency), 'Net Worth']}
                   />
                   <Area 
                     type="monotone" 

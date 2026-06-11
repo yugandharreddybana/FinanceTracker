@@ -381,6 +381,19 @@ export function AIInsightsPage({ compact, onClose }: AIInsightsPageProps = {}) {
 
         <div className="space-y-4">
           <h3 className="text-lg font-bold text-slate-900">Personalized Insights</h3>
+          {remoteInsights.length === 0 && !refreshing && (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-5 py-6 text-center dark:border-slate-800 dark:bg-slate-900/40">
+              <Sparkles className="mx-auto h-8 w-8 text-violet-400 mb-2" />
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                {transactions.length === 0 ? 'No AI insights yet' : 'AI engine returned no insights'}
+              </p>
+              <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                {transactions.length === 0
+                  ? 'Add transactions to unlock personalized AI insight cards.'
+                  : 'Try refreshing or add more recent transaction history for richer analysis.'}
+              </p>
+            </div>
+          )}
           {remoteInsights.length > 0 && (
             <>
               <p className="text-xs font-semibold uppercase tracking-wider text-violet-600">From AI engine</p>

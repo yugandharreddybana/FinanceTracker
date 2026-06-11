@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { PricingCards } from './PricingCards';
+import type { BillingCurrency } from '../services/billingService';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Wallet, BarChart3, Target, TrendingUp, Shield, Sparkles, ArrowRight, Check, Zap, Globe, Users, X, PlayCircle } from 'lucide-react';
@@ -17,6 +19,7 @@ const item = { hidden: { opacity: 0, y: 30 }, show: { opacity: 1, y: 0, transiti
 
 export function LandingPage() {
   const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
+  const [pricingCurrency, setPricingCurrency] = useState<BillingCurrency>('EUR');
 
   return (
     <div data-testid="page-landing" className="min-h-screen bg-white overflow-x-hidden">
@@ -136,32 +139,29 @@ export function LandingPage() {
             <h2 className="mt-3 text-3xl sm:text-4xl font-extrabold text-slate-900">Simple, transparent pricing</h2>
           </motion.div>
 
-          <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              { name: 'Free', price: '₹0', desc: 'Get started', features: ['3 accounts', 'Basic budgeting', 'Transaction tracking', 'Mobile access'] },
-              { name: 'Pro', price: '₹199', period: '/mo', desc: 'Power users', popular: true, features: ['Unlimited accounts', 'AI insights & chat', 'Investment tracking', 'Custom reports', 'Priority support', 'Export data'] },
-              { name: 'Family', price: '₹399', period: '/mo', desc: 'For families', features: ['Everything in Pro', '5 family members', 'Shared budgets', 'Parental controls', 'Family goals', 'Dedicated support'] },
-            ].map((p, i) => (
-              <div key={i} className={`relative rounded-3xl p-8 transition-all duration-300 hover:scale-[1.02] ${p.popular ? 'bg-slate-900 text-white shadow-2xl shadow-slate-400/30 ring-4 ring-emerald-400/30' : 'bg-white border border-slate-200 hover:shadow-xl'}`}>
-                {p.popular && <div className="absolute -top-3 left-1/2 -translate-x-1/2"><span className="rounded-full bg-emerald-400 px-4 py-1 text-xs font-bold text-slate-900">MOST POPULAR</span></div>}
-                <h3 className={`text-lg font-bold ${p.popular ? 'text-white' : 'text-slate-900'}`}>{p.name}</h3>
-                <div className="mt-4 flex items-end gap-1">
-                  <span className={`text-4xl font-black ${p.popular ? 'text-white' : 'text-slate-900'}`}>{p.price}</span>
-                  {p.period && <span className={p.popular ? 'text-slate-400' : 'text-slate-500'}>{p.period}</span>}
-                </div>
-                <p className={`mt-2 text-sm ${p.popular ? 'text-slate-400' : 'text-slate-500'}`}>{p.desc}</p>
-                <ul className="mt-6 space-y-3">
-                  {p.features.map((f, j) => (
-                    <li key={j} className="flex items-center gap-3">
-                      <Check className={`h-4 w-4 flex-shrink-0 ${p.popular ? 'text-emerald-400' : 'text-emerald-500'}`} />
-                      <span className={`text-sm ${p.popular ? 'text-slate-300' : 'text-slate-600'}`}>{f}</span>
-                    </li>
-                  ))}
-                </ul>
-                <Link to="/signup" className={`mt-8 block w-full rounded-xl py-3 text-center text-sm font-bold transition-all ${p.popular ? 'bg-emerald-400 text-slate-900 hover:bg-emerald-300' : 'bg-slate-900 text-white hover:bg-slate-800'}`}>Get Started</Link>
-              </div>
-            ))}
+          <div className="flex justify-center mb-8">
+            <div className="inline-flex rounded-full border border-slate-200 p-1 bg-white shadow-sm">
+              {(['EUR', 'INR'] as BillingCurrency[]).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setPricingCurrency(c)}
+                  className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${
+                    pricingCurrency === c ? 'bg-emerald-500 text-white' : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+          <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
+            <PricingCards currency={pricingCurrency} />
+            <div className="mt-8 text-center">
+              <Link to="/signup" className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-8 py-3 text-sm font-bold text-white hover:bg-slate-800">
+                Get Started Free
+              </Link>
+            </div>
           </motion.div>
         </div>
       </section>

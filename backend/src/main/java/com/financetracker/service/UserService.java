@@ -1,6 +1,7 @@
 package com.financetracker.service;
 
 import com.financetracker.model.AppUser;
+import com.financetracker.model.PlanTier;
 import com.financetracker.model.UserProfile;
 import com.financetracker.repository.AppUserRepository;
 import com.financetracker.repository.UserProfileRepository;
@@ -68,21 +69,13 @@ public class UserService {
                 .salt(salt)
                 .hashIterations(PBKDF2_ITERATIONS)
                 .emailVerified(false)
+                .planTier(PlanTier.FREE)
                 .createdAt(Instant.now())
                 .passwordChangedAt(Instant.now())
                 .build();
 
         AppUser savedUser = userRepository.save(newUser);
-
-        // Issue 2.002 & 1.008 Fix: Always provision the foundational profile during registration!
-        UserProfile profile = UserProfile.builder()
-                .id(userId)
-                .email(normalizedEmail)
-                .name(displayName)
-                .role("USER")
-                .build();
-        profileRepository.save(profile);
-
+        ensureProfileExists(savedUser);
         log.info("Successfully registered user and provisioned profile for user ID: {}", userId);
         return savedUser;
     }
@@ -121,7 +114,21 @@ public class UserService {
             userRepository.save(user);
         }
 
+        ensureProfileExists(user);
         return user;
+    }
+
+    private void ensureProfileExists(AppUser user) {
+        if (profileRepository.existsById(user.getId())) {
+            return;
+        }
+        profileRepository.save(UserProfile.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .name(user.getDisplayName())
+                .role("USER")
+                .build());
+        log.info("Backfilled missing UserProfile for user ID: {}", user.getId());
     }
 
     @Transactional

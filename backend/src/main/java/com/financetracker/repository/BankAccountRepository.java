@@ -18,8 +18,7 @@ public interface BankAccountRepository extends JpaRepository<BankAccount, String
 
     java.util.List<BankAccount> findAllByUserIdAndCurrencyAndIsPrimaryTrue(String userId, String currency);
 
-
-
+    long countByUserIdAndDeletedFalse(String userId);
 
     @Modifying
 

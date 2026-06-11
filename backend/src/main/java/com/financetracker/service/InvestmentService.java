@@ -16,6 +16,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class InvestmentService {
     private final InvestmentRepository repo;
+    private final PlanLimitService planLimitService;
 
     @Transactional(readOnly = true)
     public List<Investment> findAllByUserId(String userId) {
@@ -33,6 +34,7 @@ public class InvestmentService {
 
     @Transactional
     public Investment create(Investment inv) {
+        planLimitService.assertCanCreate(inv.getUserId(), com.financetracker.model.LimitableResource.INVESTMENT);
         validateSymbol(inv.getSymbol());
         // ISSUE #16 FIX: UUID-based ID
         inv.setId("inv-" + UUID.randomUUID());

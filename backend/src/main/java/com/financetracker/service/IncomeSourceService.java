@@ -14,6 +14,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class IncomeSourceService {
     private final IncomeSourceRepository repo;
+    private final PlanLimitService planLimitService;
 
     @Transactional(readOnly = true)
     public List<IncomeSource> findAllByUserId(String userId) {
@@ -23,6 +24,7 @@ public class IncomeSourceService {
 
     @Transactional
     public IncomeSource create(IncomeSource income) {
+        planLimitService.assertCanCreate(income.getUserId(), com.financetracker.model.LimitableResource.INCOME_SOURCE);
         // Phase4.027: Defend against concurrent ID allocation collisions by leveraging UUIDs.
         if (income.getId() == null || income.getId().isBlank()) {
             income.setId("income-" + UUID.randomUUID());

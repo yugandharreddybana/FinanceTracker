@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { rateLimit } from "express-rate-limit";
 import { authMiddleware } from "../middleware/auth.js";
+import { aiQuotaMiddleware } from "../middleware/aiQuota.js";
 import {
   normalizeProcessInputItems,
   sortBankAccountsFirst,
@@ -429,7 +430,7 @@ async function callBackend(path: string, method: string, body: any, userId: stri
 // 1. Smart Add Transaction NLP
 // ---------------------------------------------------------------------------
 
-router.post("/process-input", authMiddleware, aiLimiter, async (req, res) => {
+router.post("/process-input", authMiddleware, aiQuotaMiddleware, aiLimiter, async (req, res) => {
   try {
     const { input, savingsGoals, accounts, budgets: budgetsBody } = req.body;
     if (!input || typeof input !== 'string') {
@@ -576,7 +577,7 @@ Example: "coffee 5; uber 12; salary 5000" → 3 separate TRANSACTION items.`;
 // 2. Batch Categorization
 // ---------------------------------------------------------------------------
 
-router.post("/categorize", authMiddleware, aiLimiter, async (req, res) => {
+router.post("/categorize", authMiddleware, aiQuotaMiddleware, aiLimiter, async (req, res) => {
   try {
     const { targets } = req.body;
     if (!NVIDIA_API_KEY) return res.status(503).json({ error: "AI service not configured" });
@@ -625,7 +626,7 @@ router.post("/categorize", authMiddleware, aiLimiter, async (req, res) => {
 // and send the text content here. base64Data is treated as pre-extracted text.
 // ---------------------------------------------------------------------------
 
-router.post("/analyze-file", authMiddleware, aiLimiter, async (req, res) => {
+router.post("/analyze-file", authMiddleware, aiQuotaMiddleware, aiLimiter, async (req, res) => {
   try {
     const { base64Data, mimeType, type } = req.body;
     if (!NVIDIA_API_KEY) return res.status(503).json({ error: "AI service not configured" });
@@ -682,7 +683,7 @@ router.post("/analyze-file", authMiddleware, aiLimiter, async (req, res) => {
 // 4. AI Oracle Chat with Tool Calling
 // ---------------------------------------------------------------------------
 
-router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
+router.post("/oracle", authMiddleware, aiQuotaMiddleware, aiLimiter, async (req, res) => {
   try {
     const rawHistory = Array.isArray(req.body?.history) ? req.body.history : [];
     const history = rawHistory.slice(-MAX_HISTORY);
@@ -1006,7 +1007,7 @@ router.post("/oracle", authMiddleware, aiLimiter, async (req, res) => {
 // 5. AI Insights
 // ---------------------------------------------------------------------------
 
-router.post("/insights", authMiddleware, aiLimiter, async (req, res) => {
+router.post("/insights", authMiddleware, aiQuotaMiddleware, aiLimiter, async (req, res) => {
   try {
     const { uid } = (req as any).user;
     const token =
@@ -1076,7 +1077,7 @@ router.post("/insights", authMiddleware, aiLimiter, async (req, res) => {
 // 6. Generic AI Chat
 // ---------------------------------------------------------------------------
 
-router.post("/chat", authMiddleware, aiLimiter, async (req, res) => {
+router.post("/chat", authMiddleware, aiQuotaMiddleware, aiLimiter, async (req, res) => {
   try {
     const rawHistory = Array.isArray(req.body?.history) ? req.body.history : [];
     const rawTransactions = Array.isArray(req.body?.transactions) ? req.body.transactions : [];
@@ -1118,7 +1119,7 @@ router.post("/chat", authMiddleware, aiLimiter, async (req, res) => {
   }
 });
 
-router.post("/chat-stream", authMiddleware, aiLimiter, async (req, res) => {
+router.post("/chat-stream", authMiddleware, aiQuotaMiddleware, aiLimiter, async (req, res) => {
   try {
     const rawHistory = Array.isArray(req.body?.history) ? req.body.history : [];
     const rawTransactions = Array.isArray(req.body?.transactions) ? req.body.transactions : [];
@@ -1206,7 +1207,13 @@ router.post("/chat-stream", authMiddleware, aiLimiter, async (req, res) => {
 // 7. Forecast
 // ---------------------------------------------------------------------------
 
-router.post("/forecast", authMiddleware, aiLimiter, async (req, res) => {
+router.get("/forecast", (_req, res) => {
+  res.status(405).set("Allow", "POST").json({
+    error: "Use POST /api/ai/forecast with JSON body: { currentNetWorth, monthlySavings, riskProfile }",
+  });
+});
+
+router.post("/forecast", authMiddleware, aiQuotaMiddleware, aiLimiter, async (req, res) => {
   try {
     const { currentNetWorth, monthlySavings, riskProfile } = req.body;
     if (!NVIDIA_API_KEY) return res.status(503).json({ error: "AI service not configured" });
@@ -1287,7 +1294,7 @@ function buildFallbackTaxSteps(title: string, description: string, category?: st
 const TAX_AI_DISCLAIMER =
   "Estimates only — not legal, tax, or investment advice. Confirm rules for your jurisdiction with a qualified professional.";
 
-router.post("/tax-suggestions", authMiddleware, aiLimiter, async (req, res) => {
+router.post("/tax-suggestions", authMiddleware, aiQuotaMiddleware, aiLimiter, async (req, res) => {
   try {
     const { spendingData } = req.body || {};
     const jRaw = typeof req.body?.jurisdiction === "string" ? req.body.jurisdiction.trim().slice(0, 64) : "";

@@ -13,6 +13,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class BudgetService {
     private final BudgetRepository repo;
+    private final PlanLimitService planLimitService;
 
     @Transactional(readOnly = true)
     public List<Budget> findAllByUserId(String userId) {
@@ -21,6 +22,7 @@ public class BudgetService {
 
     @Transactional
     public Budget create(Budget budget, String requestUserId) {
+        planLimitService.assertCanCreate(requestUserId, com.financetracker.model.LimitableResource.BUDGET);
         // Phase4.010: Enforce server-managed userId boundary strictly in service logic.
         budget.setUserId(requestUserId);
         if (budget.getId() == null || budget.getId().isBlank()) {

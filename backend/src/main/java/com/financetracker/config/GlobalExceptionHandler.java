@@ -1,6 +1,9 @@
 package com.financetracker.config;
 
+import com.financetracker.exception.AiQuotaExceededException;
 import com.financetracker.exception.NotFoundException;
+import com.financetracker.exception.PlanFeatureLockedException;
+import com.financetracker.exception.PlanLimitExceededException;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.OptimisticLockException;
 import jakarta.validation.ConstraintViolationException;
@@ -33,6 +36,43 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleStatus(ResponseStatusException e) {
         return ResponseEntity.status(e.getStatusCode())
             .body(Map.of("error", e.getReason() != null ? e.getReason() : "Request failed"));
+    }
+
+    @ExceptionHandler(PlanLimitExceededException.class)
+    public ResponseEntity<Map<String, Object>> handlePlanLimit(PlanLimitExceededException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(Map.of(
+                "error", "Plan limit exceeded",
+                "code", "PLAN_LIMIT_EXCEEDED",
+                "resource", e.getResource().name(),
+                "limit", e.getLimit(),
+                "usage", e.getUsage(),
+                "requiredTier", e.getRequiredTier().name()
+            ));
+    }
+
+    @ExceptionHandler(PlanFeatureLockedException.class)
+    public ResponseEntity<Map<String, Object>> handlePlanFeature(PlanFeatureLockedException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(Map.of(
+                "error", "This feature requires a higher plan",
+                "code", "PLAN_FEATURE_LOCKED",
+                "feature", e.getFeature().name(),
+                "requiredTier", e.getRequiredTier().name()
+            ));
+    }
+
+    @ExceptionHandler(AiQuotaExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleAiQuota(AiQuotaExceededException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+            .body(Map.of(
+                "error", "AI quota exceeded",
+                "code", "AI_QUOTA_EXCEEDED",
+                "used", e.getUsed(),
+                "limit", e.getLimit(),
+                "remaining", 0,
+                "resetsAt", e.getResetsAt().toString()
+            ));
     }
 
     // ISSUE #12 FIX: Return field-level validation errors from @Valid — safe to expose
@@ -155,18 +195,6 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleRuntime(RuntimeException e) {
         String correlationId = UUID.randomUUID().toString();
         log.error("[{}] Unhandled RuntimeException: {}", correlationId, e.getMessage(), e);
-        // #region agent log
-        // Phase4.005: Suppress 'msg' serialization to strictly avoid PII leakage in flat-file logs.
-        com.financetracker.debug.AgentDebugLog.log(
-            "H2",
-            "GlobalExceptionHandler.handleRuntime",
-            "runtime→500",
-            java.util.Map.of(
-                "correlationId", correlationId,
-                "ex", e.getClass().getSimpleName()
-            )
-        );
-        // #endregion
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
             .body(Map.of("error", "An unexpected error occurred", "correlationId", correlationId));
     }

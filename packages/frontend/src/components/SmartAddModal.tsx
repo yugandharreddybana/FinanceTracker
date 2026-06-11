@@ -279,7 +279,8 @@ export function SmartAddModal({ open, onClose, initialText = '' }: Props) {
           const u = trimmed.toUpperCase().replace(/[^A-Z]/g, '');
           return u.length >= 3 ? u.slice(0, 3) : undefined;
         };
-        const mapped: ParsedAction[] = serverResults.map((r: Record<string, unknown>) => {
+        const mapped: ParsedAction[] = serverResults.map((raw) => {
+          const r = raw as Record<string, unknown>;
           const intent = String(r.intent ?? 'TRANSACTION').toUpperCase();
           if (intent === 'BANK_ACCOUNT') {
             const accountName = String(r.accountName ?? r.name ?? '').trim();

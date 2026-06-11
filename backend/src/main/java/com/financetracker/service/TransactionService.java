@@ -89,10 +89,7 @@ public class TransactionService {
         // ISSUE 4.048 FIX: Strictly sync currency from BankAccount to prevent ledger drift.
         // If account is specified, the transaction MUST inherit that account's currency.
         if (tx.getAccount() != null && !tx.getAccount().isBlank() && tx.getUserId() != null) {
-            java.util.Optional<com.financetracker.model.BankAccount> optBank = bankRepo.findById(tx.getAccount());
-            if (optBank.isEmpty() && !tx.getAccount().matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")) {
-                optBank = bankRepo.findByNameIgnoreCaseAndUserId(tx.getAccount(), tx.getUserId());
-            }
+            java.util.Optional<com.financetracker.model.BankAccount> optBank = resolveBankAccount(tx.getAccount(), tx.getUserId());
             optBank.ifPresent(bank -> {
                 tx.setCurrency(bank.getCurrency());
                 // Also ensure account name is normalized if it was a name lookup
@@ -100,6 +97,12 @@ public class TransactionService {
                     tx.setAccount(bank.getId());
                 }
             });
+        }
+
+        if (tx.getCurrency() != null && !tx.getCurrency().isBlank()) {
+            tx.setCurrency(com.financetracker.util.SupportedCurrencies.normalize(tx.getCurrency()));
+        } else if (tx.getCurrency() == null || tx.getCurrency().isBlank()) {
+            tx.setCurrency("INR");
         }
 
         try {
@@ -196,13 +199,7 @@ public class TransactionService {
      * Balance deltas still commit in {@link #applyBalanceDeltaWithRetryInNewTransaction} (REQUIRES_NEW).
      */
     public void delete(String id, String requestUserId) {
-        // #region agent log
-        com.financetracker.debug.AgentDebugLog.log("H1", "TransactionService.delete:entry", "delete requested", java.util.Map.of("id", id, "uidLen", requestUserId != null ? requestUserId.length() : -1));
-        // #endregion
         self.deleteTransactionTransactionalAttempt(id, requestUserId);
-        // #region agent log
-        com.financetracker.debug.AgentDebugLog.log("H1", "TransactionService.delete:success", "deleted", java.util.Map.of("id", id));
-        // #endregion
     }
 
     @Transactional(isolation = Isolation.REPEATABLE_READ)
@@ -214,14 +211,6 @@ public class TransactionService {
     public void deleteTransactionTransactionalAttempt(String id, String requestUserId) {
         Transaction tx = repo.findById(id).orElseThrow(() -> new com.financetracker.exception.NotFoundException("Transaction not found: " + id));
         Guards.assertOwner(tx.getUserId(), requestUserId);
-        // #region agent log
-        com.financetracker.debug.AgentDebugLog.log("H1", "TransactionService.delete:loaded", "tx row found", java.util.Map.of(
-            "id", id,
-            "type", tx.getType() != null ? tx.getType() : "",
-            "hasAccount", tx.getAccount() != null && !tx.getAccount().isBlank(),
-            "hasSavingsGoalId", tx.getSavingsGoalId() != null && !tx.getSavingsGoalId().isBlank()
-        ));
-        // #endregion
         String goalId = tx.getSavingsGoalId();
         self.applyBalanceDeltaWithRetryInNewTransaction(tx, -1);
         applyBudgetDelta(tx, -1);
@@ -264,17 +253,7 @@ public class TransactionService {
     }
 
     public int bulkDelete(List<String> ids, String requestUserId) {
-        // #region agent log
-        com.financetracker.debug.AgentDebugLog.log("H12", "TransactionService.bulkDelete:entry", "bulk delete", java.util.Map.of(
-            "count", ids != null ? ids.size() : -1,
-            "uidLen", requestUserId != null ? requestUserId.length() : -1
-        ));
-        // #endregion
-        int n = self.bulkDeleteTransactionalAttempt(ids, requestUserId);
-        // #region agent log
-        com.financetracker.debug.AgentDebugLog.log("H12", "TransactionService.bulkDelete:success", "ok", java.util.Map.of("deleted", n));
-        // #endregion
-        return n;
+        return self.bulkDeleteTransactionalAttempt(ids, requestUserId);
     }
 
     @SuppressWarnings("null")
@@ -367,6 +346,31 @@ public class TransactionService {
                 && account.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
     }
 
+    private java.util.Optional<BankAccount> resolveBankAccount(String accountRef, String userId) {
+        if (accountRef == null || accountRef.isBlank() || userId == null) {
+            return java.util.Optional.empty();
+        }
+        if (looksLikeBankUuid(accountRef)) {
+            return bankRepo.findByIdAndUserId(accountRef, userId);
+        }
+        java.util.Optional<BankAccount> byName = bankRepo.findByNameIgnoreCaseAndUserId(accountRef, userId);
+        if (byName.isPresent()) {
+            return byName;
+        }
+        return bankRepo.findFirstByBankIgnoreCaseAndUserId(accountRef, userId);
+    }
+
+    private String resolveAccountReference(String accountRef, String userId) {
+        if (accountRef == null || accountRef.isBlank()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST, "account is required");
+        }
+        return resolveBankAccount(accountRef, userId)
+            .map(BankAccount::getId)
+            .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.FORBIDDEN, "account not found or not owned by user"));
+    }
+
     private void applyBalanceDelta(Transaction tx, int sign) {
         // ISSUE 5.001 FIX: Throw an error if account is missing instead of failing silently.
         if (tx.getAccount() == null || tx.getAccount().isBlank()) {
@@ -374,13 +378,7 @@ public class TransactionService {
                 org.springframework.http.HttpStatus.BAD_REQUEST, "Transaction account is required for balance updates");
         }
         if (tx.getAmount() == null) return; // Non-financial transactions allowed? Usually not, but following safety.
-        java.util.Optional<BankAccount> optBank = bankRepo.findById(tx.getAccount());
-        if (optBank.isEmpty() && !looksLikeBankUuid(tx.getAccount())) {
-            optBank = bankRepo.findByNameIgnoreCaseAndUserId(tx.getAccount(), tx.getUserId());
-        }
-        if (optBank.isEmpty() && !looksLikeBankUuid(tx.getAccount())) {
-            optBank = bankRepo.findFirstByBankIgnoreCaseAndUserId(tx.getAccount(), tx.getUserId());
-        }
+        java.util.Optional<BankAccount> optBank = resolveBankAccount(tx.getAccount(), tx.getUserId());
         BankAccount bank = optBank.orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
             org.springframework.http.HttpStatus.BAD_REQUEST,
             "account not found"
@@ -456,7 +454,7 @@ public class TransactionService {
                 case "type" -> tx.setType((String) value);
                 case "status" -> tx.setStatus((String) value);
                 case "aiTag" -> tx.setAiTag((String) value);
-                case "account" -> tx.setAccount((String) value);
+                case "account" -> tx.setAccount(resolveAccountReference((String) value, tx.getUserId()));
                 // Phase4.0008: confidence is server-managed only (raised by the
                 // /recategorise endpoint when a user verifies an AI category).
                 // Allowing the client to set it would corrupt the AI feedback loop.

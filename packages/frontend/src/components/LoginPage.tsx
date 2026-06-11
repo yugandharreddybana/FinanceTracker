@@ -5,7 +5,7 @@ import { useFinance } from '../context/FinanceContext';
 import { Wallet, Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, Sparkles, AlertCircle } from 'lucide-react';
 
 export function LoginPage() {
-  const { login } = useFinance();
+  const { login, loginDemo } = useFinance();
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState('');
@@ -41,13 +41,10 @@ export function LoginPage() {
     setIsLoading(true);
     setError('');
     try {
-      const ok = await login('demo@yugifinance.com', 'demo123456');
-      if (ok) {
-        navigate('/app/dashboard');
-      } else {
-        setError('Demo system currently offline. Please try creating a free account.');
-      }
-    } catch (err) {
+      const ok = await loginDemo();
+      if (ok) navigate('/app/dashboard');
+      else setError('Demo system currently offline. Please try creating a free account.');
+    } catch {
       setError('Demo system unavailable. Please try again later.');
     } finally {
       setIsLoading(false);

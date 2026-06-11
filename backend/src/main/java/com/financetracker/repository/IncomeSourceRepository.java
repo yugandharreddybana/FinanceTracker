@@ -10,6 +10,7 @@ import java.util.List;
 public interface IncomeSourceRepository extends JpaRepository<IncomeSource, String> {
     List<IncomeSource> findAllByUserId(String userId);
     List<IncomeSource> findAllByUserIdAndDeletedFalse(String userId);
+    long countByUserIdAndDeletedFalse(String userId);
 
     @Modifying
     @Transactional

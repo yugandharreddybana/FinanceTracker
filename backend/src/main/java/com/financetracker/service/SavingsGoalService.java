@@ -18,6 +18,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class SavingsGoalService {
     private final SavingsGoalRepository repo;
+    private final PlanLimitService planLimitService;
     private final TransactionRepository txRepo;
     private final AuditLogRepository auditRepo;
 
@@ -28,6 +29,7 @@ public class SavingsGoalService {
 
     @Transactional
     public SavingsGoal create(SavingsGoal goal) {
+        planLimitService.assertCanCreate(goal.getUserId(), com.financetracker.model.LimitableResource.SAVINGS_GOAL);
         // ISSUE #16 FIX: UUID-based ID — no timestamp collision
         goal.setId("goal-" + UUID.randomUUID());
         // ISSUE #1 FIX: current always starts at zero — never from client input

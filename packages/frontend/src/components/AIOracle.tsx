@@ -100,11 +100,14 @@ export const AIOracle: React.FC = () => {
     if (saved) {
       try {
         const parsed: unknown[] = JSON.parse(saved);
-        const migrated: OracleMessage[] = parsed.map((m: OracleMessage & { id?: string }) => ({
-          id: m.id ?? crypto.randomUUID(),
-          role: m.role ?? 'ai',
-          content: m.content ?? '',
-        }));
+        const migrated: OracleMessage[] = parsed.map((raw) => {
+          const m = raw as OracleMessage & { id?: string };
+          return {
+            id: m.id ?? crypto.randomUUID(),
+            role: m.role ?? 'ai',
+            content: m.content ?? '',
+          };
+        });
         setMessages(migrated);
         return;
       } catch (e) {

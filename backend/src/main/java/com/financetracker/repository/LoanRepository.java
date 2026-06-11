@@ -9,6 +9,7 @@ import java.util.List;
 public interface LoanRepository extends JpaRepository<Loan, String> {
     List<Loan> findAllByUserId(String userId);
     List<Loan> findAllByUserIdAndDeletedFalse(String userId);
+    long countByUserIdAndDeletedFalse(String userId);
 
     @Modifying
     @Transactional

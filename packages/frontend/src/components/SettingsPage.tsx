@@ -1,14 +1,23 @@
 import { useState } from 'react';
 import { useFinance } from '../context/FinanceContext';
+import { useSubscription } from '../context/SubscriptionContext';
+import { openBillingPortal, startCheckout, type BillingCurrency } from '../services/billingService';
 import { cn, safeStorage } from '../lib/utils';
 import { getAIConfig, saveAIConfig, type AIConfig } from '../lib/aiService';
 import { motion } from 'motion/react';
-import { User, Bell, Shield, Palette, Globe, Download, Trash2, Save, Moon, Sun, Check, Sparkles, Eye, EyeOff, Printer } from 'lucide-react';
+import { User, Bell, Shield, Palette, Globe, Download, Trash2, Save, Moon, Sun, Check, Sparkles, Eye, EyeOff, Printer, CreditCard } from 'lucide-react';
 import { useToast } from './Toast';
 import { downloadTransactionsCsv, printTransactionsStatement } from '../lib/exportCsv';
+import { isSeedAdminEmail } from '../lib/demoAccounts';
 
 export function SettingsPage() {
   const { userProfile, updateUserProfile, transactions } = useFinance();
+  const isAdminSeed = isSeedAdminEmail(userProfile.email);
+  const { tier, subscription, refreshSubscription, openUpgrade } = useSubscription();
+  const [billingCurrency, setBillingCurrency] = useState<BillingCurrency>(
+    (subscription?.billingCurrency as BillingCurrency) || 'EUR'
+  );
+  const [billingLoading, setBillingLoading] = useState(false);
   const [name, setName] = useState(userProfile.name);
   const [email, setEmail] = useState(userProfile.email);
   const [currency, setCurrency] = useState(userProfile.preferences?.currency || 'INR');
@@ -64,6 +73,110 @@ export function SettingsPage() {
             <input value={name} onChange={e => setName(e.target.value)} className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50/50 px-4 py-3 text-sm font-medium focus:border-emerald-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-emerald-50 transition-all" /></div>
           <div><label className="mb-2 block text-sm font-semibold text-slate-700">Email</label>
             <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full rounded-2xl border-2 border-slate-100 bg-slate-50/50 px-4 py-3 text-sm font-medium focus:border-emerald-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-emerald-50 transition-all" /></div>
+        </div>
+      </motion.div>
+
+      {/* Billing */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+        className="rounded-3xl bg-white p-6 shadow-sm border border-slate-100" data-testid="billing-section">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-100">
+            <CreditCard className="h-5 w-5 text-emerald-600" />
+          </div>
+          <div>
+            <h3 className="font-bold text-slate-900">Billing & Plan</h3>
+            <p className="text-sm text-slate-400">Current plan: <span className="font-semibold text-emerald-600">{tier}</span></p>
+          </div>
+        </div>
+        <div className="mb-4 flex gap-2">
+          {(['EUR', 'INR'] as BillingCurrency[]).map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setBillingCurrency(c)}
+              className={cn(
+                'rounded-full px-4 py-1.5 text-xs font-bold border transition-all',
+                billingCurrency === c ? 'bg-emerald-500 text-white border-emerald-500' : 'border-slate-200 text-slate-500'
+              )}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+        {subscription && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+            {[
+              { label: 'Accounts', key: 'bank_account' },
+              { label: 'Budgets', key: 'budget' },
+              { label: 'Goals', key: 'savings_goal' },
+              { label: 'AI helps', key: '_ai', used: subscription.ai?.used, limit: subscription.ai?.limit },
+            ].map((item) => {
+              const used = item.key === '_ai' ? (item.used ?? 0) : (subscription.usage?.[item.key] ?? 0);
+              const limit = item.key === '_ai' ? item.limit : subscription.limits?.[item.key];
+              const label = limit === null ? `${used} / ∞` : `${used} / ${limit ?? '—'}`;
+              return (
+                <div key={item.label} className="rounded-2xl bg-slate-50 px-3 py-2 text-center">
+                  <p className="text-[10px] font-bold uppercase text-slate-400">{item.label}</p>
+                  <p className="text-sm font-bold text-slate-800">{label}</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {isAdminSeed ? (
+          <p className="mb-4 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800" data-testid="admin-billing-notice">
+            Admin account — billing not required. Your plan tier is managed automatically.
+          </p>
+        ) : null}
+        <div className="flex flex-wrap gap-3">
+          {!isAdminSeed && tier !== 'ENTERPRISE' && (
+            <button
+              type="button"
+              disabled={billingLoading}
+              onClick={async () => {
+                setBillingLoading(true);
+                try {
+                  const target = tier === 'FREE' ? 'PRO' : 'ENTERPRISE';
+                  const url = await startCheckout(target, billingCurrency);
+                  window.location.href = url;
+                } catch (e) {
+                  toast('error', e instanceof Error ? e.message : 'Checkout failed');
+                  setBillingLoading(false);
+                }
+              }}
+              className="rounded-2xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-700"
+            >
+              Upgrade to {tier === 'FREE' ? 'Pro' : 'Enterprise'}
+            </button>
+          )}
+          {!isAdminSeed && subscription?.stripeCustomerId && (
+            <button
+              type="button"
+              disabled={billingLoading}
+              onClick={async () => {
+                setBillingLoading(true);
+                try {
+                  const url = await openBillingPortal();
+                  window.location.href = url;
+                } catch (e) {
+                  toast('error', e instanceof Error ? e.message : 'Portal failed');
+                } finally {
+                  setBillingLoading(false);
+                }
+              }}
+              className="rounded-2xl border-2 border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50"
+            >
+              Manage subscription
+            </button>
+          )}
+          {!isAdminSeed && (
+            <button type="button" onClick={() => openUpgrade()} className="rounded-2xl border-2 border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50">
+              Compare plans
+            </button>
+          )}
+          <button type="button" onClick={() => refreshSubscription()} className="rounded-2xl border-2 border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50">
+            Refresh
+          </button>
         </div>
       </motion.div>
 

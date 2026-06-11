@@ -28,6 +28,8 @@ public interface TransactionRepository extends JpaRepository<Transaction, String
 
     Optional<Transaction> findByUserIdAndIdempotencyKey(String userId, String idempotencyKey);
 
+    long countByUserId(String userId);
+
     // ISSUE #1 + Phase5.0015 FIX: Sum transactions for a savings goal, strictly filtering by currency alignment.
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t " +
         "WHERE t.savingsGoalId = :goalId AND t.status != 'VOIDED' " +

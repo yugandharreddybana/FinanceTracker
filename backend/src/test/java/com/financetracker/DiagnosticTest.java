@@ -34,7 +34,7 @@ public class DiagnosticTest {
         
         // First ensure we have a test account
         BankAccount account = new BankAccount();
-        account.setId("diag-acc-" + UUID.randomUUID().toString());
+        account.setId(UUID.randomUUID().toString());
         account.setUserId(testUserId);
         account.setName("Diagnostic Account");
         account.setType("Savings");

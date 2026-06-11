@@ -237,3 +237,21 @@ export interface ForecastResult {
   months: { month: string; projected: number; currency: string }[];
   summary: string;
 }
+
+export type PlanTier = 'FREE' | 'PRO' | 'ENTERPRISE';
+
+export interface SubscriptionSummary {
+  tier: PlanTier;
+  limits: Record<string, number | null>;
+  usage: Record<string, number>;
+  ai: {
+    used: number;
+    limit: number | null;
+    remaining?: number | null;
+    resetsAt: string;
+  };
+  subscriptionStatus?: string | null;
+  currentPeriodEnd?: string | null;
+  billingCurrency?: string | null;
+  stripeCustomerId?: string | null;
+}

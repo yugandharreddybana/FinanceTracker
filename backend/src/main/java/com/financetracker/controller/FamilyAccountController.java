@@ -2,7 +2,9 @@ package com.financetracker.controller;
 
 import com.financetracker.model.FamilyAccount;
 import com.financetracker.service.FamilyAccountService;
+import com.financetracker.model.PlanFeature;
 import com.financetracker.util.Guards;
+import com.financetracker.util.PlanGuard;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -15,10 +17,12 @@ import java.util.List;
 @RequiredArgsConstructor
 public class FamilyAccountController {
     private final FamilyAccountService service;
+    private final PlanGuard planGuard;
 
     @GetMapping
     public List<FamilyAccount> getAll(@RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
+        planGuard.requireFeature(userId, PlanFeature.FAMILY);
         return service.findAllForUser(userId);
     }
 
@@ -26,6 +30,7 @@ public class FamilyAccountController {
     @GetMapping("/{id}")
     public ResponseEntity<FamilyAccount> getById(@PathVariable String id, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
+        planGuard.requireFeature(userId, PlanFeature.FAMILY);
         return service.findByIdForUser(id, userId)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
@@ -34,6 +39,7 @@ public class FamilyAccountController {
     @PostMapping
     public ResponseEntity<FamilyAccount> create(@RequestBody FamilyAccount family, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
+        planGuard.requireFeature(userId, PlanFeature.FAMILY);
         // Phase4.0009: ownerId is forced from the verified JWT, members[] and id
         // are dropped so a client can't self-grant ADMIN or pin a known id —
         // FamilyAccountService.create() (re)initialises both server-side.
@@ -46,12 +52,14 @@ public class FamilyAccountController {
     @PutMapping("/{id}")
     public FamilyAccount update(@PathVariable String id, @RequestBody FamilyAccount updates, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
+        planGuard.requireFeature(userId, PlanFeature.FAMILY);
         return service.update(id, updates, userId);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable String id, @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
+        planGuard.requireFeature(userId, PlanFeature.FAMILY);
         service.delete(id, userId);
         return ResponseEntity.noContent().build();
     }
@@ -62,6 +70,7 @@ public class FamilyAccountController {
             @RequestBody AddMemberRequest request,
             @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
+        planGuard.requireFeature(userId, PlanFeature.FAMILY);
         FamilyAccount updated = service.addMember(id, userId, request.getName(), request.getRole());
         return ResponseEntity.ok(updated);
     }
@@ -72,6 +81,7 @@ public class FamilyAccountController {
             @PathVariable String uid,
             @RequestHeader("X-User-Id") String userId) {
         Guards.requireUser(userId);
+        planGuard.requireFeature(userId, PlanFeature.FAMILY);
         FamilyAccount updated = service.removeMember(id, userId, uid);
         return ResponseEntity.ok(updated);
     }
